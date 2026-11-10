@@ -39,6 +39,14 @@ allOpen {
     annotation("org.androidannotations.api.KotlinOpen")
 }
 
+// AndroidAnnotations KSP options (names aligned with the APT options):
+//   resourcePackageName - package holding the R class (default: manifest application package)
+//   androidManifestFile - explicit path to AndroidManifest.xml (relative paths resolve against the
+//                         Gradle working directory; default: probe upward from the working dir,
+//                         preferring build/intermediates/merged_manifests over src/main)
+//   library             - "true" relaxes @E* component registration validation (library modules)
+//   classSuffix         - suffix of generated classes (default "_")
+//   useR2               - "true" references R2 instead of R
 ksp {
     arg("resourcePackageName", "org.androidannotations.gradle")
 }

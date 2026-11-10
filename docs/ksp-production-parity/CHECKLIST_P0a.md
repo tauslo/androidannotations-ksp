@@ -5,14 +5,14 @@
 
 ## Options & environment
 
-- [ ] **BLOCKER** Parse KSP options: `resourcePackageName`, `androidManifestFile`, `library`, `classSuffix`, `useR2`（名称对齐 APT `Option`）
-- [ ] Pass options through a single `KspEnvironment` / similar（避免各处读 Map）
-- [ ] Document options in `examples/kotlin` `ksp { arg(...) }`
+- [x] **BLOCKER** Parse KSP options: `resourcePackageName`, `androidManifestFile`, `library`, `classSuffix`, `useR2`（名称对齐 APT `Option`）
+- [x] Pass options through a single `KspEnvironment` / similar（避免各处读 Map）
+- [x] Document options in `examples/kotlin` `ksp { arg(...) }`
 
 ## Manifest & R
 
-- [ ] **BLOCKER** Implement Manifest load（优先显式 `androidManifestFile`；可选向上探测，但勿依赖 `kapt.kotlin.generated`）
-- [ ] Validate `@EActivity` / 后续 `@E*` 组件已在 Manifest 注册（`library=true` 时放宽）
+- [x] **BLOCKER** Implement Manifest load（优先显式 `androidManifestFile`；可选向上探测，但勿依赖 `kapt.kotlin.generated`）
+- [x] Validate `@EActivity` / 后续 `@E*` 组件已在 Manifest 注册（`library=true` 时放宽）
 - [ ] Resolve `R` / `R2` by package；fail/warn if id/layout/string missing
 - [ ] Prefer emitting `pkg.R.type.name` field refs over raw int when possible
 

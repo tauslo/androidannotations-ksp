@@ -73,6 +73,7 @@ final class MvpModel {
 	final String packageName;
 	final String simpleName;
 	final String qualifiedName;
+	final String classSuffix;
 	final int layoutId;
 	final String layoutResName;
 	final List<FieldInjection> viewByIds = new ArrayList<>();
@@ -82,17 +83,18 @@ final class MvpModel {
 	final List<MethodInfo> backgrounds = new ArrayList<>();
 	final List<MethodInfo> uiThreads = new ArrayList<>();
 
-	MvpModel(Kind kind, String packageName, String simpleName, String qualifiedName, int layoutId, String layoutResName) {
+	MvpModel(Kind kind, String packageName, String simpleName, String qualifiedName, String classSuffix, int layoutId, String layoutResName) {
 		this.kind = kind;
 		this.packageName = packageName;
 		this.simpleName = simpleName;
 		this.qualifiedName = qualifiedName;
+		this.classSuffix = classSuffix;
 		this.layoutId = layoutId;
 		this.layoutResName = layoutResName;
 	}
 
 	String generatedSimpleName() {
-		return simpleName + "_";
+		return simpleName + classSuffix;
 	}
 
 	String generatedQualifiedName() {

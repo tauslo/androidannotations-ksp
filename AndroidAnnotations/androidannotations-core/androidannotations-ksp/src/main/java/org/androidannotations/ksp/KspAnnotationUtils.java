@@ -165,11 +165,11 @@ final class KspAnnotationUtils {
 		return builder.toString();
 	}
 
-	static String resExpression(String resourcePackage, String resType, String fieldName, int resId, String resName) {
+	static String resExpression(String resourcePackage, String rClassName, String resType, String fieldName, int resId, String resName) {
 		if (resId != AnnotationNames.RES_DEFAULT) {
 			return Integer.toString(resId);
 		}
 		String name = (resName != null && !resName.isEmpty()) ? resName : fieldName;
-		return resourcePackage + ".R." + resType + "." + name;
+		return resourcePackage + "." + rClassName + "." + resType + "." + name;
 	}
 }

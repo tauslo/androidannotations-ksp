@@ -8,7 +8,7 @@
  *
  * http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed To in writing, software
+ * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
  * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
  * License for the specific language governing permissions and limitations under
@@ -24,7 +24,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 import com.google.devtools.ksp.processing.CodeGenerator;
@@ -47,28 +46,38 @@ import com.google.devtools.ksp.symbol.Modifier;
 import kotlin.sequences.Sequence;
 import kotlin.sequences.SequencesKt;
 
+import org.androidannotations.ksp.env.KspEnvironment;
+import org.androidannotations.ksp.validate.ComponentValidator;
+
 public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 
 	private final CodeGenerator codeGenerator;
 	private final KSPLogger logger;
-	private final Map<String, String> options;
+	private final KspEnvironment environment;
 	private final Set<String> written = new LinkedHashSet<>();
 
 	public AndroidAnnotationsSymbolProcessor(SymbolProcessorEnvironment environment) {
 		this.codeGenerator = environment.getCodeGenerator();
 		this.logger = environment.getLogger();
-		this.options = environment.getOptions();
+		this.environment = new KspEnvironment(environment);
 	}
 
 	@Override
 	public List<KSAnnotated> process(Resolver resolver) {
 		long start = System.currentTimeMillis();
-		String resourcePackage = resolveResourcePackage();
-		MvpJavaGenerator generator = new MvpJavaGenerator(resourcePackage);
 
 		List<KSClassDeclaration> classes = new ArrayList<>();
 		classes.addAll(toClassList(resolver.getSymbolsWithAnnotation(AnnotationNames.E_ACTIVITY, false)));
 		classes.addAll(toClassList(resolver.getSymbolsWithAnnotation(AnnotationNames.E_BEAN, false)));
+
+		environment.prepare(resolver, containingFiles(classes));
+		if (!environment.isValid()) {
+			return Collections.emptyList();
+		}
+
+		String resourcePackage = environment.getResourcePackage();
+		String classSuffix = environment.getClassSuffix();
+		MvpJavaGenerator generator = new MvpJavaGenerator(resourcePackage, environment.getRClassName());
 
 		int generated = 0;
 		for (KSClassDeclaration classDeclaration : classes) {
@@ -78,9 +87,17 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 			if (classDeclaration.getModifiers().contains(Modifier.ABSTRACT)) {
 				continue;
 			}
-			MvpModel model = buildModel(classDeclaration);
+			MvpModel model = buildModel(classDeclaration, classSuffix);
 			String fqcn = model.generatedQualifiedName();
 			if (!written.add(fqcn)) {
+				continue;
+			}
+			if (model.kind == MvpModel.Kind.ACTIVITY) {
+				ComponentValidator.componentRegistered(classDeclaration, environment);
+			}
+			if (resourcePackage == null && needsResourcePackage(model)) {
+				logger.error("AndroidAnnotations KSP: could not determine the resource package name for " + model.qualifiedName
+						+ ". Set the 'resourcePackageName' KSP argument or provide an AndroidManifest.xml with a package attribute.", classDeclaration);
 				continue;
 			}
 			String source = generator.generate(model);
@@ -88,19 +105,26 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 			generated++;
 		}
 
-		logger.warn("AndroidAnnotations KSP MVP generated " + generated + " class(es) in "
-				+ (System.currentTimeMillis() - start) + " ms (resourcePackage=" + resourcePackage + ")", null);
+		String manifestPath = environment.getAndroidManifest() != null ? environment.getAndroidManifest().getSourceFile() : "none";
+		logger.warn("AndroidAnnotations KSP generated " + generated + " class(es) in " + (System.currentTimeMillis() - start) + " ms (resourcePackage="
+				+ resourcePackage + ", manifest=" + manifestPath + ")", null);
 		return Collections.emptyList();
 	}
 
-	private String resolveResourcePackage() {
-		if (options.containsKey("resourcePackageName")) {
-			return options.get("resourcePackageName");
+	private boolean needsResourcePackage(MvpModel model) {
+		return !model.stringRes.isEmpty() || !model.viewByIds.isEmpty() || model.layoutId != AnnotationNames.RES_DEFAULT
+				|| (model.layoutResName != null && !model.layoutResName.isEmpty());
+	}
+
+	private List<KSFile> containingFiles(List<KSClassDeclaration> classes) {
+		List<KSFile> files = new ArrayList<>();
+		for (KSClassDeclaration classDeclaration : classes) {
+			KSFile file = classDeclaration.getContainingFile();
+			if (file != null && !files.contains(file)) {
+				files.add(file);
+			}
 		}
-		if (options.containsKey("androidannotations.resourcePackageName")) {
-			return options.get("androidannotations.resourcePackageName");
-		}
-		return "org.androidannotations.gradle";
+		return files;
 	}
 
 	private List<KSClassDeclaration> toClassList(Sequence<KSAnnotated> sequence) {
@@ -113,7 +137,7 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 		return result;
 	}
 
-	private MvpModel buildModel(KSClassDeclaration classDeclaration) {
+	private MvpModel buildModel(KSClassDeclaration classDeclaration, String classSuffix) {
 		String packageName = "";
 		if (classDeclaration.getPackageName().asString() != null) {
 			packageName = classDeclaration.getPackageName().asString();
@@ -139,7 +163,7 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 			kind = MvpModel.Kind.BEAN;
 		}
 
-		MvpModel model = new MvpModel(kind, packageName, simpleName, qualifiedName, layoutId, layoutResName);
+		MvpModel model = new MvpModel(kind, packageName, simpleName, qualifiedName, classSuffix, layoutId, layoutResName);
 
 		for (KSDeclaration declaration : SequencesKt.toList(classDeclaration.getDeclarations())) {
 			if (declaration instanceof KSPropertyDeclaration) {

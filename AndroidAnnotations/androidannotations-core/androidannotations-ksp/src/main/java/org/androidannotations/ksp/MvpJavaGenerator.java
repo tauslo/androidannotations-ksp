@@ -19,9 +19,11 @@ package org.androidannotations.ksp;
 final class MvpJavaGenerator {
 
 	private final String resourcePackage;
+	private final String rClassName;
 
-	MvpJavaGenerator(String resourcePackage) {
+	MvpJavaGenerator(String resourcePackage, String rClassName) {
 		this.resourcePackage = resourcePackage;
+		this.rClassName = rClassName;
 	}
 
 	String generate(MvpModel model) {
@@ -66,7 +68,7 @@ final class MvpJavaGenerator {
 			out.append("\t\tandroid.content.res.Resources resources_ = getResources();\n");
 		}
 		for (MvpModel.FieldInjection injection : model.stringRes) {
-			String resExpr = KspAnnotationUtils.resExpression(resourcePackage, "string", injection.propertyName, injection.resId, injection.resName);
+			String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "string", injection.propertyName, injection.resId, injection.resName);
 			appendAssign(out, injection, "resources_.getString(" + resExpr + ")");
 		}
 		if (!model.extras.isEmpty()) {
@@ -124,7 +126,7 @@ final class MvpJavaGenerator {
 		out.append("\t@Override\n");
 		out.append("\tpublic void onViewChanged(org.androidannotations.api.view.HasViews hasViews) {\n");
 		for (MvpModel.FieldInjection view : model.viewByIds) {
-			String resExpr = KspAnnotationUtils.resExpression(resourcePackage, "id", view.propertyName, view.resId, view.resName);
+			String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "id", view.propertyName, view.resId, view.resName);
 			appendAssign(out, view, "(" + view.typeName + ") hasViews.internalFindViewById(" + resExpr + ")");
 		}
 		for (String method : model.afterViews) {
@@ -173,7 +175,7 @@ final class MvpJavaGenerator {
 			out.append("\t\tandroid.content.res.Resources resources_ = context_.getResources();\n");
 		}
 		for (MvpModel.FieldInjection injection : model.stringRes) {
-			String resExpr = KspAnnotationUtils.resExpression(resourcePackage, "string", injection.propertyName, injection.resId, injection.resName);
+			String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "string", injection.propertyName, injection.resId, injection.resName);
 			appendAssign(out, injection, "resources_.getString(" + resExpr + ")");
 		}
 		out.append("\t\torg.androidannotations.api.view.OnViewChangedNotifier.registerOnViewChangedListener(this);\n");
@@ -182,7 +184,7 @@ final class MvpJavaGenerator {
 		out.append("\t@Override\n");
 		out.append("\tpublic void onViewChanged(org.androidannotations.api.view.HasViews hasViews) {\n");
 		for (MvpModel.FieldInjection view : model.viewByIds) {
-			String resExpr = KspAnnotationUtils.resExpression(resourcePackage, "id", view.propertyName, view.resId, view.resName);
+			String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "id", view.propertyName, view.resId, view.resName);
 			appendAssign(out, view, "(" + view.typeName + ") hasViews.internalFindViewById(" + resExpr + ")");
 		}
 		for (String method : model.afterViews) {
@@ -210,7 +212,7 @@ final class MvpJavaGenerator {
 		if (model.layoutId != AnnotationNames.RES_DEFAULT) {
 			out.append("\t\tsetContentView(").append(model.layoutId).append(");\n");
 		} else if (model.layoutResName != null && !model.layoutResName.isEmpty()) {
-			out.append("\t\tsetContentView(").append(resourcePackage).append(".R.layout.").append(model.layoutResName).append(");\n");
+			out.append("\t\tsetContentView(").append(resourcePackage).append(".").append(rClassName).append(".layout.").append(model.layoutResName).append(");\n");
 		}
 	}
 
