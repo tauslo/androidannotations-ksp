@@ -1,3 +1,11 @@
+# AndroidAnnotations KSP Fork
+
+This repository is a fork of [androidannotations/androidannotations](https://github.com/androidannotations/androidannotations),
+based on branch `develop` at commit `0d24f1b6`. The goal of this fork is to migrate
+the annotation processor from javac APT / kapt to **KSP**.
+
+Upstream project status (unchanged from original):
+
 # DEPRECATED
 
 AndroidAnnotations is deprecated. No more development will be taking place.
