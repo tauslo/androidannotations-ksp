@@ -40,8 +40,8 @@
 
 - **Agent**: Composer (Cursor)
 - **Goal slice**: MVP complete; export playbook for production parity handoff
-- **Git**: branch=`develop` HEAD=`584611bd`（文档提交后会变） remote=`ksp/main` 在文档推送前为 `584611bd`
-- **Status**: done（MVP）；**P0a 未开始**
+- **Git**: branch=`develop` HEAD=`eb5ae1e6` remote=`ksp/main` synced
+- **Status**: done（MVP + handoff docs）；**P0a 未开始**
 
 ### Done
 - Force-pushed fork baseline to `ksp/main` with upstream attribution (`0d24f1b6`)
