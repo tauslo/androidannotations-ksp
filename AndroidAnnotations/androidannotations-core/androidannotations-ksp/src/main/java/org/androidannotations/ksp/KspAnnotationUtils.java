@@ -153,15 +153,20 @@ final class KspAnnotationUtils {
 	}
 
 	static String extraKeyConstant(String fieldName) {
+		// Mirrors APT CaseHelper.camelCaseToUpperSnakeCase(null, fieldName, "Extra"): the _EXTRA suffix is only
+		// appended when the field name does not already end with "extra" (case-insensitive).
+		String name = fieldName;
+		if (!name.toLowerCase(java.util.Locale.ROOT).endsWith("extra")) {
+			name = name + "_EXTRA";
+		}
 		StringBuilder builder = new StringBuilder();
-		for (int i = 0; i < fieldName.length(); i++) {
-			char c = fieldName.charAt(i);
+		for (int i = 0; i < name.length(); i++) {
+			char c = name.charAt(i);
 			if (Character.isUpperCase(c) && i > 0) {
 				builder.append('_');
 			}
 			builder.append(Character.toUpperCase(c));
 		}
-		builder.append("_EXTRA");
 		return builder.toString();
 	}
 

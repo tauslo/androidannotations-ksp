@@ -25,8 +25,8 @@
 
 ## Deepen `@EActivity` / `@Extra`
 
-- [ ] **BLOCKER** Generate `IntentBuilder_` + `public static IntentBuilder_ intent(Context)`（对照 `ActivityIntentBuilder`）
-- [ ] Fluent `putExtra` per `@Extra`；`startActivity` / `startActivityForResult`
+- [x] **BLOCKER** Generate `IntentBuilder_` + `public static IntentBuilder_ intent(Context)`（对照 `ActivityIntentBuilder`）
+- [x] Fluent `putExtra` per `@Extra`；`startActivity` / `startActivityForResult`
 - [ ] Expand Bundle restore types（Parcelable, Serializable, arrays, ArrayList… via APT `BundleHelper` 行为）
 - [ ] `@AfterExtras` hook if extras injected（可与 P0b 合并，但 Extra 深化时预留）
 

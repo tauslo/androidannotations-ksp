@@ -137,6 +137,7 @@ final class MvpJavaGenerator {
 		appendBeanHolderMethods(out);
 		appendBackgroundMethods(out, model);
 		appendUiThreadMethods(out, model);
+		appendIntentBuilder(out, model);
 
 		out.append("}\n");
 		return out.toString();
@@ -226,6 +227,41 @@ final class MvpJavaGenerator {
 		} else {
 			out.append(indent).append(KspAnnotationUtils.setterName(injection.propertyName)).append("(").append(expression).append(");\n");
 		}
+	}
+
+	private void appendIntentBuilder(StringBuilder out, MvpModel model) {
+		String generated = model.generatedSimpleName();
+		out.append("\tpublic static IntentBuilder_ intent(android.content.Context context) {\n");
+		out.append("\t\treturn new IntentBuilder_(context);\n");
+		out.append("\t}\n\n");
+
+		out.append("\tpublic static class IntentBuilder_ extends org.androidannotations.api.builder.ActivityIntentBuilder<IntentBuilder_> {\n\n");
+		out.append("\t\tpublic IntentBuilder_(android.content.Context context) {\n");
+		out.append("\t\t\tsuper(context, ").append(generated).append(".class);\n");
+		out.append("\t\t}\n\n");
+
+		for (MvpModel.FieldInjection extra : model.extras) {
+			String constant = KspAnnotationUtils.extraKeyConstant(extra.propertyName);
+			out.append("\t\tpublic IntentBuilder_ ").append(extra.propertyName).append('(').append(extra.typeName).append(" ")
+					.append(extra.propertyName).append(") {\n");
+			out.append("\t\t\treturn super.extra(").append(constant).append(", ");
+			if (extra.extraCast != null) {
+				out.append(extra.extraCast).append(' ');
+			}
+			out.append(extra.propertyName).append(");\n");
+			out.append("\t\t}\n\n");
+		}
+
+		out.append("\t\t@Override\n");
+		out.append("\t\tpublic org.androidannotations.api.builder.PostActivityStarter startForResult(int requestCode) {\n");
+		out.append("\t\t\tif (context instanceof android.app.Activity) {\n");
+		out.append("\t\t\t\t((android.app.Activity) context).startActivityForResult(intent, requestCode);\n");
+		out.append("\t\t\t} else {\n");
+		out.append("\t\t\t\tcontext.startActivity(intent);\n");
+		out.append("\t\t\t}\n");
+		out.append("\t\t\treturn new org.androidannotations.api.builder.PostActivityStarter(context);\n");
+		out.append("\t\t}\n");
+		out.append("\t}\n");
 	}
 
 	private String extrasReadExpression(String typeName, String constant) {

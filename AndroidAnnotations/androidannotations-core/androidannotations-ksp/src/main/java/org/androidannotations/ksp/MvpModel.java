@@ -41,13 +41,20 @@ final class MvpModel {
 		final boolean jvmField;
 		final int resId;
 		final String resName;
+		/** Cast applied to the IntentBuilder_ fluent argument for @Extra (null = none). */
+		final String extraCast;
 
 		FieldInjection(String propertyName, String typeName, boolean jvmField, int resId, String resName) {
+			this(propertyName, typeName, jvmField, resId, resName, null);
+		}
+
+		FieldInjection(String propertyName, String typeName, boolean jvmField, int resId, String resName, String extraCast) {
 			this.propertyName = propertyName;
 			this.typeName = typeName;
 			this.jvmField = jvmField;
 			this.resId = resId;
 			this.resName = resName;
+			this.extraCast = extraCast;
 		}
 	}
 

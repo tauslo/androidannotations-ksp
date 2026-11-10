@@ -1,6 +1,7 @@
 package org.androidannotations.gradle.activity
 
 import android.app.Activity
+import android.widget.Button
 import android.widget.TextView
 import org.androidannotations.annotations.AfterViews
 import org.androidannotations.annotations.Background
@@ -27,6 +28,9 @@ class HelloAndroidActivity : Activity() {
     @AfterViews
     protected fun afterViews() {
         computeDateBackground()
+        findViewById<Button>(R.id.launchButton).setOnClickListener {
+            HelloAndroidActivity_.intent(this).myIntExtra(42).start()
+        }
     }
 
     @Background

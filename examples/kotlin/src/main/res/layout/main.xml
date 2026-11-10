@@ -9,4 +9,11 @@
         android:layout_width="fill_parent"
         android:layout_height="wrap_content" />
 
+    <!-- Demo of the generated IntentBuilder_ API (mirrors APT Xxx_.intent(ctx)) -->
+    <Button
+        android:id="@+id/launchButton"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:text="Start with extra" />
+
 </LinearLayout>

@@ -41,6 +41,8 @@ import com.google.devtools.ksp.symbol.KSFile;
 import com.google.devtools.ksp.symbol.KSFunctionDeclaration;
 import com.google.devtools.ksp.symbol.KSNode;
 import com.google.devtools.ksp.symbol.KSPropertyDeclaration;
+import com.google.devtools.ksp.symbol.KSType;
+import com.google.devtools.ksp.symbol.KSTypeReference;
 import com.google.devtools.ksp.symbol.Modifier;
 
 import kotlin.sequences.Sequence;
@@ -87,7 +89,7 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 			if (classDeclaration.getModifiers().contains(Modifier.ABSTRACT)) {
 				continue;
 			}
-			MvpModel model = buildModel(classDeclaration, classSuffix);
+			MvpModel model = buildModel(resolver, classDeclaration, classSuffix);
 			String fqcn = model.generatedQualifiedName();
 			if (!written.add(fqcn)) {
 				continue;
@@ -137,7 +139,7 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 		return result;
 	}
 
-	private MvpModel buildModel(KSClassDeclaration classDeclaration, String classSuffix) {
+	private MvpModel buildModel(Resolver resolver, KSClassDeclaration classDeclaration, String classSuffix) {
 		String packageName = "";
 		if (classDeclaration.getPackageName().asString() != null) {
 			packageName = classDeclaration.getPackageName().asString();
@@ -167,7 +169,7 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 
 		for (KSDeclaration declaration : SequencesKt.toList(classDeclaration.getDeclarations())) {
 			if (declaration instanceof KSPropertyDeclaration) {
-				collectProperty((KSPropertyDeclaration) declaration, model);
+				collectProperty(resolver, (KSPropertyDeclaration) declaration, model);
 			} else if (declaration instanceof KSFunctionDeclaration) {
 				collectFunction((KSFunctionDeclaration) declaration, model);
 			}
@@ -175,7 +177,7 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 		return model;
 	}
 
-	private void collectProperty(KSPropertyDeclaration property, MvpModel model) {
+	private void collectProperty(Resolver resolver, KSPropertyDeclaration property, MvpModel model) {
 		String name = property.getSimpleName().asString();
 		String typeName = KspAnnotationUtils.propertyTypeName(property);
 		boolean jvmField = KspAnnotationUtils.hasJvmField(property);
@@ -198,7 +200,8 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 		if (extra != null) {
 			model.extras.add(new MvpModel.FieldInjection(name, typeName, jvmField,
 					AnnotationNames.RES_DEFAULT,
-					KspAnnotationUtils.stringArg(extra, "value", "")));
+					KspAnnotationUtils.stringArg(extra, "value", ""),
+					extraCastFor(resolver, property)));
 		}
 	}
 
@@ -234,6 +237,82 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 					"",
 					reuse));
 		}
+	}
+
+	/** Mirrors APT IntentBuilder.getSuperPutExtraInvocation: cast extra arguments to Parcelable/Serializable when needed. */
+	private String extraCastFor(Resolver resolver, KSPropertyDeclaration property) {
+		String typeName = KspAnnotationUtils.propertyTypeName(property);
+		if (isStandardBundleType(typeName)) {
+			return null;
+		}
+		KSClassDeclaration typeDeclaration = resolveClassDeclaration(resolver, typeName);
+		if (typeDeclaration == null) {
+			return null;
+		}
+		if (implementsInterface(typeDeclaration, "android.os.Parcelable")) {
+			return "(android.os.Parcelable)";
+		}
+		if (implementsInterface(typeDeclaration, "java.io.Serializable")) {
+			return "(java.io.Serializable)";
+		}
+		return null;
+	}
+
+	private boolean isStandardBundleType(String typeName) {
+		String base = typeName;
+		while (base.endsWith("[]")) {
+			base = base.substring(0, base.length() - 2);
+		}
+		return "boolean".equals(base) || "byte".equals(base) || "char".equals(base) || "short".equals(base)
+				|| "int".equals(base) || "long".equals(base) || "float".equals(base) || "double".equals(base)
+				|| "java.lang.Boolean".equals(base) || "java.lang.Byte".equals(base) || "java.lang.Character".equals(base)
+				|| "java.lang.Short".equals(base) || "java.lang.Integer".equals(base) || "java.lang.Long".equals(base)
+				|| "java.lang.Float".equals(base) || "java.lang.Double".equals(base)
+				|| "java.lang.String".equals(base) || "java.lang.CharSequence".equals(base)
+				|| "android.os.Bundle".equals(base);
+	}
+
+	private KSClassDeclaration resolveClassDeclaration(Resolver resolver, String typeName) {
+		if (typeName == null || typeName.isEmpty() || typeName.contains("[")) {
+			return null;
+		}
+		try {
+			return resolver.getClassDeclarationByName(resolver.getKSNameFromString(typeName));
+		} catch (Exception e) {
+			return null;
+		}
+	}
+
+	private boolean implementsInterface(KSClassDeclaration declaration, String interfaceName) {
+		int depth = 0;
+		for (KSClassDeclaration current = declaration; current != null && depth < 32; current = superclassOf(current), depth++) {
+			try {
+				for (KSTypeReference superTypeRef : SequencesKt.toList(current.getSuperTypes())) {
+					KSType superType = superTypeRef.resolve();
+					if (superType.getDeclaration() instanceof KSClassDeclaration) {
+						KSDeclaration typeDeclaration = superType.getDeclaration();
+						String qualifiedName = typeDeclaration.getQualifiedName() != null ? typeDeclaration.getQualifiedName().asString() : null;
+						if (interfaceName.equals(qualifiedName)) {
+							return true;
+						}
+					}
+				}
+			} catch (Exception e) {
+				return false;
+			}
+		}
+		return false;
+	}
+
+	private KSClassDeclaration superclassOf(KSClassDeclaration declaration) {
+		for (KSTypeReference superTypeRef : SequencesKt.toList(declaration.getSuperTypes())) {
+			KSType superType = superTypeRef.resolve();
+			if (superType.getDeclaration() instanceof KSClassDeclaration
+					&& ((KSClassDeclaration) superType.getDeclaration()).getClassKind() == ClassKind.CLASS) {
+				return (KSClassDeclaration) superType.getDeclaration();
+			}
+		}
+		return null;
 	}
 
 	private void writeJavaFile(MvpModel model, String source, KSClassDeclaration origin) {

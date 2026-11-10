@@ -127,3 +127,41 @@
 1. **Activity `IntentBuilder_`**（BLOCKER）：生成 `public static IntentBuilder_ intent(Context)` + 每个 `@Extra` 的 fluent setter + `startActivity()` / `startActivityForResult(int)`，对照 APT `ActivityIntentBuilder`，让示例能跑 `HelloAndroidActivity_.intent(ctx).myIntExtra(1).start()`；按 MVP notes 优先抽出 `ActivityGenerator`，别再往 `MvpJavaGenerator` 里堆
 2. 然后深化 `@Extra`：Bundle restore 全类型（对照 APT `BundleHelper`）+ 预留 `@AfterExtras` hook
 3. P0a 剩余项：R 资源缺失 warn/fail、流水线向 handler/generate 包拆分、父类注解收集、嵌套 `@EBean`、未实现注解告警；之后是 EBean scopes + `@Bean` 注入（BLOCKER）
+
+## Session 2026-11-11 — P0a: Activity IntentBuilder_
+
+- **Agent**: Codex
+- **Goal slice**: P0a — Generate Activity `IntentBuilder_` (BLOCKER), parity with APT `ActivityIntentBuilder`
+- **Git**: branch=`ksp/main` HEAD=`93a363db` remote=`ksp/main` ahead 1（local only, not pushed）
+- **Status**: done
+
+### Done
+- Each `@EActivity` now generates nested `public static class IntentBuilder_ extends ActivityIntentBuilder<IntentBuilder_>` + `public static IntentBuilder_ intent(Context)`（对照 APT `IntentBuilder.createIntentMethod` / `createContextConstructor`，ctor 传 generated class）
+- Fluent setter per `@Extra`: `myIntExtra(int)` → `return super.extra(MY_INT_EXTRA, arg);`（chainable，返回 builder）
+- `startForResult(int)` override: Activity context → `startActivityForResult(intent, requestCode)`, else `context.startActivity(intent)`; returns `PostActivityStarter`（final `start()` inherited from API base class，calls `startForResult(-1)`）
+- APT parity fix for extra constant naming — mirrors `CaseHelper.camelCaseToUpperSnakeCase(null, name, "Extra")`: `_EXTRA` suffix only when field name does not already end with `extra` (case-insensitive); `myIntExtra` → `MY_INT_EXTRA`（was wrongly `MY_INT_EXTRA_EXTRA`）
+- Extra arg casts mirror APT `IntentBuilder.getSuperPutExtraInvocation`: standard bundle types (primitives/wrappers/String/CharSequence/Bundle + arrays) no cast; Parcelable subtype → `(android.os.Parcelable)`; else Serializable → `(java.io.Serializable)`. Custom parcelable via `Parcels.wrap` deferred to Bundle-types slice.
+- Compile fix: `KSClassDeclaration.getSuperTypes()` returns `KSTypeReference` — resolve() to `KSType` before walking super types
+- examples/kotlin: added "Start with extra" button in main.xml; `afterViews()` click handler runs `HelloAndroidActivity_.intent(this).myIntExtra(42).start()`（acceptance demo）
+- Fragment-based `intent(Fragment)` overloads + activity options (`withOptions`) deferred to P0b（classpath-dependent in APT）
+
+### Changed paths
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/AndroidAnnotationsSymbolProcessor.java
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/KspAnnotationUtils.java
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/MvpJavaGenerator.java
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/MvpModel.java
+- examples/kotlin/src/main/res/layout/main.xml
+- examples/kotlin/src/main/kotlin/org/androidannotations/gradle/activity/HelloAndroidActivity.kt
+
+### Verify
+- [x] mvn install ksp module（MVN_EXIT=0）
+- [x] examples/kotlin `kspDebugKotlin` — generated file contains nested `IntentBuilder_`, static `intent(Context)`, constant `MY_INT_EXTRA = "myIntExtra"`（no double suffix）, fluent `myIntExtra(int)`, `startForResult` override
+- [x] examples/kotlin `clean assembleDebug` BUILD SUCCESSFUL（Kotlin demo + Java builder compile）
+- [x] APT mirrored: `IntentBuilder`/`ActivityIntentBuilder` ctor passes generated class; extra key name/value per `ExtraHandler.getOrCreateStaticExtraField`; cast rules per `getSuperPutExtraInvocation`
+
+### Blockers
+- none
+
+### Next
+1. 深化 `@Extra`: Bundle restore 全类型（对照 APT `BundleHelper`）+ 预留 `@AfterExtras` hook
+2. P0a 剩余项: R 资源缺失 warn/fail、流水线向 handler/generate 包拆分、父类注解收集、嵌套 `@EBean`、未实现注解告警；之后是 EBean scopes + `@Bean` 注入（BLOCKER）
