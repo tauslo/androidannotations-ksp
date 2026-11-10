@@ -165,6 +165,11 @@
 			</dependency>
 			<dependency>
 				<groupId>org.androidannotations</groupId>
+				<artifactId>androidannotations-ksp</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>org.androidannotations</groupId>
 				<artifactId>androidannotations-testutils</artifactId>
 				<version>${project.version}</version>
 				<scope>test</scope>

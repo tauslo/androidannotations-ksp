@@ -1,0 +1,234 @@
+/**
+ * Copyright (C) 2010-2016 eBusiness Information, Excilys Group
+ * Copyright (C) 2016-2020 the AndroidAnnotations project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not
+ * use this file except in compliance with the License. You may obtain a copy of
+ * the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed To in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+ * License for the specific language governing permissions and limitations under
+ * the License.
+ */
+package org.androidannotations.ksp;
+
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import com.google.devtools.ksp.processing.CodeGenerator;
+import com.google.devtools.ksp.processing.Dependencies;
+import com.google.devtools.ksp.processing.KSPLogger;
+import com.google.devtools.ksp.processing.Resolver;
+import com.google.devtools.ksp.processing.SymbolProcessor;
+import com.google.devtools.ksp.processing.SymbolProcessorEnvironment;
+import com.google.devtools.ksp.symbol.ClassKind;
+import com.google.devtools.ksp.symbol.KSAnnotated;
+import com.google.devtools.ksp.symbol.KSAnnotation;
+import com.google.devtools.ksp.symbol.KSClassDeclaration;
+import com.google.devtools.ksp.symbol.KSDeclaration;
+import com.google.devtools.ksp.symbol.KSFile;
+import com.google.devtools.ksp.symbol.KSFunctionDeclaration;
+import com.google.devtools.ksp.symbol.KSNode;
+import com.google.devtools.ksp.symbol.KSPropertyDeclaration;
+import com.google.devtools.ksp.symbol.Modifier;
+
+import kotlin.sequences.Sequence;
+import kotlin.sequences.SequencesKt;
+
+public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
+
+	private final CodeGenerator codeGenerator;
+	private final KSPLogger logger;
+	private final Map<String, String> options;
+	private final Set<String> written = new LinkedHashSet<>();
+
+	public AndroidAnnotationsSymbolProcessor(SymbolProcessorEnvironment environment) {
+		this.codeGenerator = environment.getCodeGenerator();
+		this.logger = environment.getLogger();
+		this.options = environment.getOptions();
+	}
+
+	@Override
+	public List<KSAnnotated> process(Resolver resolver) {
+		long start = System.currentTimeMillis();
+		String resourcePackage = resolveResourcePackage();
+		MvpJavaGenerator generator = new MvpJavaGenerator(resourcePackage);
+
+		List<KSClassDeclaration> classes = new ArrayList<>();
+		classes.addAll(toClassList(resolver.getSymbolsWithAnnotation(AnnotationNames.E_ACTIVITY, false)));
+		classes.addAll(toClassList(resolver.getSymbolsWithAnnotation(AnnotationNames.E_BEAN, false)));
+
+		int generated = 0;
+		for (KSClassDeclaration classDeclaration : classes) {
+			if (classDeclaration.getClassKind() != ClassKind.CLASS) {
+				continue;
+			}
+			if (classDeclaration.getModifiers().contains(Modifier.ABSTRACT)) {
+				continue;
+			}
+			MvpModel model = buildModel(classDeclaration);
+			String fqcn = model.generatedQualifiedName();
+			if (!written.add(fqcn)) {
+				continue;
+			}
+			String source = generator.generate(model);
+			writeJavaFile(model, source, classDeclaration);
+			generated++;
+		}
+
+		logger.warn("AndroidAnnotations KSP MVP generated " + generated + " class(es) in "
+				+ (System.currentTimeMillis() - start) + " ms (resourcePackage=" + resourcePackage + ")", null);
+		return Collections.emptyList();
+	}
+
+	private String resolveResourcePackage() {
+		if (options.containsKey("resourcePackageName")) {
+			return options.get("resourcePackageName");
+		}
+		if (options.containsKey("androidannotations.resourcePackageName")) {
+			return options.get("androidannotations.resourcePackageName");
+		}
+		return "org.androidannotations.gradle";
+	}
+
+	private List<KSClassDeclaration> toClassList(Sequence<KSAnnotated> sequence) {
+		List<KSClassDeclaration> result = new ArrayList<>();
+		for (KSAnnotated annotated : SequencesKt.toList(sequence)) {
+			if (annotated instanceof KSClassDeclaration) {
+				result.add((KSClassDeclaration) annotated);
+			}
+		}
+		return result;
+	}
+
+	private MvpModel buildModel(KSClassDeclaration classDeclaration) {
+		String packageName = "";
+		if (classDeclaration.getPackageName().asString() != null) {
+			packageName = classDeclaration.getPackageName().asString();
+		}
+		String simpleName = classDeclaration.getSimpleName().asString();
+		String qualifiedName = classDeclaration.getQualifiedName() != null
+				? classDeclaration.getQualifiedName().asString()
+				: simpleName;
+
+		KSAnnotation eActivity = KspAnnotationUtils.findAnnotation(classDeclaration.getAnnotations(), AnnotationNames.E_ACTIVITY);
+		KSAnnotation eBean = KspAnnotationUtils.findAnnotation(classDeclaration.getAnnotations(), AnnotationNames.E_BEAN);
+
+		MvpModel.Kind kind;
+		int layoutId = AnnotationNames.RES_DEFAULT;
+		String layoutResName = "";
+		if (eActivity != null) {
+			kind = MvpModel.Kind.ACTIVITY;
+			layoutId = KspAnnotationUtils.intArg(eActivity, "value", AnnotationNames.RES_DEFAULT);
+			layoutResName = KspAnnotationUtils.stringArg(eActivity, "resName", "");
+		} else if (eBean != null) {
+			kind = MvpModel.Kind.BEAN;
+		} else {
+			kind = MvpModel.Kind.BEAN;
+		}
+
+		MvpModel model = new MvpModel(kind, packageName, simpleName, qualifiedName, layoutId, layoutResName);
+
+		for (KSDeclaration declaration : SequencesKt.toList(classDeclaration.getDeclarations())) {
+			if (declaration instanceof KSPropertyDeclaration) {
+				collectProperty((KSPropertyDeclaration) declaration, model);
+			} else if (declaration instanceof KSFunctionDeclaration) {
+				collectFunction((KSFunctionDeclaration) declaration, model);
+			}
+		}
+		return model;
+	}
+
+	private void collectProperty(KSPropertyDeclaration property, MvpModel model) {
+		String name = property.getSimpleName().asString();
+		String typeName = KspAnnotationUtils.propertyTypeName(property);
+		boolean jvmField = KspAnnotationUtils.hasJvmField(property);
+
+		KSAnnotation viewById = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.VIEW_BY_ID);
+		if (viewById != null) {
+			model.viewByIds.add(new MvpModel.FieldInjection(name, typeName, jvmField,
+					KspAnnotationUtils.intArg(viewById, "value", AnnotationNames.RES_DEFAULT),
+					KspAnnotationUtils.stringArg(viewById, "resName", "")));
+		}
+
+		KSAnnotation stringRes = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.STRING_RES);
+		if (stringRes != null) {
+			model.stringRes.add(new MvpModel.FieldInjection(name, typeName, jvmField,
+					KspAnnotationUtils.intArg(stringRes, "value", AnnotationNames.RES_DEFAULT),
+					KspAnnotationUtils.stringArg(stringRes, "resName", "")));
+		}
+
+		KSAnnotation extra = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.EXTRA);
+		if (extra != null) {
+			model.extras.add(new MvpModel.FieldInjection(name, typeName, jvmField,
+					AnnotationNames.RES_DEFAULT,
+					KspAnnotationUtils.stringArg(extra, "value", "")));
+		}
+	}
+
+	private void collectFunction(KSFunctionDeclaration function, MvpModel model) {
+		String name = function.getSimpleName().asString();
+		if ("<init>".equals(name)) {
+			return;
+		}
+
+		if (KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.AFTER_VIEWS) != null) {
+			model.afterViews.add(name);
+		}
+
+		KSAnnotation background = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.BACKGROUND);
+		if (background != null) {
+			model.backgrounds.add(new MvpModel.MethodInfo(name, KspAnnotationUtils.methodParams(function),
+					KspAnnotationUtils.stringArg(background, "id", ""),
+					KspAnnotationUtils.longArg(background, "delay", 0L),
+					KspAnnotationUtils.stringArg(background, "serial", ""),
+					false));
+		}
+
+		KSAnnotation uiThread = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.UI_THREAD);
+		if (uiThread != null) {
+			Object propagation = KspAnnotationUtils.argValue(uiThread, "propagation");
+			boolean reuse = true;
+			if (propagation != null) {
+				reuse = propagation.toString().endsWith("REUSE");
+			}
+			model.uiThreads.add(new MvpModel.MethodInfo(name, KspAnnotationUtils.methodParams(function),
+					KspAnnotationUtils.stringArg(uiThread, "id", ""),
+					KspAnnotationUtils.longArg(uiThread, "delay", 0L),
+					"",
+					reuse));
+		}
+	}
+
+	private void writeJavaFile(MvpModel model, String source, KSClassDeclaration origin) {
+		try {
+			String packageName = model.packageName == null ? "" : model.packageName;
+			KSFile containingFile = origin.getContainingFile();
+			Dependencies dependencies = containingFile != null
+					? new Dependencies(false, containingFile)
+					: new Dependencies(false);
+			OutputStream stream = codeGenerator.createNewFile(
+					dependencies,
+					packageName,
+					model.generatedSimpleName(),
+					"java");
+			try (OutputStreamWriter writer = new OutputStreamWriter(stream, StandardCharsets.UTF_8)) {
+				writer.write(source);
+			}
+		} catch (IOException e) {
+			logger.error("Failed to write " + model.generatedQualifiedName() + ": " + e.getMessage(), (KSNode) origin);
+		}
+	}
+}

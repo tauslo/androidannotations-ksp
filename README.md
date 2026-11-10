@@ -4,6 +4,13 @@ This repository is a fork of [androidannotations/androidannotations](https://git
 based on branch `develop` at commit `0d24f1b6`. The goal of this fork is to migrate
 the annotation processor from javac APT / kapt to **KSP**.
 
+## KSP MVP status
+
+- New module: `org.androidannotations:androidannotations-ksp` (Kotlin **2.1.10**, KSP **2.1.10-1.0.31**)
+- Supported annotations (MVP): `@EActivity`, `@EBean`, `@ViewById`, `@StringRes`, `@Extra`, `@AfterViews`, `@Background`, `@UiThread`
+- Example: [`examples/kotlin`](examples/kotlin) uses KSP
+- Compile speed comparison: [`BENCHMARK.md`](BENCHMARK.md)
+
 Upstream project status (unchanged from original):
 
 # DEPRECATED

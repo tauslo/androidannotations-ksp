@@ -1,38 +1,37 @@
-buildscript {
-    ext.kotlin_version = "1.4.10"
-
-    repositories {
-        google()
-        jcenter()
-    }
-    dependencies {
-        // replace with the current version of the Android plugin
-        classpath "com.android.tools.build:gradle:4.1.1"
-        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
-        classpath "org.jetbrains.kotlin:kotlin-allopen:$kotlin_version"
-    }
+plugins {
+    id "com.android.application" version "8.7.3"
+    id "org.jetbrains.kotlin.android" version "2.1.10"
+    id "org.jetbrains.kotlin.plugin.allopen" version "2.1.10"
+    id "com.google.devtools.ksp" version "2.1.10-1.0.31"
 }
-
-repositories {
-    google()
-    mavenLocal()
-    mavenCentral()
-}
-
-apply plugin: "com.android.application"
-apply plugin: "kotlin-android"
-apply plugin: "kotlin-allopen"
-apply plugin: "kotlin-kapt"
 
 android {
-    compileSdkVersion 29
+    namespace "org.androidannotations.gradle"
+    compileSdk 35
 
     defaultConfig {
-        minSdkVersion 14
-        targetSdkVersion 29
+        applicationId "org.androidannotations.gradle"
+        minSdk 21
+        targetSdk 35
+        versionCode 1
+        versionName "1.0.0-SNAPSHOT"
     }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
     sourceSets {
         main.java.srcDirs += "src/main/kotlin"
+    }
+
+    buildFeatures {
+        buildConfig false
     }
 }
 
@@ -40,18 +39,13 @@ allOpen {
     annotation("org.androidannotations.api.KotlinOpen")
 }
 
-// If you have different applicationIds for buildTypes or productFlavors uncomment this block.
-//kapt {
-//    arguments {
-//        arg("resourcePackageName", "org.androidannotations.gradle")
-//    }
-//
-//    correctErrorTypes = true // add this if you use data binding
-//}
+ksp {
+    arg("resourcePackageName", "org.androidannotations.gradle")
+}
 
-def AAVersion = "4.9.0-SNAPSHOT" // change this to your desired version, for example the latest stable: 4.8.0
+def AAVersion = "4.9.0-SNAPSHOT"
 
 dependencies {
-    kapt "org.androidannotations:androidannotations:$AAVersion"
+    ksp "org.androidannotations:androidannotations-ksp:$AAVersion"
     implementation "org.androidannotations:androidannotations-api:$AAVersion"
 }

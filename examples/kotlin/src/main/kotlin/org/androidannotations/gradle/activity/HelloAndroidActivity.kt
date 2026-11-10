@@ -22,8 +22,7 @@ class HelloAndroidActivity : Activity() {
     protected lateinit var helloTextView: TextView
 
     @Extra
-    @JvmField
-    protected final var myIntExtra: Int = 0
+    protected var myIntExtra: Int = 0
 
     @AfterViews
     protected fun afterViews() {
