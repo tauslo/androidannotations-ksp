@@ -11,6 +11,14 @@ the annotation processor from javac APT / kapt to **KSP**.
 - Example: [`examples/kotlin`](examples/kotlin) uses KSP
 - Compile speed comparison: [`BENCHMARK.md`](BENCHMARK.md)
 
+## Production parity (for agents)
+
+Goal: replace production APT/kapt AA. Long-running work — **resume from the diary**:
+
+- Playbook: [`docs/ksp-production-parity/PLAYBOOK.md`](docs/ksp-production-parity/PLAYBOOK.md)
+- Execution log (read `Next` first): [`docs/ksp-production-parity/EXECUTION_LOG.md`](docs/ksp-production-parity/EXECUTION_LOG.md)
+- P0a checklist: [`docs/ksp-production-parity/CHECKLIST_P0a.md`](docs/ksp-production-parity/CHECKLIST_P0a.md)
+
 Upstream project status (unchanged from original):
 
 # DEPRECATED
