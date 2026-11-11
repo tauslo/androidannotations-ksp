@@ -242,3 +242,43 @@
 3. Nested `@EBean` → static nested class inside outer `*_`; warn on recognized-but-unimplemented AA annotations
 4. Then BLOCKERs: EBean scopes (Default/Activity/Fragment/Singleton, mirrors `EBeanHolder.createFactoryMethod`) + rebind; `@Bean` injection via `Generated_.getInstance_(…)` + BeanHolder map + `@AfterInject`
 5. P0a exit acceptance: `@Bean` EnhancedBean demo in examples/kotlin; APT vs KSP public-API spot-check; mark P0a done here with Next = first P0b item
+
+## Session 2026-11-11 — handler/generate split + superclass annotation collection
+
+- **Agent**: Codex
+- **Goal slice**: P0a — Split MVP god-generator toward `handler` + `generate` packages; collect annotations from superclass members (prev session Next 1+2)
+- **Git**: branch=`ksp/main` HEAD=`61d7acb3` remote=`ksp/main` ahead 4（local only, not pushed）
+- **Status**: done
+
+### Done
+- Package split: new `handler/MvpHandler.java` — `build(Resolver, KSClassDeclaration, String)` + all model-collection methods (collectProperty/collectFunction/ExtraTemplates/isParceler*/topLevelGenericArg/topLevelComma/resolveClassDeclaration/implementsInterface/superclassOf) moved verbatim out of the processor; `MvpJavaGenerator.java` moved to `generate/` package (made public); processor is now a thin driver: options → KspEnvironment → validate → handler.build → generate
+- Ancestor walk in handler (mirrors APT `ModelExtractor`): `superclasses()` builds nearest-first chain via `superclassOf`, stops at `java.lang.Object` / any `android.*` qualified name, depth guard 64, reversed to farthest-first; `collectMembers()` iterates each ancestor's declarations. Ancestor class-level annotations intentionally NOT collected (APT parity: "currently do not take into account")
+- Made public for cross-package use: `MvpModel` (class + Kind/Param/FieldInjection/MethodInfo + all ctors), `KspAnnotationUtils`, `AnnotationNames`
+- APT-parity fix in `KspAnnotationUtils.extraKeyConstant`: mirrors APT `CaseHelper.camelCaseToUpperSnakeCase(null, name, "Extra")` — appends `_Extra` only when the name doesn't already end with "extra" (case-insensitive), via new private `camelCaseToSnake()` using APT's regex tokenization + single-uppercase-acronym logic. Old KSP output was `EXTRA_FROM_BASE__E_X_T_R_A`; now `EXTRA_FROM_BASE_EXTRA`
+- Demo: new `HelloAndroidBase.kt` (abstract, extends Activity — required so the activity stays a Context; `@Extra protected var extraFromBase: Int = 0`); `HelloAndroidActivity` now extends it and chains `.extraFromBase(7)`
+
+### Changed paths
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/AndroidAnnotationsSymbolProcessor.java (slimmed)
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/handler/MvpHandler.java (new)
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/generate/MvpJavaGenerator.java (moved from ksp/; old file deleted)
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/MvpModel.java (made public)
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/KspAnnotationUtils.java (made public + extraKeyConstant APT parity + camelCaseToSnake)
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/AnnotationNames.java (made public)
+- examples/kotlin/src/main/kotlin/org/androidannotations/gradle/activity/HelloAndroidActivity.kt (extends HelloAndroidBase; .extraFromBase(7))
+- examples/kotlin/src/main/kotlin/org/androidannotations/gradle/activity/HelloAndroidBase.kt (new)
+- docs/ksp-production-parity/CHECKLIST_P0a.md
+
+### Verify
+- [x] mvn install ksp module（MVN_EXIT=0）
+- [x] examples/kotlin `kspDebugKotlin`: generated 2 class(es); `HelloAndroidActivity_` has `EXTRA_FROM_BASE_EXTRA` constant, `setExtraFromBase(extras_.getInt(EXTRA_FROM_BASE_EXTRA))` in `injectExtras_`, fluent `IntentBuilder_.extraFromBase(int)`
+- [x] Resource refs remain field refs (`R.layout.main`, `R.string.hello`, `R.id.*`); 0 raw ints
+- [x] examples/kotlin `clean assembleDebug` BUILD SUCCESSFUL
+
+### Blockers
+- none
+
+### Next
+1. P0a pipeline structure: nested `@EBean` / future nested types → static nested class inside outer `*_`; warn on AA annotations that are recognized but not implemented yet
+2. Then BLOCKERs: EBean scopes (Default/Activity/Fragment/Singleton, mirrors `EBeanHolder.createFactoryMethod`) + rebind for Default scope; `@Bean` injection via `Generated_.getInstance_(…)` + BeanHolder map + `@AfterInject`; root context wiring as needed
+3. Optional P0a: `@ViewById` method-injection form; Background/UiThread ordering notes
+4. P0a exit acceptance: demo `intent(this)…start()` ✅ in code; `@Bean` EnhancedBean injection demo ❌ (still needed); APT vs KSP public-API spot-check (extraKeyConstant parity done this session — good data point); mark P0a done here with Next = first P0b item

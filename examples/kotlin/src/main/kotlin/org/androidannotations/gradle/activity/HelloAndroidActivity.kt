@@ -1,6 +1,5 @@
 package org.androidannotations.gradle.activity
 
-import android.app.Activity
 import android.graphics.Point
 import android.widget.Button
 import android.widget.TextView
@@ -16,7 +15,7 @@ import org.androidannotations.gradle.R
 import java.util.Date
 
 @EActivity(R.layout.main)
-class HelloAndroidActivity : Activity() {
+class HelloAndroidActivity : HelloAndroidBase() {
 
     @StringRes
     protected lateinit var hello: String
@@ -53,6 +52,7 @@ class HelloAndroidActivity : Activity() {
                 .myIntExtra(42)
                 .myStringExtra("hello from IntentBuilder_")
                 .myPointExtra(Point(3, 7))
+                .extraFromBase(7)
                 .start()
         }
     }

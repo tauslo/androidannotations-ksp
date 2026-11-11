@@ -21,6 +21,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import com.google.devtools.ksp.symbol.KSAnnotation;
 import com.google.devtools.ksp.symbol.KSClassDeclaration;
@@ -37,12 +39,12 @@ import kotlin.sequences.SequencesKt;
 
 import org.androidannotations.ksp.env.RClassIndex;
 
-final class KspAnnotationUtils {
+public final class KspAnnotationUtils {
 
 	private KspAnnotationUtils() {
 	}
 
-	static KSAnnotation findAnnotation(Sequence<KSAnnotation> annotations, String qualifiedName) {
+	public static KSAnnotation findAnnotation(Sequence<KSAnnotation> annotations, String qualifiedName) {
 		for (KSAnnotation annotation : SequencesKt.toList(annotations)) {
 			if (qualifiedName.equals(safeQualifiedName(annotation))) {
 				return annotation;
@@ -51,7 +53,7 @@ final class KspAnnotationUtils {
 		return null;
 	}
 
-	static String safeQualifiedName(KSAnnotation annotation) {
+	public static String safeQualifiedName(KSAnnotation annotation) {
 		try {
 			if (annotation.getAnnotationType().resolve().getDeclaration().getQualifiedName() != null) {
 				return annotation.getAnnotationType().resolve().getDeclaration().getQualifiedName().asString();
@@ -62,7 +64,7 @@ final class KspAnnotationUtils {
 		return annotation.getShortName().asString();
 	}
 
-	static Object argValue(KSAnnotation annotation, String name) {
+	public static Object argValue(KSAnnotation annotation, String name) {
 		for (KSValueArgument argument : annotation.getArguments()) {
 			if (argument.getName() != null && name.equals(argument.getName().asString())) {
 				return argument.getValue();
@@ -71,7 +73,7 @@ final class KspAnnotationUtils {
 		return null;
 	}
 
-	static int intArg(KSAnnotation annotation, String name, int defaultValue) {
+	public static int intArg(KSAnnotation annotation, String name, int defaultValue) {
 		Object value = argValue(annotation, name);
 		if (value instanceof Number) {
 			return ((Number) value).intValue();
@@ -79,7 +81,7 @@ final class KspAnnotationUtils {
 		return defaultValue;
 	}
 
-	static long longArg(KSAnnotation annotation, String name, long defaultValue) {
+	public static long longArg(KSAnnotation annotation, String name, long defaultValue) {
 		Object value = argValue(annotation, name);
 		if (value instanceof Number) {
 			return ((Number) value).longValue();
@@ -87,7 +89,7 @@ final class KspAnnotationUtils {
 		return defaultValue;
 	}
 
-	static String stringArg(KSAnnotation annotation, String name, String defaultValue) {
+	public static String stringArg(KSAnnotation annotation, String name, String defaultValue) {
 		Object value = argValue(annotation, name);
 		if (value instanceof String) {
 			return (String) value;
@@ -95,7 +97,7 @@ final class KspAnnotationUtils {
 		return defaultValue;
 	}
 
-	static String typeName(KSTypeReference reference) {
+	public static String typeName(KSTypeReference reference) {
 		KSType type = reference.resolve();
 		String qualified;
 		if (type.getDeclaration().getQualifiedName() != null) {
@@ -106,7 +108,7 @@ final class KspAnnotationUtils {
 		return toJavaTypeName(qualified);
 	}
 
-	static String toJavaTypeName(String kotlinOrJavaName) {
+	public static String toJavaTypeName(String kotlinOrJavaName) {
 		switch (kotlinOrJavaName) {
 		case "kotlin.String":
 			return "java.lang.String";
@@ -165,12 +167,12 @@ final class KspAnnotationUtils {
 		}
 	}
 
-	static String propertyTypeName(KSPropertyDeclaration property) {
+	public static String propertyTypeName(KSPropertyDeclaration property) {
 		return typeName(property.getType());
 	}
 
 	/** Java canonical name including generic type arguments, e.g. java.util.ArrayList<java.lang.String>. */
-	static String fullTypeNameWithArgs(KSTypeReference reference) {
+	public static String fullTypeNameWithArgs(KSTypeReference reference) {
 		KSType type = reference.resolve();
 		StringBuilder sb = new StringBuilder(typeName(reference));
 		List<KSTypeArgument> args = type.getArguments();
@@ -189,7 +191,7 @@ final class KspAnnotationUtils {
 	}
 
 	/** Mirrors APT BundleHelper.METHOD_SUFFIX_BY_TYPE_NAME (Java canonical names, incl. arrays and 3 ArrayList variants). */
-	static final Map<String, String> BUNDLE_GET_SUFFIX = new HashMap<>();
+	public static final Map<String, String> BUNDLE_GET_SUFFIX = new HashMap<>();
 
 	static {
 		BUNDLE_GET_SUFFIX.put("android.os.Bundle", "Bundle");
@@ -218,7 +220,7 @@ final class KspAnnotationUtils {
 		BUNDLE_GET_SUFFIX.put("java.util.ArrayList<java.lang.String>", "StringArrayList");
 	}
 
-	static boolean hasParcelerAnnotation(KSClassDeclaration declaration) {
+	public static boolean hasParcelerAnnotation(KSClassDeclaration declaration) {
 		for (KSAnnotation annotation : SequencesKt.toList(declaration.getAnnotations())) {
 			if (AnnotationNames.PARCEL_ANNOTATION.equals(safeQualifiedName(annotation))) {
 				return true;
@@ -227,11 +229,11 @@ final class KspAnnotationUtils {
 		return false;
 	}
 
-	static boolean hasJvmField(KSPropertyDeclaration property) {
+	public static boolean hasJvmField(KSPropertyDeclaration property) {
 		return findAnnotation(property.getAnnotations(), AnnotationNames.JVM_FIELD) != null;
 	}
 
-	static List<MvpModel.Param> methodParams(KSFunctionDeclaration function) {
+	public static List<MvpModel.Param> methodParams(KSFunctionDeclaration function) {
 		List<MvpModel.Param> params = new ArrayList<>();
 		for (KSValueParameter parameter : function.getParameters()) {
 			params.add(new MvpModel.Param(parameter.getName().asString(), typeName(parameter.getType())));
@@ -239,32 +241,54 @@ final class KspAnnotationUtils {
 		return params;
 	}
 
-	static String setterName(String propertyName) {
+	public static String setterName(String propertyName) {
 		if (propertyName.length() == 1) {
 			return "set" + propertyName.toUpperCase(Locale.US);
 		}
 		return "set" + Character.toUpperCase(propertyName.charAt(0)) + propertyName.substring(1);
 	}
 
-	static String extraKeyConstant(String fieldName) {
-		// Mirrors APT CaseHelper.camelCaseToUpperSnakeCase(null, fieldName, "Extra"): the _EXTRA suffix is only
-		// appended when the field name does not already end with "extra" (case-insensitive).
+	public static String extraKeyConstant(String fieldName) {
+		// Mirrors APT CaseHelper.camelCaseToUpperSnakeCase(null, fieldName, "Extra"): the "_Extra" suffix is only
+		// appended when the field name does not already end with "extra" (case-insensitive), then snake-cased.
 		String name = fieldName;
-		if (!name.toLowerCase(java.util.Locale.ROOT).endsWith("extra")) {
-			name = name + "_EXTRA";
+		if (!name.toLowerCase(Locale.ROOT).endsWith("extra")) {
+			name = name + "_Extra";
 		}
-		StringBuilder builder = new StringBuilder();
-		for (int i = 0; i < name.length(); i++) {
-			char c = name.charAt(i);
-			if (Character.isUpperCase(c) && i > 0) {
-				builder.append('_');
-			}
-			builder.append(Character.toUpperCase(c));
-		}
-		return builder.toString();
+		return camelCaseToSnake(name).toUpperCase(Locale.ROOT);
 	}
 
-	static String resExpression(String resourcePackage, String rClassName, String resType, String fieldName, int resId, String resName, RClassIndex index) {
+	/** Mirrors APT CaseHelper.camelCaseToSnakeCase: ([A-Z]|[a-z])[a-z0-9]* tokens, single-uppercase runs as acronyms. */
+	private static String camelCaseToSnake(String input) {
+		List<String> tokens = new ArrayList<>();
+		Matcher matcher = Pattern.compile("([A-Z]|[a-z])[a-z0-9]*").matcher(input);
+		String acronym = "";
+		while (matcher.find()) {
+			String found = matcher.group();
+			if (found.length() == 1 && Character.isUpperCase(found.charAt(0))) {
+				acronym += found;
+			} else {
+				if (!acronym.isEmpty()) {
+					tokens.add(acronym);
+					acronym = "";
+				}
+				tokens.add(found.toLowerCase(Locale.ROOT));
+			}
+		}
+		if (!acronym.isEmpty()) {
+			tokens.add(acronym);
+		}
+		if (tokens.isEmpty()) {
+			return input;
+		}
+		StringBuilder sb = new StringBuilder(tokens.remove(0));
+		for (String token : tokens) {
+			sb.append('_').append(token);
+		}
+		return sb.toString();
+	}
+
+	public static String resExpression(String resourcePackage, String rClassName, String resType, String fieldName, int resId, String resName, RClassIndex index) {
 		// APT parity: emitted refs always point at R (extractIdStaticRef strips the trailing "2" of R2).
 		String emitR = rClassName.endsWith("2") ? rClassName.substring(0, rClassName.length() - 1) : rClassName;
 		if (resId != AnnotationNames.RES_DEFAULT) {

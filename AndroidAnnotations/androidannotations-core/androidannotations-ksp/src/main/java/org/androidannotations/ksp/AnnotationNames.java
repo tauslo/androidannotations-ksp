@@ -16,21 +16,21 @@
  */
 package org.androidannotations.ksp;
 
-final class AnnotationNames {
+public final class AnnotationNames {
 
-	static final String E_ACTIVITY = "org.androidannotations.annotations.EActivity";
-	static final String E_BEAN = "org.androidannotations.annotations.EBean";
-	static final String VIEW_BY_ID = "org.androidannotations.annotations.ViewById";
-	static final String STRING_RES = "org.androidannotations.annotations.res.StringRes";
-	static final String EXTRA = "org.androidannotations.annotations.Extra";
-	static final String AFTER_VIEWS = "org.androidannotations.annotations.AfterViews";
-	static final String BACKGROUND = "org.androidannotations.annotations.Background";
-	static final String UI_THREAD = "org.androidannotations.annotations.UiThread";
-	static final String AFTER_EXTRAS = "org.androidannotations.annotations.AfterExtras";
-	static final String PARCEL_ANNOTATION = "org.parceler.Parcel";
-	static final String JVM_FIELD = "kotlin.jvm.JvmField";
+	public static final String E_ACTIVITY = "org.androidannotations.annotations.EActivity";
+	public static final String E_BEAN = "org.androidannotations.annotations.EBean";
+	public static final String VIEW_BY_ID = "org.androidannotations.annotations.ViewById";
+	public static final String STRING_RES = "org.androidannotations.annotations.res.StringRes";
+	public static final String EXTRA = "org.androidannotations.annotations.Extra";
+	public static final String AFTER_VIEWS = "org.androidannotations.annotations.AfterViews";
+	public static final String BACKGROUND = "org.androidannotations.annotations.Background";
+	public static final String UI_THREAD = "org.androidannotations.annotations.UiThread";
+	public static final String AFTER_EXTRAS = "org.androidannotations.annotations.AfterExtras";
+	public static final String PARCEL_ANNOTATION = "org.parceler.Parcel";
+	public static final String JVM_FIELD = "kotlin.jvm.JvmField";
 
-	static final int RES_DEFAULT = -1;
+	public static final int RES_DEFAULT = -1;
 
 	private AnnotationNames() {
 	}

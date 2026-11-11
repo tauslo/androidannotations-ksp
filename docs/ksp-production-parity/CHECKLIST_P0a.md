@@ -18,8 +18,8 @@
 
 ## Processor pipeline structure
 
-- [ ] Split MVP god-generator toward `handler` + `generate` packages（渐进，勿一次性重写）
-- [ ] Collect annotations from **superclass** members（ancestor annotations）
+- [x] Split MVP god-generator toward `handler` + `generate` packages（渐进，勿一次性重写）
+- [x] Collect annotations from **superclass** members（ancestor annotations）
 - [ ] Nested `@EBean` / future nested types → static nested class inside outer `*_`
 - [ ] Warn on AA annotations that are recognized but **not implemented** yet
 

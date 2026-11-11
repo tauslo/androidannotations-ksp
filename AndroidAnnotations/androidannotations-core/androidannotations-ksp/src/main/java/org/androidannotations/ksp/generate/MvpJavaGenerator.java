@@ -14,23 +14,26 @@
  * License for the specific language governing permissions and limitations under
  * the License.
  */
-package org.androidannotations.ksp;
+package org.androidannotations.ksp.generate;
 
+import org.androidannotations.ksp.AnnotationNames;
+import org.androidannotations.ksp.KspAnnotationUtils;
+import org.androidannotations.ksp.MvpModel;
 import org.androidannotations.ksp.env.RClassIndex;
 
-final class MvpJavaGenerator {
+public final class MvpJavaGenerator {
 
 	private final String resourcePackage;
 	private final String rClassName;
 	private final RClassIndex rClassIndex;
 
-	MvpJavaGenerator(String resourcePackage, String rClassName, RClassIndex rClassIndex) {
+	public MvpJavaGenerator(String resourcePackage, String rClassName, RClassIndex rClassIndex) {
 		this.resourcePackage = resourcePackage;
 		this.rClassName = rClassName;
 		this.rClassIndex = rClassIndex;
 	}
 
-	String generate(MvpModel model) {
+	public String generate(MvpModel model) {
 		if (model.kind == MvpModel.Kind.ACTIVITY) {
 			return generateActivity(model);
 		}

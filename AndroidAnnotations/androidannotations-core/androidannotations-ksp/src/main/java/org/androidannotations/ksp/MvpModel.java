@@ -19,42 +19,42 @@ package org.androidannotations.ksp;
 import java.util.ArrayList;
 import java.util.List;
 
-final class MvpModel {
+public final class MvpModel {
 
-	enum Kind {
+	public enum Kind {
 		ACTIVITY, BEAN
 	}
 
-	static final class Param {
-		final String name;
-		final String typeName;
+	public static final class Param {
+		public final String name;
+		public final String typeName;
 
-		Param(String name, String typeName) {
+		public Param(String name, String typeName) {
 			this.name = name;
 			this.typeName = typeName;
 		}
 	}
 
-	static final class FieldInjection {
-		final String propertyName;
-		final String typeName;
-		final boolean jvmField;
-		final int resId;
-		final String resName;
+	public static final class FieldInjection {
+		public final String propertyName;
+		public final String typeName;
+		public final boolean jvmField;
+		public final int resId;
+		public final String resName;
 		/** @Extra only: Java canonical type incl. generic args (null for non-extra injections). */
-		final String extraFullType;
+		public final String extraFullType;
 		/** @Extra only: write-side template for the IntentBuilder_ fluent arg, {arg} = parameter name. */
-		final String extraWriteExpr;
+		public final String extraWriteExpr;
 		/** @Extra only: read-side template for Bundle restore, {key} = constant name. */
-		final String extraReadExpr;
+		public final String extraReadExpr;
 		/** @Extra only: restore needs @SuppressWarnings("unchecked") (generic cast). */
-		final boolean extraUnchecked;
+		public final boolean extraUnchecked;
 
-		FieldInjection(String propertyName, String typeName, boolean jvmField, int resId, String resName) {
+		public FieldInjection(String propertyName, String typeName, boolean jvmField, int resId, String resName) {
 			this(propertyName, typeName, jvmField, resId, resName, null, "{arg}", "(java.lang.Object) extras_.get({key})", false);
 		}
 
-		FieldInjection(String propertyName, String typeName, boolean jvmField, int resId, String resName,
+		public FieldInjection(String propertyName, String typeName, boolean jvmField, int resId, String resName,
 				String extraFullType, String extraWriteExpr, String extraReadExpr, boolean extraUnchecked) {
 			this.propertyName = propertyName;
 			this.typeName = typeName;
@@ -68,15 +68,15 @@ final class MvpModel {
 		}
 	}
 
-	static final class MethodInfo {
-		final String name;
-		final List<Param> params;
-		final String id;
-		final long delay;
-		final String serial;
-		final boolean reusePropagation;
+	public static final class MethodInfo {
+		public final String name;
+		public final List<Param> params;
+		public final String id;
+		public final long delay;
+		public final String serial;
+		public final boolean reusePropagation;
 
-		MethodInfo(String name, List<Param> params, String id, long delay, String serial, boolean reusePropagation) {
+		public MethodInfo(String name, List<Param> params, String id, long delay, String serial, boolean reusePropagation) {
 			this.name = name;
 			this.params = params;
 			this.id = id;
@@ -86,22 +86,22 @@ final class MvpModel {
 		}
 	}
 
-	final Kind kind;
-	final String packageName;
-	final String simpleName;
-	final String qualifiedName;
-	final String classSuffix;
-	final int layoutId;
-	final String layoutResName;
-	final List<FieldInjection> viewByIds = new ArrayList<>();
-	final List<FieldInjection> stringRes = new ArrayList<>();
-	final List<FieldInjection> extras = new ArrayList<>();
-	final List<String> afterViews = new ArrayList<>();
-	final List<String> afterExtras = new ArrayList<>();
-	final List<MethodInfo> backgrounds = new ArrayList<>();
-	final List<MethodInfo> uiThreads = new ArrayList<>();
+	public final Kind kind;
+	public final String packageName;
+	public final String simpleName;
+	public final String qualifiedName;
+	public final String classSuffix;
+	public final int layoutId;
+	public final String layoutResName;
+	public final List<FieldInjection> viewByIds = new ArrayList<>();
+	public final List<FieldInjection> stringRes = new ArrayList<>();
+	public final List<FieldInjection> extras = new ArrayList<>();
+	public final List<String> afterViews = new ArrayList<>();
+	public final List<String> afterExtras = new ArrayList<>();
+	public final List<MethodInfo> backgrounds = new ArrayList<>();
+	public final List<MethodInfo> uiThreads = new ArrayList<>();
 
-	MvpModel(Kind kind, String packageName, String simpleName, String qualifiedName, String classSuffix, int layoutId, String layoutResName) {
+	public MvpModel(Kind kind, String packageName, String simpleName, String qualifiedName, String classSuffix, int layoutId, String layoutResName) {
 		this.kind = kind;
 		this.packageName = packageName;
 		this.simpleName = simpleName;
@@ -111,11 +111,11 @@ final class MvpModel {
 		this.layoutResName = layoutResName;
 	}
 
-	String generatedSimpleName() {
+	public String generatedSimpleName() {
 		return simpleName + classSuffix;
 	}
 
-	String generatedQualifiedName() {
+	public String generatedQualifiedName() {
 		if (packageName == null || packageName.isEmpty()) {
 			return generatedSimpleName();
 		}
