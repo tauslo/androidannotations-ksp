@@ -75,14 +75,17 @@ public final class MvpModel {
 		public final long delay;
 		public final String serial;
 		public final boolean reusePropagation;
+		/** Java visibility modifier emitted for the generated override: "public" / "protected" / "private" / "" (package-private). */
+		public final String visibility;
 
-		public MethodInfo(String name, List<Param> params, String id, long delay, String serial, boolean reusePropagation) {
+		public MethodInfo(String name, List<Param> params, String id, long delay, String serial, boolean reusePropagation, String visibility) {
 			this.name = name;
 			this.params = params;
 			this.id = id;
 			this.delay = delay;
 			this.serial = serial;
 			this.reusePropagation = reusePropagation;
+			this.visibility = visibility;
 		}
 	}
 

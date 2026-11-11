@@ -25,7 +25,9 @@ import com.google.devtools.ksp.symbol.ClassKind;
 import com.google.devtools.ksp.symbol.KSAnnotation;
 import com.google.devtools.ksp.symbol.KSClassDeclaration;
 import com.google.devtools.ksp.symbol.KSDeclaration;
+import com.google.devtools.ksp.symbol.KSFile;
 import com.google.devtools.ksp.symbol.KSFunctionDeclaration;
+import com.google.devtools.ksp.symbol.KSNode;
 import com.google.devtools.ksp.symbol.KSPropertyDeclaration;
 import com.google.devtools.ksp.symbol.KSType;
 import com.google.devtools.ksp.symbol.KSTypeReference;
@@ -190,7 +192,7 @@ public final class MvpHandler {
 					KspAnnotationUtils.stringArg(background, "id", ""),
 					KspAnnotationUtils.longArg(background, "delay", 0L),
 					KspAnnotationUtils.stringArg(background, "serial", ""),
-					false));
+					false, methodVisibility(function)));
 		}
 
 		KSAnnotation uiThread = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.UI_THREAD);
@@ -204,7 +206,7 @@ public final class MvpHandler {
 					KspAnnotationUtils.stringArg(uiThread, "id", ""),
 					KspAnnotationUtils.longArg(uiThread, "delay", 0L),
 					"",
-					reuse));
+					reuse, methodVisibility(function)));
 		}
 
 		KSAnnotation bean = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.BEAN);
@@ -213,6 +215,32 @@ public final class MvpHandler {
 		} else if (hasBeanParam(function)) {
 			collectBeanParams(resolver, function, name, model);
 		}
+	}
+
+	/** APT elementVisibilityModifierToJMod parity: generated @Background/@UiThread overrides keep the source method's visibility. */
+	private static String methodVisibility(KSFunctionDeclaration function) {
+		java.util.Set<Modifier> modifiers = function.getModifiers();
+		if (modifiers.contains(Modifier.PUBLIC)) {
+			return "public";
+		}
+		if (modifiers.contains(Modifier.PROTECTED)) {
+			return "protected";
+		}
+		if (modifiers.contains(Modifier.PRIVATE)) {
+			return "private";
+		}
+		// No explicit visibility: Kotlin defaults to public, Java to package-private; KSP omits an implicit public.
+		KSNode parent = function.getParent();
+		while (parent != null && !(parent instanceof KSFile)) {
+			parent = parent.getParent();
+		}
+		if (parent instanceof KSFile) {
+			String fileName = ((KSFile) parent).getFileName();
+			if (fileName.endsWith(".kt")) {
+				return "public";
+			}
+		}
+		return "";
 	}
 
 	/** APT BeanHandler.processField parity: one assignment target in the init-body injection block. */

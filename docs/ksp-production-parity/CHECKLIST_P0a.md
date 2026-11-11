@@ -46,10 +46,10 @@
 
 ## Acceptance for P0a exit
 
-- [ ] `examples/kotlin` demonstrates `Xxx_.intent(this).myIntExtra(1).start()`（或等价 Extra）
-- [ ] `examples/kotlin` demonstrates `@Bean` EnhancedBean injection into Activity
-- [ ] Spot-check: APT vs KSP generated public API for sample Activity（method names）
-- [ ] `EXECUTION_LOG` marks P0a done and sets Next = first P0b item
+- [x] `examples/kotlin` demonstrates `Xxx_.intent(this).myIntExtra(1).start()`（或等价 Extra）
+- [x] `examples/kotlin` demonstrates `@Bean` EnhancedBean injection into Activity
+- [x] Spot-check: APT vs KSP generated public API for sample Activity（method names）
+- [x] `EXECUTION_LOG` marks P0a done and sets Next = first P0b item
 - [ ] Push to `ksp/main` when user wants remote updated
 
 ## Out of scope for P0a（不要偷跑）

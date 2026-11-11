@@ -180,14 +180,19 @@ public final class MvpJavaGenerator {
 	}
 
 	private void appendBeanClass(StringBuilder out, MvpModel model, boolean nested) {
+		// APT parity (EComponentWithViewSupportHolder.setOnViewChanged): the OnViewChangedListener interface and notifier
+		// registration are added only when view support is used (@ViewById/@AfterViews). A bean without view support
+		// implements no extra interface.
+		boolean hasViewSupport = !model.viewByIds.isEmpty() || !model.afterViews.isEmpty();
+		String implementsClause = hasViewSupport ? " implements org.androidannotations.api.view.OnViewChangedListener" : "";
 		if (nested) {
 			out.append("public static final class ").append(model.generatedSimpleName())
 					.append(" extends ").append(model.simpleName)
-					.append(" implements org.androidannotations.api.view.OnViewChangedListener {\n\n");
+					.append(implementsClause).append(" {\n\n");
 		} else {
 			out.append("public final class ").append(model.generatedSimpleName())
 					.append(" extends ").append(model.simpleName)
-					.append(" implements org.androidannotations.api.view.OnViewChangedListener {\n\n");
+					.append(implementsClause).append(" {\n\n");
 		}
 		String generated = model.generatedSimpleName();
 		String scope = model.scope;
@@ -276,19 +281,23 @@ public final class MvpJavaGenerator {
 			String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "string", injection.propertyName, injection.resId, injection.resName, rClassIndex);
 			appendAssign(out, injection, "resources_.getString(" + resExpr + ")");
 		}
-		out.append("\t\torg.androidannotations.api.view.OnViewChangedNotifier.registerOnViewChangedListener(this);\n");
+		if (hasViewSupport) {
+			out.append("\t\torg.androidannotations.api.view.OnViewChangedNotifier.registerOnViewChangedListener(this);\n");
+		}
 		out.append("\t}\n\n");
 
-		out.append("\t@Override\n");
-		out.append("\tpublic void onViewChanged(org.androidannotations.api.view.HasViews hasViews) {\n");
-		for (MvpModel.FieldInjection view : model.viewByIds) {
-			String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "id", view.propertyName, view.resId, view.resName, rClassIndex);
-			appendAssign(out, view, "(" + view.typeName + ") hasViews.internalFindViewById(" + resExpr + ")");
+		if (hasViewSupport) {
+			out.append("\t@Override\n");
+			out.append("\tpublic void onViewChanged(org.androidannotations.api.view.HasViews hasViews) {\n");
+			for (MvpModel.FieldInjection view : model.viewByIds) {
+				String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "id", view.propertyName, view.resId, view.resName, rClassIndex);
+				appendAssign(out, view, "(" + view.typeName + ") hasViews.internalFindViewById(" + resExpr + ")");
+			}
+			for (String method : model.afterViews) {
+				out.append("\t\t").append(method).append("();\n");
+			}
+			out.append("\t}\n\n");
 		}
-		for (String method : model.afterViews) {
-			out.append("\t\t").append(method).append("();\n");
-		}
-		out.append("\t}\n\n");
 
 		appendBackgroundMethods(out, model);
 		appendUiThreadMethods(out, model);
@@ -441,7 +450,7 @@ public final class MvpJavaGenerator {
 	private void appendBackgroundMethods(StringBuilder out, MvpModel model) {
 		for (MvpModel.MethodInfo method : model.backgrounds) {
 			out.append("\t@Override\n");
-			out.append("\tpublic void ").append(method.name).append("(");
+			out.append("\t").append(method.visibility).append(" void ").append(method.name).append("(");
 			appendParams(out, method.params, false);
 			out.append(") {\n");
 			out.append("\t\torg.androidannotations.api.BackgroundExecutor.execute(new org.androidannotations.api.BackgroundExecutor.Task(\"")
@@ -465,7 +474,7 @@ public final class MvpJavaGenerator {
 	private void appendUiThreadMethods(StringBuilder out, MvpModel model) {
 		for (MvpModel.MethodInfo method : model.uiThreads) {
 			out.append("\t@Override\n");
-			out.append("\tpublic void ").append(method.name).append("(");
+			out.append("\t").append(method.visibility).append(" void ").append(method.name).append("(");
 			appendParams(out, method.params, true);
 			out.append(") {\n");
 			if (method.delay == 0L && method.reusePropagation) {

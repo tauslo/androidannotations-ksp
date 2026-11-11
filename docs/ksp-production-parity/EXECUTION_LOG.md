@@ -401,3 +401,46 @@
 ### Next
 1. Optional P0a: `@ViewById` method-injection form; Background/UiThread ordering notes
 2. P0a exit acceptance: APT vs KSP generated public-API spot-check for the sample Activity, tick the remaining "Acceptance for P0a exit" items (incl. the @Bean demo item), mark P0a done with Next = first P0b item
+
+## Session 2026-11-11 — P0a exit acceptance — mark P0a done
+
+- **Agent**: Codex
+- **Goal slice**: P0a exit acceptance — APT vs KSP generated public-API spot-check, tick the remaining "Acceptance for P0a exit" items, mark P0a done (prev session Next 2)
+- **Git**: branch=`ksp/main` HEAD=`8fcb9b01` remote=`ksp/main` ahead 8（local only, not pushed）
+- **Status**: done
+
+### Done
+- Visibility divergence found & fixed: `MethodInfo.visibility` added to `MvpModel`; `methodVisibility()` helper in `MvpHandler` (reads the KSFunctionDeclaration visibility); emit sites in `MvpJavaGenerator` now honor it — generated methods no longer default to public when the source member is protected/private
+- Bean OnViewChangedListener divergence found & fixed: APT registers the listener lazily only when view-support handlers run (`EComponentWithViewSupportHolder.setOnViewChanged()` ~L132 is the only site); KSP now guards registration on `!viewByIds.isEmpty() || !afterViews.isEmpty()`; the beans-with-views path mirrors APT source but is unexercised by the bench
+- Spot-check verdict: **PASS** — bench `examples/kotlin-bench` (100 @EActivity + 100 @EBean): APT(kapt) vs KSP, 200/200 identical file paths; after normalization (annotations, whitespace, FQN-vs-import, `final`) DECL 0/200, SIG 0/200
+- All 600 residual body-shape diffs = 6 classes of semantically-equivalent expression rewrites (each ×100 activity files):
+  - `getBean` / `internalFindViewById`: cast parenthesization `((T) x)` vs `(T) x`
+  - `startForResult` (IntentBuilder_): temp var + call vs chained call on the cast
+  - `onViewChanged`: direct field write vs generated setter call — Kotlin-property deviation; kapt stubs expose Kotlin properties as protected fields, which is how APT direct field writes compile
+  - `init_`: same statements with independent-statement order swapped (registerListener last) + setter call
+  - `updateHelloTextView`: explicit `final` local copy before anonymous-class capture
+- Comparison script v2 fixed (classDecl: m[5] for the implements list + dot added to the char class; extractMethods skips past each method body so methods count exactly once) — eliminated the v1 false DECL/SIG diffs
+- Fresh-build re-verification this session: bench kapt `assembleDebug -Paa.processor=kapt` BUILD SUCCESSFUL; fresh kapt tree sha256-identical (200/200) to backup reference `C:\temp\kapt-generated`; bench KSP `clean assembleDebug -Paa.processor=ksp` BUILD SUCCESSFUL (36/36 tasks); comparison on the fresh trees reproduces exactly {checked:200, declMismatch:0, sigMismatchFiles:0, bodyShapeDiffs:600} with the same 6 keys
+- Source-level parity in `examples/kotlin`: `HelloAndroidActivity_.intent(this)` (L62) + `.start()` (L67); `@Bean protected lateinit var enhancedBean: EnhancedBean` (L50-51) — compile and run under KSP
+- @NotNull param annotation scope check: APT=100 vs KSP=0 occurrences (CLASS retention, outside the checked public-API surface) → recorded known deviation, deferred to P0b
+- Known cosmetic deviations (non-blocking): `beans_` Map vs HashMap private field; bean init_/rebind method order swap; catch-var naming (`final Throwable e` vs `Throwable e__`); FQN-vs-import notation in KSP output; header comment blocks; KSP `final` param modifiers
+
+### Changed paths
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/MvpModel.java
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/handler/MvpHandler.java
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/generate/MvpJavaGenerator.java
+- docs/ksp-production-parity/CHECKLIST_P0a.md
+- docs/ksp-production-parity/EXECUTION_LOG.md
+
+### Verify
+- [x] APT module installed in m2 (jar newer than the 3 modified KSP sources)
+- [x] Bench kapt build re-run this session: BUILD SUCCESSFUL
+- [x] Bench KSP clean build post-fix: BUILD SUCCESSFUL (36/36 tasks executed)
+- [x] APT vs KSP API diff clean after normalization: DECL 0/200, SIG 0/200; all 600 body diffs = the 6 equivalent rewrite classes
+
+### Blockers
+- none
+
+### Next
+1. P0b first item — `@EFragment` + `FragmentBuilder_` + `@FragmentArg` (+ @FragmentById/@FragmentByTag) per PLAYBOOK §3
+2. Deferred from P0a (checklist "Deepen views / res / threads（质量）" section, left unticked): `@ViewById` method-injection form; @Background/@UiThread ordering notes compatible with future Trace/IgnoreWhen; Kotlin property → Java setter/field mapping review (incl. primitives); plus @NotNull param annotation parity
