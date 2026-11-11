@@ -198,10 +198,15 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 
 		KSAnnotation extra = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.EXTRA);
 		if (extra != null) {
+			String fullType = KspAnnotationUtils.fullTypeNameWithArgs(property.getType());
+			ExtraTemplates templates = extraTemplatesFor(resolver, fullType);
 			model.extras.add(new MvpModel.FieldInjection(name, typeName, jvmField,
 					AnnotationNames.RES_DEFAULT,
 					KspAnnotationUtils.stringArg(extra, "value", ""),
-					extraCastFor(resolver, property)));
+					fullType,
+					templates.write,
+					templates.read,
+					templates.unchecked));
 		}
 	}
 
@@ -213,6 +218,10 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 
 		if (KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.AFTER_VIEWS) != null) {
 			model.afterViews.add(name);
+		}
+
+		if (KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.AFTER_EXTRAS) != null) {
+			model.afterExtras.add(name);
 		}
 
 		KSAnnotation background = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.BACKGROUND);
@@ -239,45 +248,168 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 		}
 	}
 
-	/** Mirrors APT IntentBuilder.getSuperPutExtraInvocation: cast extra arguments to Parcelable/Serializable when needed. */
-	private String extraCastFor(Resolver resolver, KSPropertyDeclaration property) {
-		String typeName = KspAnnotationUtils.propertyTypeName(property);
-		if (isStandardBundleType(typeName)) {
-			return null;
+	/** Write/read expression templates for one @Extra, mirroring APT IntentBuilder.getSuperPutExtraInvocation + BundleHelper. */
+	private static final class ExtraTemplates {
+		final String write; // template with {arg} placeholder
+		final String read; // template with {key} placeholder
+		final boolean unchecked;
+
+		ExtraTemplates(String write, String read, boolean unchecked) {
+			this.write = write;
+			this.read = read;
+			this.unchecked = unchecked;
 		}
-		KSClassDeclaration typeDeclaration = resolveClassDeclaration(resolver, typeName);
-		if (typeDeclaration == null) {
-			return null;
-		}
-		if (implementsInterface(typeDeclaration, "android.os.Parcelable")) {
-			return "(android.os.Parcelable)";
-		}
-		if (implementsInterface(typeDeclaration, "java.io.Serializable")) {
-			return "(java.io.Serializable)";
-		}
-		return null;
 	}
 
-	private boolean isStandardBundleType(String typeName) {
-		String base = typeName;
+	private ExtraTemplates extraTemplatesFor(Resolver resolver, String fullType) {
+		String base = fullType.contains("<") ? fullType.substring(0, fullType.indexOf('<')) : fullType;
+		KSClassDeclaration typeDeclaration = resolveClassDeclaration(resolver, base);
+		boolean parcelable = typeDeclaration != null && implementsInterface(typeDeclaration, "android.os.Parcelable");
+		boolean serializable = typeDeclaration != null && implementsInterface(typeDeclaration, "java.io.Serializable");
+		boolean parceler = isParcelerType(resolver, fullType);
+
+		String write;
+		if (isPrimitiveOrPrimitiveArray(fullType)) {
+			write = "{arg}";
+		} else if ("java.lang.String".equals(fullType) || "java.lang.CharSequence".equals(fullType)) {
+			// KSP deviation: APT would cast CharSequence to Serializable (runtime CCE risk); keep the typed overload.
+			write = "{arg}";
+		} else if (parcelable) {
+			write = "(android.os.Parcelable) {arg}";
+		} else if (!KspAnnotationUtils.BUNDLE_GET_SUFFIX.containsKey(fullType) && parceler) {
+			write = "org.parceler.Parcels.wrap({arg})";
+		} else if (serializable) {
+			write = "(java.io.Serializable) {arg}";
+		} else {
+			// KSP deviation: APT would emit a broken Serializable cast; leave uncast so the builder method fails to compile early.
+			write = "{arg}";
+		}
+
+		String read;
+		boolean unchecked = false;
+		String suffix = KspAnnotationUtils.BUNDLE_GET_SUFFIX.get(fullType);
+		if (suffix != null) {
+			read = "extras_.get" + suffix + "({key})";
+		} else if (fullType.endsWith("[]")) {
+			String component = fullType.substring(0, fullType.length() - 2);
+			KSClassDeclaration componentDecl = resolveClassDeclaration(resolver, component);
+			if (componentDecl != null && implementsInterface(componentDecl, "android.os.Parcelable")) {
+				read = "org.androidannotations.api.bundle.BundleHelper.getParcelableArray(extras_, {key}, " + component + "[].class)";
+			} else {
+				read = "(" + fullType + ") extras_.getSerializable({key})";
+			}
+		} else if (fullType.startsWith("java.util.ArrayList<")) {
+			String arg = topLevelGenericArg(fullType);
+			KSClassDeclaration argDecl = resolveClassDeclaration(resolver, arg);
+			if (argDecl != null && implementsInterface(argDecl, "android.os.Parcelable")) {
+				read = "extras_.getParcelableArrayList({key})";
+			} else {
+				read = "(" + fullType + ") extras_.getSerializable({key})";
+				unchecked = true;
+			}
+		} else if (fullType.startsWith("android.util.SparseArray<")) {
+			read = "extras_.getSparseParcelableArray({key})";
+		} else if (parceler) {
+			read = "org.parceler.Parcels.unwrap(extras_.getParcelable({key}))";
+		} else if (parcelable) {
+			read = "extras_.getParcelable({key})";
+		} else if (serializable) {
+			read = "(" + fullType + ") extras_.getSerializable({key})";
+			unchecked = fullType.contains("<");
+		} else {
+			read = "(" + fullType + ") extras_.get({key})";
+		}
+
+		return new ExtraTemplates(write, read, unchecked);
+	}
+
+	private boolean isPrimitiveOrPrimitiveArray(String fullType) {
+		String base = fullType;
 		while (base.endsWith("[]")) {
 			base = base.substring(0, base.length() - 2);
 		}
 		return "boolean".equals(base) || "byte".equals(base) || "char".equals(base) || "short".equals(base)
-				|| "int".equals(base) || "long".equals(base) || "float".equals(base) || "double".equals(base)
-				|| "java.lang.Boolean".equals(base) || "java.lang.Byte".equals(base) || "java.lang.Character".equals(base)
-				|| "java.lang.Short".equals(base) || "java.lang.Integer".equals(base) || "java.lang.Long".equals(base)
-				|| "java.lang.Float".equals(base) || "java.lang.Double".equals(base)
-				|| "java.lang.String".equals(base) || "java.lang.CharSequence".equals(base)
-				|| "android.os.Bundle".equals(base);
+				|| "int".equals(base) || "long".equals(base) || "float".equals(base) || "double".equals(base);
+	}
+
+	/** Mirrors APT ParcelerHelper.isParcelType: @org.parceler.Parcel-annotated class or supported collection type. */
+	private boolean isParcelerType(Resolver resolver, String fullType) {
+		String base = fullType.contains("<") ? fullType.substring(0, fullType.indexOf('<')) : fullType;
+		KSClassDeclaration declaration = resolveClassDeclaration(resolver, base);
+		if (declaration == null) {
+			return false;
+		}
+		if (KspAnnotationUtils.hasParcelerAnnotation(declaration)) {
+			return true;
+		}
+		String arg = fullType.contains("<") ? topLevelGenericArg(fullType) : null;
+		switch (base) {
+		case "java.util.LinkedList":
+		case "java.util.SortedSet":
+		case "java.util.LinkedHashSet":
+			return arg != null && isParcelerArgument(resolver, arg);
+		case "java.util.LinkedHashMap":
+		case "java.util.SortedMap":
+			if (arg == null) {
+				return false;
+			}
+			int split = topLevelComma(arg);
+			if (split < 0) {
+				return false;
+			}
+			return isParcelerArgument(resolver, arg.substring(0, split).trim())
+					&& isParcelerArgument(resolver, arg.substring(split + 1).trim());
+		default:
+			return false;
+		}
+	}
+
+	private boolean isParcelerArgument(Resolver resolver, String argType) {
+		if ("android.os.Bundle".equals(argType) || "android.os.IBinder".equals(argType)) {
+			return true;
+		}
+		String base = argType.contains("<") ? argType.substring(0, argType.indexOf('<')) : argType;
+		KSClassDeclaration declaration = resolveClassDeclaration(resolver, base);
+		if (declaration == null) {
+			return false;
+		}
+		if (KspAnnotationUtils.hasParcelerAnnotation(declaration)) {
+			return true;
+		}
+		return implementsInterface(declaration, "android.os.Parcelable");
+	}
+
+	private static String topLevelGenericArg(String fullType) {
+		int start = fullType.indexOf('<');
+		int end = fullType.lastIndexOf('>');
+		if (start < 0 || end <= start) {
+			return "";
+		}
+		return fullType.substring(start + 1, end);
+	}
+
+	private static int topLevelComma(String generics) {
+		int depth = 0;
+		for (int i = 0; i < generics.length(); i++) {
+			char c = generics.charAt(i);
+			if (c == '<') {
+				depth++;
+			} else if (c == '>') {
+				depth--;
+			} else if (c == ',' && depth == 0) {
+				return i;
+			}
+		}
+		return -1;
 	}
 
 	private KSClassDeclaration resolveClassDeclaration(Resolver resolver, String typeName) {
 		if (typeName == null || typeName.isEmpty() || typeName.contains("[")) {
 			return null;
 		}
+		String base = typeName.contains("<") ? typeName.substring(0, typeName.indexOf('<')) : typeName;
 		try {
-			return resolver.getClassDeclarationByName(resolver.getKSNameFromString(typeName));
+			return resolver.getClassDeclarationByName(resolver.getKSNameFromString(base));
 		} catch (Exception e) {
 			return null;
 		}

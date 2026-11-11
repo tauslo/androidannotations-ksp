@@ -71,24 +71,34 @@ final class MvpJavaGenerator {
 			String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "string", injection.propertyName, injection.resId, injection.resName);
 			appendAssign(out, injection, "resources_.getString(" + resExpr + ")");
 		}
-		if (!model.extras.isEmpty()) {
+		if (!model.extras.isEmpty() || !model.afterExtras.isEmpty()) {
 			out.append("\t\tinjectExtras_();\n");
 		}
 		out.append("\t\torg.androidannotations.api.view.OnViewChangedNotifier.registerOnViewChangedListener(this);\n");
 		out.append("\t}\n\n");
 
-		if (!model.extras.isEmpty()) {
+		if (!model.extras.isEmpty() || !model.afterExtras.isEmpty()) {
+			boolean unchecked = false;
+			for (MvpModel.FieldInjection extra : model.extras) {
+				unchecked |= extra.extraUnchecked;
+			}
+			if (unchecked) {
+				out.append("\t@SuppressWarnings(\"unchecked\")\n");
+			}
 			out.append("\tprivate void injectExtras_() {\n");
 			out.append("\t\tandroid.os.Bundle extras_ = getIntent().getExtras();\n");
-			out.append("\t\tif (extras_ == null) {\n");
-			out.append("\t\t\treturn;\n");
-			out.append("\t\t}\n");
-			for (MvpModel.FieldInjection extra : model.extras) {
-				String constant = KspAnnotationUtils.extraKeyConstant(extra.propertyName);
-				out.append("\t\tif (extras_.containsKey(").append(constant).append(")) {\n");
-				String readExpr = extrasReadExpression(extra.typeName, constant);
-				appendAssign(out, extra, readExpr, "\t\t\t");
+			if (!model.extras.isEmpty()) {
+				out.append("\t\tif (extras_ != null) {\n");
+				for (MvpModel.FieldInjection extra : model.extras) {
+					String constant = KspAnnotationUtils.extraKeyConstant(extra.propertyName);
+					out.append("\t\t\tif (extras_.containsKey(").append(constant).append(")) {\n");
+					appendAssign(out, extra, extra.extraReadExpr.replace("{key}", constant), "\t\t\t\t");
+					out.append("\t\t\t}\n");
+				}
 				out.append("\t\t}\n");
+			}
+			for (String method : model.afterExtras) {
+				out.append("\t\t").append(method).append("();\n");
 			}
 			out.append("\t}\n\n");
 
@@ -242,13 +252,11 @@ final class MvpJavaGenerator {
 
 		for (MvpModel.FieldInjection extra : model.extras) {
 			String constant = KspAnnotationUtils.extraKeyConstant(extra.propertyName);
-			out.append("\t\tpublic IntentBuilder_ ").append(extra.propertyName).append('(').append(extra.typeName).append(" ")
+			String paramType = extra.extraFullType != null ? extra.extraFullType : extra.typeName;
+			out.append("\t\tpublic IntentBuilder_ ").append(extra.propertyName).append('(').append(paramType).append(" ")
 					.append(extra.propertyName).append(") {\n");
-			out.append("\t\t\treturn super.extra(").append(constant).append(", ");
-			if (extra.extraCast != null) {
-				out.append(extra.extraCast).append(' ');
-			}
-			out.append(extra.propertyName).append(");\n");
+			out.append("\t\t\treturn super.extra(").append(constant).append(", ")
+					.append(extra.extraWriteExpr.replace("{arg}", extra.propertyName)).append(");\n");
 			out.append("\t\t}\n\n");
 		}
 
@@ -262,28 +270,6 @@ final class MvpJavaGenerator {
 		out.append("\t\t\treturn new org.androidannotations.api.builder.PostActivityStarter(context);\n");
 		out.append("\t\t}\n");
 		out.append("\t}\n");
-	}
-
-	private String extrasReadExpression(String typeName, String constant) {
-		if ("int".equals(typeName) || "java.lang.Integer".equals(typeName)) {
-			return "extras_.getInt(" + constant + ")";
-		}
-		if ("long".equals(typeName) || "java.lang.Long".equals(typeName)) {
-			return "extras_.getLong(" + constant + ")";
-		}
-		if ("boolean".equals(typeName) || "java.lang.Boolean".equals(typeName)) {
-			return "extras_.getBoolean(" + constant + ")";
-		}
-		if ("float".equals(typeName) || "java.lang.Float".equals(typeName)) {
-			return "extras_.getFloat(" + constant + ")";
-		}
-		if ("double".equals(typeName) || "java.lang.Double".equals(typeName)) {
-			return "extras_.getDouble(" + constant + ")";
-		}
-		if ("java.lang.String".equals(typeName)) {
-			return "extras_.getString(" + constant + ")";
-		}
-		return "(" + typeName + ") extras_.get(" + constant + ")";
 	}
 
 	private void appendBeanHolderMethods(StringBuilder out) {

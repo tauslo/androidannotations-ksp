@@ -26,6 +26,8 @@ final class AnnotationNames {
 	static final String AFTER_VIEWS = "org.androidannotations.annotations.AfterViews";
 	static final String BACKGROUND = "org.androidannotations.annotations.Background";
 	static final String UI_THREAD = "org.androidannotations.annotations.UiThread";
+	static final String AFTER_EXTRAS = "org.androidannotations.annotations.AfterExtras";
+	static final String PARCEL_ANNOTATION = "org.parceler.Parcel";
 	static final String JVM_FIELD = "kotlin.jvm.JvmField";
 
 	static final int RES_DEFAULT = -1;

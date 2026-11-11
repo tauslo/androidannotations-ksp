@@ -1,8 +1,10 @@
 package org.androidannotations.gradle.activity
 
 import android.app.Activity
+import android.graphics.Point
 import android.widget.Button
 import android.widget.TextView
+import org.androidannotations.annotations.AfterExtras
 import org.androidannotations.annotations.AfterViews
 import org.androidannotations.annotations.Background
 import org.androidannotations.annotations.EActivity
@@ -25,12 +27,36 @@ class HelloAndroidActivity : Activity() {
     @Extra
     protected var myIntExtra: Int = 0
 
+    @Extra
+    protected var myStringExtra: String? = null
+
+    @Extra
+    protected var myIntsExtra: IntArray? = null
+
+    @Extra
+    protected var myPointExtra: Point? = null
+
+    @Extra
+    protected var myDateExtra: Date? = null
+
+    @Extra
+    protected var myPointsListExtra: ArrayList<Point>? = null
+
     @AfterViews
     protected fun afterViews() {
         computeDateBackground()
         findViewById<Button>(R.id.launchButton).setOnClickListener {
-            HelloAndroidActivity_.intent(this).myIntExtra(42).start()
+            HelloAndroidActivity_.intent(this)
+                .myIntExtra(42)
+                .myStringExtra("hello from IntentBuilder_")
+                .myPointExtra(Point(3, 7))
+                .start()
         }
+    }
+
+    @AfterExtras
+    protected fun onExtrasInjected() {
+        // Runs after the extras above were restored (even when the intent bundle is empty).
     }
 
     @Background

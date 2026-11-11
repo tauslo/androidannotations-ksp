@@ -41,20 +41,30 @@ final class MvpModel {
 		final boolean jvmField;
 		final int resId;
 		final String resName;
-		/** Cast applied to the IntentBuilder_ fluent argument for @Extra (null = none). */
-		final String extraCast;
+		/** @Extra only: Java canonical type incl. generic args (null for non-extra injections). */
+		final String extraFullType;
+		/** @Extra only: write-side template for the IntentBuilder_ fluent arg, {arg} = parameter name. */
+		final String extraWriteExpr;
+		/** @Extra only: read-side template for Bundle restore, {key} = constant name. */
+		final String extraReadExpr;
+		/** @Extra only: restore needs @SuppressWarnings("unchecked") (generic cast). */
+		final boolean extraUnchecked;
 
 		FieldInjection(String propertyName, String typeName, boolean jvmField, int resId, String resName) {
-			this(propertyName, typeName, jvmField, resId, resName, null);
+			this(propertyName, typeName, jvmField, resId, resName, null, "{arg}", "(java.lang.Object) extras_.get({key})", false);
 		}
 
-		FieldInjection(String propertyName, String typeName, boolean jvmField, int resId, String resName, String extraCast) {
+		FieldInjection(String propertyName, String typeName, boolean jvmField, int resId, String resName,
+				String extraFullType, String extraWriteExpr, String extraReadExpr, boolean extraUnchecked) {
 			this.propertyName = propertyName;
 			this.typeName = typeName;
 			this.jvmField = jvmField;
 			this.resId = resId;
 			this.resName = resName;
-			this.extraCast = extraCast;
+			this.extraFullType = extraFullType;
+			this.extraWriteExpr = extraWriteExpr;
+			this.extraReadExpr = extraReadExpr;
+			this.extraUnchecked = extraUnchecked;
 		}
 	}
 
@@ -87,6 +97,7 @@ final class MvpModel {
 	final List<FieldInjection> stringRes = new ArrayList<>();
 	final List<FieldInjection> extras = new ArrayList<>();
 	final List<String> afterViews = new ArrayList<>();
+	final List<String> afterExtras = new ArrayList<>();
 	final List<MethodInfo> backgrounds = new ArrayList<>();
 	final List<MethodInfo> uiThreads = new ArrayList<>();
 

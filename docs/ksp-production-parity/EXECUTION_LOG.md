@@ -165,3 +165,42 @@
 ### Next
 1. 深化 `@Extra`: Bundle restore 全类型（对照 APT `BundleHelper`）+ 预留 `@AfterExtras` hook
 2. P0a 剩余项: R 资源缺失 warn/fail、流水线向 handler/generate 包拆分、父类注解收集、嵌套 `@EBean`、未实现注解告警；之后是 EBean scopes + `@Bean` 注入（BLOCKER）
+
+## Session 2026-11-11 — P0a: @Extra Bundle restore all types + @AfterExtras
+
+- **Agent**: Codex
+- **Goal slice**: P0a — Deepen `@Extra`: Bundle restore all types (mirrors APT `BundleHelper`) + `@AfterExtras` hook
+- **Git**: branch=`ksp/main` HEAD=`d3865657` remote=`ksp/main` ahead 1（local only, not pushed）
+- **Status**: done
+
+### Done
+- @Extra restore all types per APT `BundleHelper.METHOD_SUFFIX_BY_TYPE_NAME`: primitives/primitive arrays/String/CharSequence/Bundle → typed getters; Parcelable subtype → `getParcelable` (no cast); Serializable → `(T) getSerializable`; `ArrayList<Parcelable>` → `getParcelableArrayList`; other ArrayLists → `(T) getSerializable` + `@SuppressWarnings("unchecked")`; Parcelable array → API `BundleHelper.getParcelableArray(bundle, key, T[].class)`; SparseArray → `getSparseParcelableArray`; `@org.parceler.Parcel`-annotated or LinkedList/LinkedHashMap/SortedMap/SortedSet/LinkedHashSet → `Parcels.unwrap(getParcelable(...))`
+- Write side (IntentBuilder_ fluent) per APT `IntentBuilder.getSuperPutExtraInvocation`: primitives/String/CharSequence no cast; Parcelable → `(android.os.Parcelable)`; parceler types → `Parcels.wrap(arg)`; else Serializable → `(java.io.Serializable)`
+- `injectExtras_()` restructured to APT shape: `if (extras_ != null) {…}` instead of early return, so `@AfterExtras` methods run even when the bundle is empty（matches APT test semantics）; called from onCreate and setIntent
+- `@AfterExtras` support: no-arg void methods on `@EActivity` collected and invoked at end of `injectExtras_()`
+- Type-name mapping: kotlin.IntArray/LongArray/… → int[]/long[]/…; kotlin.collections.ArrayList/List/Map/Set typealiases → java.util.*; new `fullTypeNameWithArgs` keeps generic args（e.g. `java.util.ArrayList<android.graphics.Point>`）
+- KSP2 API note: `KSType.getArguments()` returns `List<KSTypeArgument>` (no `KSTypeProjection` in 2.1.10)
+- examples/kotlin: added @Extra String / IntArray / Point (Parcelable) / Date (Serializable) / ArrayList<Point> + `@AfterExtras onExtrasInjected()`; button chain now runs `.myIntExtra(42).myStringExtra("…").myPointExtra(Point(3, 7)).start()`
+
+### Changed paths
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/AndroidAnnotationsSymbolProcessor.java
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/KspAnnotationUtils.java
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/MvpJavaGenerator.java
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/MvpModel.java
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/AnnotationNames.java
+- examples/kotlin/src/main/kotlin/org/androidannotations/gradle/activity/HelloAndroidActivity.kt
+
+### Verify
+- [x] mvn install ksp module（MVN_EXIT=0）
+- [x] examples/kotlin `kspDebugKotlin` — generated restore: getInt / getString / getIntArray / getParcelable / `(java.util.Date) getSerializable` / `getParcelableArrayList`; write-side casts match APT; `onExtrasInjected()` emitted after the if-block
+- [x] examples/kotlin `clean assembleDebug` BUILD SUCCESSFUL
+
+### Deviations from APT（intentional）
+- CharSequence extra: no cast (APT would cast to Serializable → runtime CCE risk); uses typed `extra(String, CharSequence)` overload
+- Non-Serializable, non-Parcelable custom types: left uncast so the builder method fails to compile early (APT emits a broken Serializable cast that only fails at runtime)
+
+### Blockers
+- none
+
+### Next
+1. P0a 剩余项: R 资源缺失 warn/fail、流水线向 handler/generate 包拆分、父类注解收集、嵌套 `@EBean`、未实现注解告警；之后是 EBean scopes + `@Bean` 注入（BLOCKER）
