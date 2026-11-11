@@ -60,6 +60,7 @@ public final class MvpHandler {
 		String qualifiedName = classDeclaration.getQualifiedName() != null
 				? classDeclaration.getQualifiedName().asString()
 				: simpleName;
+		boolean nested = !qualifiedName.equals(packageName.isEmpty() ? simpleName : packageName + "." + simpleName);
 
 		KSAnnotation eActivity = KspAnnotationUtils.findAnnotation(classDeclaration.getAnnotations(), AnnotationNames.E_ACTIVITY);
 		KSAnnotation eBean = KspAnnotationUtils.findAnnotation(classDeclaration.getAnnotations(), AnnotationNames.E_BEAN);
@@ -77,7 +78,7 @@ public final class MvpHandler {
 			kind = MvpModel.Kind.BEAN;
 		}
 
-		MvpModel model = new MvpModel(kind, packageName, simpleName, qualifiedName, classSuffix, layoutId, layoutResName);
+		MvpModel model = new MvpModel(kind, packageName, simpleName, qualifiedName, classSuffix, layoutId, layoutResName, nested);
 
 		collectMembers(resolver, classDeclaration.getDeclarations(), model);
 		for (KSClassDeclaration ancestor : superclasses(classDeclaration)) {

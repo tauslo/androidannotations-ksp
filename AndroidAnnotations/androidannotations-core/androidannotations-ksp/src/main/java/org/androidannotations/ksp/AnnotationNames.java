@@ -32,6 +32,18 @@ public final class AnnotationNames {
 
 	public static final int RES_DEFAULT = -1;
 
+	/** AA annotations recognized by the KSP processor but not implemented yet; their use is reported with a warning. */
+	public static final String[] RECOGNIZED_NOT_IMPLEMENTED = {
+			"org.androidannotations.annotations.Bean", // P0a blocker
+			"org.androidannotations.annotations.AfterInject", // P0a blocker
+			"org.androidannotations.annotations.EFragment", // P0b
+			"org.androidannotations.annotations.FragmentArg", // P0b
+			"org.androidannotations.annotations.Click", // P0b
+			"org.androidannotations.annotations.InstanceState", // P0b
+			"org.androidannotations.annotations.OptionsMenu", // P0b
+			"org.androidannotations.annotations.sharedpreferences.SharedPref" // P1
+	};
+
 	private AnnotationNames() {
 	}
 }

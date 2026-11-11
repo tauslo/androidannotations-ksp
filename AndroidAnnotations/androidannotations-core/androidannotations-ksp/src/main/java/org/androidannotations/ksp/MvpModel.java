@@ -100,8 +100,12 @@ public final class MvpModel {
 	public final List<String> afterExtras = new ArrayList<>();
 	public final List<MethodInfo> backgrounds = new ArrayList<>();
 	public final List<MethodInfo> uiThreads = new ArrayList<>();
+	/** True when the generated class is a static nested class inside its enclosing annotated class's generated class. */
+	public final boolean nested;
+	/** Directly nested annotated models, inlined into this model's generated source (set by the processor). */
+	public final List<MvpModel> nestedModels = new ArrayList<>();
 
-	public MvpModel(Kind kind, String packageName, String simpleName, String qualifiedName, String classSuffix, int layoutId, String layoutResName) {
+	public MvpModel(Kind kind, String packageName, String simpleName, String qualifiedName, String classSuffix, int layoutId, String layoutResName, boolean nested) {
 		this.kind = kind;
 		this.packageName = packageName;
 		this.simpleName = simpleName;
@@ -109,6 +113,7 @@ public final class MvpModel {
 		this.classSuffix = classSuffix;
 		this.layoutId = layoutId;
 		this.layoutResName = layoutResName;
+		this.nested = nested;
 	}
 
 	public String generatedSimpleName() {

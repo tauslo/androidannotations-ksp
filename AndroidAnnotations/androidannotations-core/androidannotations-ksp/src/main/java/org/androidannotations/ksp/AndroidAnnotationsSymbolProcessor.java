@@ -80,7 +80,11 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 
 		MvpHandler handler = new MvpHandler();
 
+		warnUnimplemented(resolver);
+
 		int generated = 0;
+		List<MvpModel> models = new ArrayList<>();
+		List<KSClassDeclaration> origins = new ArrayList<>();
 		for (KSClassDeclaration classDeclaration : classes) {
 			if (classDeclaration.getClassKind() != ClassKind.CLASS) {
 				continue;
@@ -88,7 +92,56 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 			if (classDeclaration.getModifiers().contains(Modifier.ABSTRACT)) {
 				continue;
 			}
-			MvpModel model = handler.build(resolver, classDeclaration, classSuffix);
+			models.add(handler.build(resolver, classDeclaration, classSuffix));
+			origins.add(classDeclaration);
+		}
+
+		// Attach nested annotated models to their enclosing generated model (APT parity: static nested class).
+		for (int i = 0; i < models.size(); i++) {
+			MvpModel model = models.get(i);
+			if (!model.nested) {
+				continue;
+			}
+			KSClassDeclaration classDeclaration = origins.get(i);
+			Set<Modifier> modifiers = classDeclaration.getModifiers();
+			// Kotlin nested classes are static unless declared inner; Java sources expose the static keyword as JAVA_STATIC.
+			boolean isStatic = modifiers.contains(Modifier.JAVA_STATIC) || !modifiers.contains(Modifier.INNER);
+			if (!isStatic || modifiers.contains(Modifier.PRIVATE) || modifiers.contains(Modifier.FINAL)) {
+				logger.error("AndroidAnnotations KSP: nested " + model.qualifiedName + " must be a static non-private, non-final class (APT parity)", classDeclaration);
+				models.set(i, null);
+				continue;
+			}
+			String outerQualifiedName = model.qualifiedName.substring(0, model.qualifiedName.lastIndexOf('.'));
+			MvpModel outer = null;
+			for (int j = 0; j < models.size(); j++) {
+				if (j != i && models.get(j) != null && models.get(j).qualifiedName.equals(outerQualifiedName)) {
+					outer = models.get(j);
+					break;
+				}
+			}
+			if (outer == null) {
+				logger.error("AndroidAnnotations KSP: enclosing class " + outerQualifiedName + " of nested " + model.qualifiedName
+						+ " must be a generated AndroidAnnotations class (annotated, non-abstract)", classDeclaration);
+				models.set(i, null);
+				continue;
+			}
+			List<String> nestedResourceErrors = validateResources(model, environment.getRClassIndex());
+			if (!nestedResourceErrors.isEmpty()) {
+				for (String error : nestedResourceErrors) {
+					logger.error("AndroidAnnotations KSP: " + error + " in " + model.qualifiedName, classDeclaration);
+				}
+				models.set(i, null);
+				continue;
+			}
+			outer.nestedModels.add(model);
+		}
+
+		for (int i = 0; i < models.size(); i++) {
+			MvpModel model = models.get(i);
+			if (model == null || model.nested) {
+				continue;
+			}
+			KSClassDeclaration classDeclaration = origins.get(i);
 			String fqcn = model.generatedQualifiedName();
 			if (!written.add(fqcn)) {
 				continue;
@@ -190,6 +243,19 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 			}
 		}
 		return result;
+	}
+
+	/** Warns on AA annotations that are recognized but not implemented yet (one warning per annotation type). */
+	private void warnUnimplemented(Resolver resolver) {
+		for (String annotationName : AnnotationNames.RECOGNIZED_NOT_IMPLEMENTED) {
+			List<KSAnnotated> symbols = SequencesKt.toList(resolver.getSymbolsWithAnnotation(annotationName, false));
+			if (!symbols.isEmpty()) {
+				KSAnnotated first = symbols.get(0);
+				logger.warn("AndroidAnnotations KSP: @" + annotationName.substring(annotationName.lastIndexOf('.') + 1)
+						+ " is recognized but not implemented yet; ignoring " + symbols.size() + " annotated element(s)",
+						first instanceof KSNode ? (KSNode) first : null);
+			}
+		}
 	}
 
 	private void writeJavaFile(MvpModel model, String source, KSClassDeclaration origin) {

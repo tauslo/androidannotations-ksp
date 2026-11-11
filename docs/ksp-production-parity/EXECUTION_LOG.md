@@ -282,3 +282,42 @@
 2. Then BLOCKERs: EBean scopes (Default/Activity/Fragment/Singleton, mirrors `EBeanHolder.createFactoryMethod`) + rebind for Default scope; `@Bean` injection via `Generated_.getInstance_(…)` + BeanHolder map + `@AfterInject`; root context wiring as needed
 3. Optional P0a: `@ViewById` method-injection form; Background/UiThread ordering notes
 4. P0a exit acceptance: demo `intent(this)…start()` ✅ in code; `@Bean` EnhancedBean injection demo ❌ (still needed); APT vs KSP public-API spot-check (extraKeyConstant parity done this session — good data point); mark P0a done here with Next = first P0b item
+
+## Session 2026-11-11 — nested @EBean static nesting + recognized-but-unimplemented annotation warnings
+
+- **Agent**: Codex
+- **Goal slice**: P0a — nested `@EBean` → static nested class inside outer `*_`; warn on AA annotations that are recognized but not implemented yet (prev session Next 1)
+- **Git**: branch=`ksp/main` HEAD=`1e5d060c` remote=`ksp/main` ahead 5（local only, not pushed）
+- **Status**: done
+
+### Done
+- Nested `@EBean` → static nested class (APT `BaseGeneratedClassHolder` parity): `MvpModel` +`nested` flag & `nestedModels`; `MvpHandler.build` derives `nested` from qualifiedName vs package.simple; processor is now 3-pass — build all models → attach each nested model to its enclosing generated model (validating static non-private non-final, enclosing must be a generated AA class, per-nested resource validation) → generate roots only
+- KSP quirk: no `Modifier.STATIC` in KSP 1.0.31 — static detection = `JAVA_STATIC || !INNER` (Kotlin nested classes are static unless `inner`)
+- Generator: `generateBean` refactored to `appendBeanClass(out, model, nested)`; new `generateNestedBean` (no package line) + `appendNestedClasses` inlines children re-indented one tab before the outer closing brace — arbitrary nesting depth via recursion; import-safe because the generator emits fully-qualified names only
+- Warnings: `AnnotationNames.RECOGNIZED_NOT_IMPLEMENTED` = {Bean, AfterInject, EFragment, FragmentArg, Click, InstanceState, OptionsMenu, SharedPref} (roadmap comments); processor `warnUnimplemented(resolver)` — one warn per annotation type with element count + first location
+- Demo: nested `@EBean class Greeting` inside `HelloAndroidActivity` (`@StringRes(resName="hello") var text`) + usage in `afterViews()` via `HelloAndroidActivity_.Greeting_.getInstance_(this)`
+
+### Changed paths
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/MvpModel.java (nested flag + nestedModels)
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/handler/MvpHandler.java (nested derivation, ctor arg)
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/generate/MvpJavaGenerator.java (appendBeanClass / generateNestedBean / appendNestedClasses)
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/AnnotationNames.java (RECOGNIZED_NOT_IMPLEMENTED)
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/AndroidAnnotationsSymbolProcessor.java (3-pass loop + warnUnimplemented)
+- examples/kotlin/src/main/kotlin/org/androidannotations/gradle/activity/HelloAndroidActivity.kt (nested @EBean Greeting + usage)
+- docs/ksp-production-parity/CHECKLIST_P0a.md
+
+### Verify
+- [x] mvn install ksp module (MVN_EXIT=0) — first attempt failed on `Modifier.STATIC` (absent in KSP 1.0.31) + stray `return` in void method; fixed, rebuilt clean
+- [x] examples/kotlin `kspDebugKotlin`: generated 2 class(es); `HelloAndroidActivity_` contains `public static final class Greeting_ extends Greeting implements ...OnViewChangedListener` nested one tab deeper with both `getInstance_(Context)` overloads; no top-level `Greeting_.java` in the generated dir
+- [x] Nested bean injection uses field-ref resource: `setText(resources_.getString(org.androidannotations.gradle.R.string.hello))`; 0 raw ints
+- [x] Warning path (temporary `@Bean` probe, then reverted): `w: [ksp] HelloAndroidActivity.kt:51: AndroidAnnotations KSP: @Bean is recognized but not implemented yet; ignoring 1 annotated element(s)`; clean regen confirmed after revert
+- [x] examples/kotlin `clean assembleDebug` BUILD SUCCESSFUL
+
+### Blockers
+- none
+
+### Next
+1. BLOCKER: EBean scopes (Default/Activity/Fragment/Singleton, mirrors `EBeanHolder.createFactoryMethod`) + rebind for Default scope
+2. BLOCKER: `@Bean` injection via `Generated_.getInstance_(…)` + BeanHolder map; `@AfterInject`; root context wiring as needed
+3. Optional P0a: `@ViewById` method-injection form; Background/UiThread ordering notes
+4. P0a exit acceptance: demo `intent(this)…start()` ✅ in code; `@Bean` EnhancedBean injection demo ❌ (still needed); APT vs KSP public-API spot-check; mark P0a done here with Next = first P0b item

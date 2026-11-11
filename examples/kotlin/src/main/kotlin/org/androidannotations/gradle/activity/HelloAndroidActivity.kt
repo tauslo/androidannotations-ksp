@@ -7,6 +7,7 @@ import org.androidannotations.annotations.AfterExtras
 import org.androidannotations.annotations.AfterViews
 import org.androidannotations.annotations.Background
 import org.androidannotations.annotations.EActivity
+import org.androidannotations.annotations.EBean
 import org.androidannotations.annotations.Extra
 import org.androidannotations.annotations.UiThread
 import org.androidannotations.annotations.ViewById
@@ -47,6 +48,8 @@ class HelloAndroidActivity : HelloAndroidBase() {
     @AfterViews
     protected fun afterViews() {
         computeDateBackground()
+        val greeting = HelloAndroidActivity_.Greeting_.getInstance_(this)
+        android.util.Log.d("HelloAndroid", "nested @EBean text: " + greeting.message())
         launchButton.setOnClickListener {
             HelloAndroidActivity_.intent(this)
                 .myIntExtra(42)
@@ -73,5 +76,15 @@ class HelloAndroidActivity : HelloAndroidBase() {
     @UiThread
     protected fun updateHelloTextView(helloMessage: String) {
         helloTextView.text = helloMessage
+    }
+
+    /** Nested @EBean: generated as a static nested class inside HelloAndroidActivity_ (APT parity). */
+    @EBean
+    class Greeting {
+
+        @StringRes(resName = "hello")
+        var text: String? = null
+
+        fun message(): String = text ?: ""
     }
 }

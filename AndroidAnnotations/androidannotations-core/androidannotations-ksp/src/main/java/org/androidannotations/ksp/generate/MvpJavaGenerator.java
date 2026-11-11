@@ -156,6 +156,7 @@ public final class MvpJavaGenerator {
 		appendUiThreadMethods(out, model);
 		appendIntentBuilder(out, model);
 
+		appendNestedClasses(out, model);
 		out.append("}\n");
 		return out.toString();
 	}
@@ -163,9 +164,27 @@ public final class MvpJavaGenerator {
 	private String generateBean(MvpModel model) {
 		StringBuilder out = new StringBuilder();
 		appendHeader(out, model);
-		out.append("public final class ").append(model.generatedSimpleName())
-				.append(" extends ").append(model.simpleName)
-				.append(" implements org.androidannotations.api.view.OnViewChangedListener {\n\n");
+		appendBeanClass(out, model, false);
+		return out.toString();
+	}
+
+	/** Generates a bean as a static nested class (no package line), mirroring APT BaseGeneratedClassHolder. */
+	public String generateNestedBean(MvpModel model) {
+		StringBuilder out = new StringBuilder();
+		appendBeanClass(out, model, true);
+		return out.toString();
+	}
+
+	private void appendBeanClass(StringBuilder out, MvpModel model, boolean nested) {
+		if (nested) {
+			out.append("public static final class ").append(model.generatedSimpleName())
+					.append(" extends ").append(model.simpleName)
+					.append(" implements org.androidannotations.api.view.OnViewChangedListener {\n\n");
+		} else {
+			out.append("public final class ").append(model.generatedSimpleName())
+					.append(" extends ").append(model.simpleName)
+					.append(" implements org.androidannotations.api.view.OnViewChangedListener {\n\n");
+		}
 		out.append("\tprivate android.content.Context context_;\n");
 		out.append("\tprivate Object rootFragment_;\n\n");
 
@@ -213,8 +232,8 @@ public final class MvpJavaGenerator {
 		appendBackgroundMethods(out, model);
 		appendUiThreadMethods(out, model);
 
+		appendNestedClasses(out, model);
 		out.append("}\n");
-		return out.toString();
 	}
 
 	private void appendHeader(StringBuilder out, MvpModel model) {
@@ -278,6 +297,21 @@ public final class MvpJavaGenerator {
 		out.append("\t\t\treturn new org.androidannotations.api.builder.PostActivityStarter(context);\n");
 		out.append("\t\t}\n");
 		out.append("\t}\n");
+	}
+
+	/** Inlines directly nested annotated models as static nested classes (APT parity), re-indented one level. */
+	private void appendNestedClasses(StringBuilder out, MvpModel model) {
+		for (MvpModel nested : model.nestedModels) {
+			out.append('\n');
+			String source = generateNestedBean(nested);
+			for (String line : source.split("\n")) {
+				if (!line.isEmpty()) {
+					out.append('\t').append(line).append('\n');
+				} else {
+					out.append('\n');
+				}
+			}
+		}
 	}
 
 	private void appendBeanHolderMethods(StringBuilder out) {
