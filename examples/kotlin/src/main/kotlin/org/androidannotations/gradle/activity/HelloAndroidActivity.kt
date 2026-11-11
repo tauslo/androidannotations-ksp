@@ -50,6 +50,9 @@ class HelloAndroidActivity : HelloAndroidBase() {
         computeDateBackground()
         val greeting = HelloAndroidActivity_.Greeting_.getInstance_(this)
         android.util.Log.d("HelloAndroid", "nested @EBean text: " + greeting.message())
+        val counter = HelloAndroidActivity_.Counter_.getInstance_(this)
+        val deduped = counter === HelloAndroidActivity_.Counter_.getInstance_(this)
+        android.util.Log.d("HelloAndroid", "activity-scoped @EBean count: " + counter.bump() + ", BeanHolder dedup: " + deduped)
         launchButton.setOnClickListener {
             HelloAndroidActivity_.intent(this)
                 .myIntExtra(42)
@@ -86,5 +89,17 @@ class HelloAndroidActivity : HelloAndroidBase() {
         var text: String? = null
 
         fun message(): String = text ?: ""
+    }
+
+    /** Nested @EBean with Activity scope: getInstance_ performs a BeanHolder lookup on the generated activity (APT parity). */
+    @EBean(scope = EBean.Scope.Activity)
+    class Counter {
+
+        var count: Int = 0
+
+        fun bump(): Int {
+            count++
+            return count
+        }
     }
 }

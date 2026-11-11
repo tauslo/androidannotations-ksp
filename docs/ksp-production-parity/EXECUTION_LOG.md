@@ -321,3 +321,41 @@
 2. BLOCKER: `@Bean` injection via `Generated_.getInstance_(…)` + BeanHolder map; `@AfterInject`; root context wiring as needed
 3. Optional P0a: `@ViewById` method-injection form; Background/UiThread ordering notes
 4. P0a exit acceptance: demo `intent(this)…start()` ✅ in code; `@Bean` EnhancedBean injection demo ❌ (still needed); APT vs KSP public-API spot-check; mark P0a done here with Next = first P0b item
+## Session 2026-11-11 — EBean scopes (Default/Activity/Fragment/Singleton) + rebind for Default scope
+
+- **Agent**: Codex
+- **Goal slice**: P0a — `@EBean` scope-aware factory methods mirroring APT `EBeanHolder.createFactoryMethod`, plus `rebind` for the Default scope (prev session Next 1)
+- **Git**: branch=`ksp/main` HEAD=`f472bf18` remote=`ksp/main` ahead 6（local only, not pushed）
+- **Status**: done
+
+### Done
+- `MvpModel` +`scope` field (Default/Activity/Fragment/Singleton); `MvpHandler.build` reads the `scope` attribute of `@EBean` via new `KspAnnotationUtils.enumArg` (KSP exposes enum-typed args as a KSTypeReference to the enum entry; toString fallback for other representations)
+- `MvpJavaGenerator.appendBeanClass` now branches on scope, mirroring APT `EBeanHolder.createFactoryMethod` + `EBeanHandler.process`:
+  - Default: ctors call `init_()`; both `getInstance_(Context)` and `getInstance_(Context, Object)` overloads; new `rebind(Context)` method (APT only generates it for the Default scope)
+  - Activity: ctors without `init_()`; single-arg `getInstance_` with BeanHolder lookup (getBean → miss: new + putBean + init_) and fallthrough create+init_; no 2-arg overload
+  - Fragment: ctors without `init_()`; simple single-arg create+init_; 2-arg with rootFragment BeanHolder lookup + fallthrough `new(context, rootFragment)`
+  - Singleton: ctors without `init_()`; `private static X instance_` field; `getInstance_` creates via `context.getApplicationContext()` inside an `OnViewChangedNotifier.replaceNotifier(null)` guard and restores the previous notifier
+- New helper `appendBeanHolderLookup` mirrors APT `requestInstanceFromBeanHolder`; unknown scope values fall back to Default emission
+- Demo: nested `@EBean(scope = EBean.Scope.Activity) class Counter` in HelloAndroidActivity.kt; afterViews logs `Counter_.getInstance_(this)` plus a BeanHolder dedup check (`counter === second getInstance_ call`) proving the holder branch returns the same instance
+
+### Changed paths
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/MvpModel.java (scope field + ctor arg)
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/KspAnnotationUtils.java (enumArg)
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/handler/MvpHandler.java (read scope from @EBean)
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/generate/MvpJavaGenerator.java (scope-aware appendBeanClass + appendBeanHolderLookup)
+- examples/kotlin/src/main/kotlin/org/androidannotations/gradle/activity/HelloAndroidActivity.kt (nested Activity-scoped Counter bean + usage in afterViews)
+- docs/ksp-production-parity/CHECKLIST_P0a.md
+
+### Verify
+- [x] mvn install ksp module (MVN_EXIT=0)
+- [x] examples/kotlin `kspDebugKotlin`: generated 2 class(es); `Greeting_` (Default): ctors call `init_()`, both overloads, `rebind(Context)` present; `Counter_` (Activity): ctors without `init_()`, single `getInstance_` with BeanHolder lookup + fallthrough, no 2-arg overload, no rebind — matches APT shapes
+- [x] Top-level `EnhancedBean_` (Default) has `rebind`
+- [x] examples/kotlin `clean assembleDebug` BUILD SUCCESSFUL
+
+### Blockers
+- none
+
+### Next
+1. BLOCKER: `@Bean` injection via `Generated_.getInstance_(…)` + BeanHolder map; `@AfterInject`; root context wiring as needed
+2. Optional P0a: `@ViewById` method-injection form; Background/UiThread ordering notes
+3. P0a exit acceptance: demo `intent(this)…start()` ✅ in code; `@Bean` EnhancedBean injection demo ❌ (still needed); APT vs KSP public-API spot-check; mark P0a done here with Next = first P0b item

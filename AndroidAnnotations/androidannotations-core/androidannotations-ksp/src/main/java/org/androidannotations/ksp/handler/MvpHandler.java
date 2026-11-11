@@ -68,17 +68,19 @@ public final class MvpHandler {
 		MvpModel.Kind kind;
 		int layoutId = AnnotationNames.RES_DEFAULT;
 		String layoutResName = "";
+		String scope = "Default";
 		if (eActivity != null) {
 			kind = MvpModel.Kind.ACTIVITY;
 			layoutId = KspAnnotationUtils.intArg(eActivity, "value", AnnotationNames.RES_DEFAULT);
 			layoutResName = KspAnnotationUtils.stringArg(eActivity, "resName", "");
 		} else if (eBean != null) {
 			kind = MvpModel.Kind.BEAN;
+			scope = KspAnnotationUtils.enumArg(eBean, "scope", "Default");
 		} else {
 			kind = MvpModel.Kind.BEAN;
 		}
 
-		MvpModel model = new MvpModel(kind, packageName, simpleName, qualifiedName, classSuffix, layoutId, layoutResName, nested);
+		MvpModel model = new MvpModel(kind, packageName, simpleName, qualifiedName, classSuffix, layoutId, layoutResName, nested, scope);
 
 		collectMembers(resolver, classDeclaration.getDeclarations(), model);
 		for (KSClassDeclaration ancestor : superclasses(classDeclaration)) {

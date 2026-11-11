@@ -104,8 +104,10 @@ public final class MvpModel {
 	public final boolean nested;
 	/** Directly nested annotated models, inlined into this model's generated source (set by the processor). */
 	public final List<MvpModel> nestedModels = new ArrayList<>();
+	/** @EBean scope name: Default / Activity / Fragment / Singleton ("Default" when unspecified). */
+	public final String scope;
 
-	public MvpModel(Kind kind, String packageName, String simpleName, String qualifiedName, String classSuffix, int layoutId, String layoutResName, boolean nested) {
+	public MvpModel(Kind kind, String packageName, String simpleName, String qualifiedName, String classSuffix, int layoutId, String layoutResName, boolean nested, String scope) {
 		this.kind = kind;
 		this.packageName = packageName;
 		this.simpleName = simpleName;
@@ -114,6 +116,7 @@ public final class MvpModel {
 		this.layoutId = layoutId;
 		this.layoutResName = layoutResName;
 		this.nested = nested;
+		this.scope = scope;
 	}
 
 	public String generatedSimpleName() {

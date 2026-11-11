@@ -32,8 +32,8 @@
 
 ## Deepen `@EBean` / `@Bean` / `@AfterInject`
 
-- [ ] **BLOCKER** EBean scopes: Default / Activity / Fragment / Singleton（对照 `EBeanHolder.createFactoryMethod`）
-- [ ] `rebind` for Default scope if APT has it
+- [x] **BLOCKER** EBean scopes: Default / Activity / Fragment / Singleton（对照 `EBeanHolder.createFactoryMethod`）
+- [x] `rebind` for Default scope if APT has it
 - [ ] **BLOCKER** `@Bean` injection calling `Generated_.getInstance_(…)` + BeanHolder map
 - [ ] `@AfterInject` invoke after injection block
 - [ ] Root context / root fragment wiring as needed for Fragment-scoped beans

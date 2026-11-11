@@ -185,27 +185,84 @@ public final class MvpJavaGenerator {
 					.append(" extends ").append(model.simpleName)
 					.append(" implements org.androidannotations.api.view.OnViewChangedListener {\n\n");
 		}
+		String generated = model.generatedSimpleName();
+		String scope = model.scope;
+		if (!"Activity".equals(scope) && !"Fragment".equals(scope) && !"Singleton".equals(scope)) {
+			scope = "Default";
+		}
+		boolean defaultScope = "Default".equals(scope);
+
 		out.append("\tprivate android.content.Context context_;\n");
 		out.append("\tprivate Object rootFragment_;\n\n");
+		if ("Singleton".equals(scope)) {
+			out.append("\tprivate static ").append(generated).append(" instance_;\n\n");
+		}
 
-		out.append("\tprivate ").append(model.generatedSimpleName()).append("(android.content.Context context) {\n");
+		// APT parity (EBeanHandler.process): constructors call init_() only for the Default scope.
+		out.append("\tprivate ").append(generated).append("(android.content.Context context) {\n");
 		out.append("\t\tthis.context_ = context;\n");
-		out.append("\t\tinit_();\n");
+		if (defaultScope) {
+			out.append("\t\tinit_();\n");
+		}
 		out.append("\t}\n\n");
 
-		out.append("\tprivate ").append(model.generatedSimpleName()).append("(android.content.Context context, Object rootFragment) {\n");
+		out.append("\tprivate ").append(generated).append("(android.content.Context context, Object rootFragment) {\n");
 		out.append("\t\tthis.context_ = context;\n");
 		out.append("\t\tthis.rootFragment_ = rootFragment;\n");
-		out.append("\t\tinit_();\n");
+		if (defaultScope) {
+			out.append("\t\tinit_();\n");
+		}
 		out.append("\t}\n\n");
 
-		out.append("\tpublic static ").append(model.generatedSimpleName()).append(" getInstance_(android.content.Context context) {\n");
-		out.append("\t\treturn new ").append(model.generatedSimpleName()).append("(context);\n");
-		out.append("\t}\n\n");
+		// APT parity (EBeanHolder.createFactoryMethod): factory methods per @EBean scope.
+		switch (scope) {
+		case "Activity":
+			out.append("\tpublic static ").append(generated).append(" getInstance_(android.content.Context context) {\n");
+			appendBeanHolderLookup(out, generated, "context", "context");
+			out.append("\t\t").append(generated).append(" bean = new ").append(generated).append("(context);\n");
+			out.append("\t\tbean.init_();\n");
+			out.append("\t\treturn bean;\n");
+			out.append("\t}\n\n");
+			break;
+		case "Fragment":
+			out.append("\tpublic static ").append(generated).append(" getInstance_(android.content.Context context) {\n");
+			out.append("\t\t").append(generated).append(" bean = new ").append(generated).append("(context);\n");
+			out.append("\t\tbean.init_();\n");
+			out.append("\t\treturn bean;\n");
+			out.append("\t}\n\n");
+			out.append("\tpublic static ").append(generated).append(" getInstance_(android.content.Context context, Object rootFragment) {\n");
+			appendBeanHolderLookup(out, generated, "rootFragment", "context, rootFragment");
+			out.append("\t\treturn new ").append(generated).append("(context, rootFragment);\n");
+			out.append("\t}\n\n");
+			break;
+		case "Singleton":
+			out.append("\tpublic static ").append(generated).append(" getInstance_(android.content.Context context) {\n");
+			out.append("\t\tif (instance_ == null) {\n");
+			out.append("\t\t\torg.androidannotations.api.view.OnViewChangedNotifier previousNotifier = OnViewChangedNotifier.replaceNotifier(null);\n");
+			out.append("\t\t\tinstance_ = new ").append(generated).append("(context.getApplicationContext());\n");
+			out.append("\t\t\tinstance_.init_();\n");
+			out.append("\t\t\tOnViewChangedNotifier.replaceNotifier(previousNotifier);\n");
+			out.append("\t\t}\n");
+			out.append("\t\treturn instance_;\n");
+			out.append("\t}\n\n");
+			break;
+		default:
+			out.append("\tpublic static ").append(generated).append(" getInstance_(android.content.Context context) {\n");
+			out.append("\t\treturn new ").append(generated).append("(context);\n");
+			out.append("\t}\n\n");
+			out.append("\tpublic static ").append(generated).append(" getInstance_(android.content.Context context, Object rootFragment) {\n");
+			out.append("\t\treturn new ").append(generated).append("(context, rootFragment);\n");
+			out.append("\t}\n\n");
+			break;
+		}
 
-		out.append("\tpublic static ").append(model.generatedSimpleName()).append(" getInstance_(android.content.Context context, Object rootFragment) {\n");
-		out.append("\t\treturn new ").append(model.generatedSimpleName()).append("(context, rootFragment);\n");
-		out.append("\t}\n\n");
+		if (defaultScope) {
+			// APT parity: rebind() is only generated for the Default scope.
+			out.append("\tpublic void rebind(android.content.Context context) {\n");
+			out.append("\t\tthis.context_ = context;\n");
+			out.append("\t\tinit_();\n");
+			out.append("\t}\n\n");
+		}
 
 		out.append("\tprivate void init_() {\n");
 		if (!model.stringRes.isEmpty()) {
@@ -312,6 +369,20 @@ public final class MvpJavaGenerator {
 				}
 			}
 		}
+	}
+
+	/** APT requestInstanceFromBeanHolder: BeanHolder lookup with create/put/init, body indented two tabs. */
+	private void appendBeanHolderLookup(StringBuilder out, String generated, String holderRef, String newArgs) {
+		out.append("\t\tif (" + holderRef + " instanceof org.androidannotations.api.bean.BeanHolder) {\n");
+		out.append("\t\t\torg.androidannotations.api.bean.BeanHolder beanHolder = (org.androidannotations.api.bean.BeanHolder) " + holderRef + ";\n");
+		out.append("\t\t\t" + generated + " bean = beanHolder.getBean(" + generated + ".class);\n");
+		out.append("\t\t\tif (bean == null) {\n");
+		out.append("\t\t\t\tbean = new " + generated + "(" + newArgs + ");\n");
+		out.append("\t\t\t\tbeanHolder.putBean(" + generated + ".class, bean);\n");
+		out.append("\t\t\t\tbean.init_();\n");
+		out.append("\t\t\t}\n");
+		out.append("\t\t\treturn bean;\n");
+		out.append("\t\t}\n");
 	}
 
 	private void appendBeanHolderMethods(StringBuilder out) {

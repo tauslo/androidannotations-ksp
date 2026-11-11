@@ -97,6 +97,30 @@ public final class KspAnnotationUtils {
 		return defaultValue;
 	}
 
+	/** Enum-typed annotation argument: KSP exposes it as a KSTypeReference to the enum entry. */
+	public static String enumArg(KSAnnotation annotation, String name, String defaultValue) {
+		Object value = argValue(annotation, name);
+		if (value instanceof KSTypeReference) {
+			try {
+				KSType type = ((KSTypeReference) value).resolve();
+				if (type.getDeclaration() != null && type.getDeclaration().getSimpleName() != null) {
+					return type.getDeclaration().getSimpleName().asString();
+				}
+			} catch (Exception ignored) {
+				// fall through to the toString fallback below
+			}
+		}
+		if (value instanceof String) {
+			return (String) value;
+		}
+		if (value != null) {
+			String text = value.toString();
+			int dot = text.lastIndexOf('.');
+			return dot >= 0 ? text.substring(dot + 1) : text;
+		}
+		return defaultValue;
+	}
+
 	public static String typeName(KSTypeReference reference) {
 		KSType type = reference.resolve();
 		String qualified;
