@@ -35,6 +35,7 @@ public final class KspEnvironment {
 	private final boolean valid;
 
 	private AndroidManifest androidManifest;
+	private RClassIndex rClassIndex;
 	private boolean prepared;
 
 	public KspEnvironment(SymbolProcessorEnvironment environment) {
@@ -65,6 +66,10 @@ public final class KspEnvironment {
 		} else {
 			logger.info("AndroidAnnotations KSP: using AndroidManifest " + androidManifest.getSourceFile(), null);
 		}
+		String resourcePackage = getResourcePackage();
+		if (resourcePackage != null) {
+			this.rClassIndex = RClassIndex.resolve(resolver, logger, sourceFiles, resourcePackage, getRClassName());
+		}
 	}
 
 	/** The package holding the R class: explicit option, else the manifest application package. */
@@ -90,6 +95,11 @@ public final class KspEnvironment {
 	/** Simple name of the resource class to reference, mirroring APT {@code ProjectRClassFinder}. */
 	public String getRClassName() {
 		return options.isUseR2() ? "R2" : "R";
+	}
+
+	/** Index of the resolved R/R2 class (field names + int values), or null when no resource package is known. */
+	public RClassIndex getRClassIndex() {
+		return rClassIndex;
 	}
 
 	public AndroidManifest getAndroidManifest() {

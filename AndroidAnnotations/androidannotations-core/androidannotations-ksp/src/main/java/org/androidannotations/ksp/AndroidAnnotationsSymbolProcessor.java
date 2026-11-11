@@ -49,6 +49,7 @@ import kotlin.sequences.Sequence;
 import kotlin.sequences.SequencesKt;
 
 import org.androidannotations.ksp.env.KspEnvironment;
+import org.androidannotations.ksp.env.RClassIndex;
 import org.androidannotations.ksp.validate.ComponentValidator;
 
 public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
@@ -79,7 +80,7 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 
 		String resourcePackage = environment.getResourcePackage();
 		String classSuffix = environment.getClassSuffix();
-		MvpJavaGenerator generator = new MvpJavaGenerator(resourcePackage, environment.getRClassName());
+		MvpJavaGenerator generator = new MvpJavaGenerator(resourcePackage, environment.getRClassName(), environment.getRClassIndex());
 
 		int generated = 0;
 		for (KSClassDeclaration classDeclaration : classes) {
@@ -102,6 +103,13 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 						+ ". Set the 'resourcePackageName' KSP argument or provide an AndroidManifest.xml with a package attribute.", classDeclaration);
 				continue;
 			}
+			List<String> resourceErrors = validateResources(model, environment.getRClassIndex());
+			if (!resourceErrors.isEmpty()) {
+				for (String error : resourceErrors) {
+					logger.error("AndroidAnnotations KSP: " + error + " in " + model.qualifiedName, classDeclaration);
+				}
+				continue;
+			}
 			String source = generator.generate(model);
 			writeJavaFile(model, source, classDeclaration);
 			generated++;
@@ -116,6 +124,53 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 	private boolean needsResourcePackage(MvpModel model) {
 		return !model.stringRes.isEmpty() || !model.viewByIds.isEmpty() || model.layoutId != AnnotationNames.RES_DEFAULT
 				|| (model.layoutResName != null && !model.layoutResName.isEmpty());
+	}
+
+	/**
+	 * Validates the resource references of {@code model} against the resolved R class, mirroring APT
+	 * {@code IdValidatorHelper.resIdsExist}. Value refs need the symbol list to be loaded; name and element-name
+	 * refs only need the field names. Returns one message per problem; empty means the model may be generated.
+	 */
+	private List<String> validateResources(MvpModel model, RClassIndex index) {
+		List<String> errors = new ArrayList<>();
+		if (index == null || !index.isResolved()) {
+			return errors;
+		}
+		boolean canCheckValues = index.hasValues();
+		// @EActivity layout uses ALLOW_NO_RES_ID: nothing given is fine, otherwise the value or name must exist.
+		if (model.layoutId != AnnotationNames.RES_DEFAULT) {
+			if (canCheckValues && !index.containsIdValue("layout", model.layoutId)) {
+				errors.add("Resource id value not found in R.layout: " + model.layoutId);
+			}
+		} else if (model.layoutResName != null && !model.layoutResName.isEmpty()) {
+			if (!index.containsField("layout", model.layoutResName)) {
+				errors.add("Resource name not found in R.layout: " + model.layoutResName);
+			}
+		}
+		for (MvpModel.FieldInjection view : model.viewByIds) {
+			errors.addAll(validateInjection(canCheckValues, index, "id", view));
+		}
+		for (MvpModel.FieldInjection stringRes : model.stringRes) {
+			errors.addAll(validateInjection(canCheckValues, index, "string", stringRes));
+		}
+		return errors;
+	}
+
+	/** Mirrors APT {@code resIdsExist} with the USE_ELEMENT_NAME fallback for {@code @ViewById}/{@code @StringRes}. */
+	private List<String> validateInjection(boolean canCheckValues, RClassIndex index, String resType, MvpModel.FieldInjection injection) {
+		List<String> errors = new ArrayList<>();
+		if (injection.resId != AnnotationNames.RES_DEFAULT) {
+			if (canCheckValues && !index.containsIdValue(resType, injection.resId)) {
+				errors.add("Resource id value not found in R." + resType + ": " + injection.resId);
+			}
+		} else if (injection.resName != null && !injection.resName.isEmpty()) {
+			if (!index.containsField(resType, injection.resName)) {
+				errors.add("Resource name not found in R." + resType + ": " + injection.resName);
+			}
+		} else if (!index.containsField(resType, injection.propertyName)) {
+			errors.add("Resource name not found in R." + resType + ": " + injection.propertyName);
+		}
+		return errors;
 	}
 
 	private List<KSFile> containingFiles(List<KSClassDeclaration> classes) {

@@ -24,6 +24,9 @@ class HelloAndroidActivity : Activity() {
     @ViewById
     protected lateinit var helloTextView: TextView
 
+    @ViewById(resName = "launchButton")
+    protected lateinit var launchButton: Button
+
     @Extra
     protected var myIntExtra: Int = 0
 
@@ -45,7 +48,7 @@ class HelloAndroidActivity : Activity() {
     @AfterViews
     protected fun afterViews() {
         computeDateBackground()
-        findViewById<Button>(R.id.launchButton).setOnClickListener {
+        launchButton.setOnClickListener {
             HelloAndroidActivity_.intent(this)
                 .myIntExtra(42)
                 .myStringExtra("hello from IntentBuilder_")

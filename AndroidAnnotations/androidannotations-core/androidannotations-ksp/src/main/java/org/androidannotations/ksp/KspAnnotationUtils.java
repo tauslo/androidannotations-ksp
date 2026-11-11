@@ -35,6 +35,8 @@ import com.google.devtools.ksp.symbol.KSValueParameter;
 import kotlin.sequences.Sequence;
 import kotlin.sequences.SequencesKt;
 
+import org.androidannotations.ksp.env.RClassIndex;
+
 final class KspAnnotationUtils {
 
 	private KspAnnotationUtils() {
@@ -262,11 +264,25 @@ final class KspAnnotationUtils {
 		return builder.toString();
 	}
 
-	static String resExpression(String resourcePackage, String rClassName, String resType, String fieldName, int resId, String resName) {
+	static String resExpression(String resourcePackage, String rClassName, String resType, String fieldName, int resId, String resName, RClassIndex index) {
+		// APT parity: emitted refs always point at R (extractIdStaticRef strips the trailing "2" of R2).
+		String emitR = rClassName.endsWith("2") ? rClassName.substring(0, rClassName.length() - 1) : rClassName;
 		if (resId != AnnotationNames.RES_DEFAULT) {
+			if (index != null) {
+				String nameForValue = index.fieldNameForValue(resType, resId);
+				if (nameForValue != null) {
+					return resourcePackage + "." + emitR + "." + resType + "." + nameForValue;
+				}
+			}
 			return Integer.toString(resId);
 		}
 		String name = (resName != null && !resName.isEmpty()) ? resName : fieldName;
-		return resourcePackage + "." + rClassName + "." + resType + "." + name;
+		if (index != null) {
+			String resolvedName = index.resolveFieldName(resType, name);
+			if (resolvedName != null) {
+				return resourcePackage + "." + emitR + "." + resType + "." + resolvedName;
+			}
+		}
+		return resourcePackage + "." + emitR + "." + resType + "." + name;
 	}
 }

@@ -16,14 +16,18 @@
  */
 package org.androidannotations.ksp;
 
+import org.androidannotations.ksp.env.RClassIndex;
+
 final class MvpJavaGenerator {
 
 	private final String resourcePackage;
 	private final String rClassName;
+	private final RClassIndex rClassIndex;
 
-	MvpJavaGenerator(String resourcePackage, String rClassName) {
+	MvpJavaGenerator(String resourcePackage, String rClassName, RClassIndex rClassIndex) {
 		this.resourcePackage = resourcePackage;
 		this.rClassName = rClassName;
+		this.rClassIndex = rClassIndex;
 	}
 
 	String generate(MvpModel model) {
@@ -68,7 +72,7 @@ final class MvpJavaGenerator {
 			out.append("\t\tandroid.content.res.Resources resources_ = getResources();\n");
 		}
 		for (MvpModel.FieldInjection injection : model.stringRes) {
-			String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "string", injection.propertyName, injection.resId, injection.resName);
+			String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "string", injection.propertyName, injection.resId, injection.resName, rClassIndex);
 			appendAssign(out, injection, "resources_.getString(" + resExpr + ")");
 		}
 		if (!model.extras.isEmpty() || !model.afterExtras.isEmpty()) {
@@ -136,7 +140,7 @@ final class MvpJavaGenerator {
 		out.append("\t@Override\n");
 		out.append("\tpublic void onViewChanged(org.androidannotations.api.view.HasViews hasViews) {\n");
 		for (MvpModel.FieldInjection view : model.viewByIds) {
-			String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "id", view.propertyName, view.resId, view.resName);
+			String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "id", view.propertyName, view.resId, view.resName, rClassIndex);
 			appendAssign(out, view, "(" + view.typeName + ") hasViews.internalFindViewById(" + resExpr + ")");
 		}
 		for (String method : model.afterViews) {
@@ -186,7 +190,7 @@ final class MvpJavaGenerator {
 			out.append("\t\tandroid.content.res.Resources resources_ = context_.getResources();\n");
 		}
 		for (MvpModel.FieldInjection injection : model.stringRes) {
-			String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "string", injection.propertyName, injection.resId, injection.resName);
+			String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "string", injection.propertyName, injection.resId, injection.resName, rClassIndex);
 			appendAssign(out, injection, "resources_.getString(" + resExpr + ")");
 		}
 		out.append("\t\torg.androidannotations.api.view.OnViewChangedNotifier.registerOnViewChangedListener(this);\n");
@@ -195,7 +199,7 @@ final class MvpJavaGenerator {
 		out.append("\t@Override\n");
 		out.append("\tpublic void onViewChanged(org.androidannotations.api.view.HasViews hasViews) {\n");
 		for (MvpModel.FieldInjection view : model.viewByIds) {
-			String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "id", view.propertyName, view.resId, view.resName);
+			String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "id", view.propertyName, view.resId, view.resName, rClassIndex);
 			appendAssign(out, view, "(" + view.typeName + ") hasViews.internalFindViewById(" + resExpr + ")");
 		}
 		for (String method : model.afterViews) {
@@ -220,10 +224,11 @@ final class MvpJavaGenerator {
 	}
 
 	private void appendSetContentViewCall(StringBuilder out, MvpModel model) {
-		if (model.layoutId != AnnotationNames.RES_DEFAULT) {
-			out.append("\t\tsetContentView(").append(model.layoutId).append(");\n");
-		} else if (model.layoutResName != null && !model.layoutResName.isEmpty()) {
-			out.append("\t\tsetContentView(").append(resourcePackage).append(".").append(rClassName).append(".layout.").append(model.layoutResName).append(");\n");
+		boolean hasLayoutId = model.layoutId != AnnotationNames.RES_DEFAULT;
+		boolean hasLayoutName = model.layoutResName != null && !model.layoutResName.isEmpty();
+		if (hasLayoutId || hasLayoutName) {
+			String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "layout", "", model.layoutId, hasLayoutName ? model.layoutResName : "", rClassIndex);
+			out.append("\t\tsetContentView(").append(resExpr).append(");\n");
 		}
 	}
 

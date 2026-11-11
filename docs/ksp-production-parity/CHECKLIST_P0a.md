@@ -13,8 +13,8 @@
 
 - [x] **BLOCKER** Implement Manifest load（优先显式 `androidManifestFile`；可选向上探测，但勿依赖 `kapt.kotlin.generated`）
 - [x] Validate `@EActivity` / 后续 `@E*` 组件已在 Manifest 注册（`library=true` 时放宽）
-- [ ] Resolve `R` / `R2` by package；fail/warn if id/layout/string missing
-- [ ] Prefer emitting `pkg.R.type.name` field refs over raw int when possible
+- [x] Resolve `R` / `R2` by package；fail/warn if id/layout/string missing
+- [x] Prefer emitting `pkg.R.type.name` field refs over raw int when possible
 
 ## Processor pipeline structure
 

@@ -203,4 +203,42 @@
 - none
 
 ### Next
-1. P0a 剩余项: R 资源缺失 warn/fail、流水线向 handler/generate 包拆分、父类注解收集、嵌套 `@EBean`、未实现注解告警；之后是 EBean scopes + `@Bean` 注入（BLOCKER）
+1. P0a 剩余项: R 资源缺失 warn/fail、流水线向 handler/generate 包拆分、父类注解收集、嵌套 `@EBean`、未实现注解告警；之后是 EBean scopes + `@Bean` 注入（BLOCKER）
+## Session 2026-11-11 — P0a: R/R2 index + resource validation + field-ref emission (APT parity)
+
+- **Agent**: Codex
+- **Goal slice**: P0a — Resolve `R`/`R2` by package; fail on missing id/layout/string; prefer `pkg.R.type.name` field refs over raw int
+- **Git**: branch=`ksp/main` HEAD=`4a9659eb` remote=`ksp/main` ahead 3（local only, not pushed）
+- **Status**: done
+
+### Done
+- New `env/RClassIndex.java`: per-resource-package index of the R class. Field names read from the compiled resource class via KSP (`resolver.getClassDeclarationByName` + nested-class walk); int values read from the newest AGP runtime symbol list (`build/intermediates/runtime_symbol_list/<variant>/R.txt`) — KSP2 exposes no constant values for classpath Java fields. Mirrors APT `ProjectRClassFinder` + `RInnerClass`
+- `KspEnvironment.prepare()` resolves the index once (requires resourcePackage); exposes `getRClassIndex()`
+- Resource validation before generation (mirrors APT `IdValidatorHelper.resIdsExist`): int-valued params checked against R.txt values (`Resource id value not found in R.<type>: <value>`); name-based params checked against declared fields with snake_case fallback (`Resource name not found in R.<type>: <name>`); layout follows APT ALLOW_NO_RES_ID (no element-name check). On error: `logger.error` + skip the class (not generated)
+- Emission prefers field refs: `resExpression` now takes the index; int path → `fieldNameForValue` → `pkg.R.type.name`; name path → `resolveFieldName` → `pkg.R.type.name`; falls back to raw int / property name only when unresolved
+- `setContentView(<resExpr>)` single call guarded by hasLayoutId || hasLayoutName
+- examples/kotlin: added `@ViewById(resName = "launchButton")` + click listener via the injected field (no more findViewById)
+
+### Changed paths
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/AndroidAnnotationsSymbolProcessor.java
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/KspAnnotationUtils.java
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/MvpJavaGenerator.java
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/env/KspEnvironment.java
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/env/RClassIndex.java (new)
+- examples/kotlin/src/main/kotlin/org/androidannotations/gradle/activity/HelloAndroidActivity.kt
+
+### Verify
+- [x] mvn install ksp module（MVN_EXIT=0）
+- [x] examples/kotlin `kspDebugKotlin`: generated `setContentView(org.androidannotations.gradle.R.layout.main)` / `R.string.hello` / `R.id.helloTextView` / `R.id.launchButton` — all field refs, no raw ints
+- [x] examples/kotlin `clean assembleDebug` BUILD SUCCESSFUL
+- [x] Negative test（local only, reverted）: `@ViewById(resName="nope")` → `e: [ksp] ... Resource name not found in R.id: nope in org.androidannotations.gradle.activity.HelloAndroidActivity`, class not generated
+
+### Blockers
+- none
+
+### Next
+1. P0a pipeline structure: split MVP god-generator toward `handler` + `generate` packages（渐进）
+2. Collect annotations from **superclass** members (ancestor annotations)
+3. Nested `@EBean` → static nested class inside outer `*_`; warn on recognized-but-unimplemented AA annotations
+4. Then BLOCKERs: EBean scopes (Default/Activity/Fragment/Singleton, mirrors `EBeanHolder.createFactoryMethod`) + rebind; `@Bean` injection via `Generated_.getInstance_(…)` + BeanHolder map + `@AfterInject`
+5. P0a exit acceptance: `@Bean` EnhancedBean demo in examples/kotlin; APT vs KSP public-API spot-check; mark P0a done here with Next = first P0b item
