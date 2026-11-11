@@ -359,3 +359,45 @@
 1. BLOCKER: `@Bean` injection via `Generated_.getInstance_(…)` + BeanHolder map; `@AfterInject`; root context wiring as needed
 2. Optional P0a: `@ViewById` method-injection form; Background/UiThread ordering notes
 3. P0a exit acceptance: demo `intent(this)…start()` ✅ in code; `@Bean` EnhancedBean injection demo ❌ (still needed); APT vs KSP public-API spot-check; mark P0a done here with Next = first P0b item
+
+## Session 2026-11-11 — @Bean injection + @AfterInject (APT BeanHandler/AfterInjectHandler parity)
+
+- **Agent**: Codex
+- **Goal slice**: P0a — `@Bean` injection via `Generated_.getInstance_(…)` + `@AfterInject` invoked after the injection block (prev session Next 1, BLOCKER)
+- **Git**: branch=`ksp/main` HEAD=`286af505` remote=`ksp/main` ahead 7（local only, not pushed）
+- **Status**: done
+
+### Done
+- `MvpModel`: nested `BeanTarget {name, declaredType, beanGeneratedQualifiedName, withRootFragmentArg}` + `BeanInjection {Form FIELD|METHOD, name, jvmField, targets}`; fields `beans`, `afterInject`, `errors`
+- `AnnotationNames`: new constants `BEAN`, `AFTER_INJECT`; both removed from `RECOGNIZED_NOT_IMPLEMENTED` (the "recognized but not implemented yet" warning is gone)
+- `MvpHandler`:
+  - field form `collectBeanField`: kind guard (@EActivity only) + non-private; single-target FIELD injection
+  - method form `collectBeanMethod`: exactly one parameter (else error); local declared with the param's full type incl. args (`fullTypeNameWithArgs`)
+  - param form `collectBeanParams`: one shared braced block per method; the call is emitted only when ALL params are @Bean-annotated; partial annotation → whole block skipped without error (APT parity)
+  - `resolveBeanTarget`: bean class = `@Bean value` arg or the element type; must carry `@EBean` (else error); scope via `enumArg(eBean, "scope", "Default")`; `withRootFragmentArg = scope ∉ {Singleton, Activity}`
+  - `generatedBeanQualifiedName`: "_" appended to every class segment (nested `pkg.Outer.Inner` → `pkg.Outer_.Inner_`)
+  - `@AfterInject`: no-arg, non-private, @EActivity only; invoked strictly after all injections
+- `MvpJavaGenerator.appendBeanInjections`: field assign / setter in the init body (Kotlin properties use the setter unless @JvmField); method form emits a braced block with combined decl+assign per target then the call. Order in `init_()`: stringRes → `injectExtras_()` → bean injections → `@AfterInject` calls → registerListener
+- Processor: models with non-empty `errors` are logged and skipped in both the nested and non-nested loops (no silent drop)
+- Demo: `@Bean protected lateinit var enhancedBean: EnhancedBean` + `@AfterInject fun onInjected()` logging the injected instance
+
+### Changed paths
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/MvpModel.java
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/AnnotationNames.java
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/handler/MvpHandler.java
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/generate/MvpJavaGenerator.java
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/AndroidAnnotationsSymbolProcessor.java
+- examples/kotlin/src/main/kotlin/org/androidannotations/gradle/activity/HelloAndroidActivity.kt
+- docs/ksp-production-parity/CHECKLIST_P0a.md
+
+### Verify
+- [x] mvn install ksp module (BUILD SUCCESS)
+- [x] examples/kotlin `clean assembleDebug` BUILD SUCCESSFUL; KSP generated 2 class(es); the old "@Bean is recognized but not implemented yet" warning is gone
+- [x] Generated `init_()`: `setEnhancedBean(org.androidannotations.gradle.activity.EnhancedBean_.getInstance_(this, null));` (2-arg form, Default scope) + `onInjected();` after `injectExtras_()` and before registerListener; 0 raw ints
+
+### Blockers
+- none
+
+### Next
+1. Optional P0a: `@ViewById` method-injection form; Background/UiThread ordering notes
+2. P0a exit acceptance: APT vs KSP generated public-API spot-check for the sample Activity, tick the remaining "Acceptance for P0a exit" items (incl. the @Bean demo item), mark P0a done with Next = first P0b item

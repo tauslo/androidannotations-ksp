@@ -133,6 +133,13 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 				models.set(i, null);
 				continue;
 			}
+			if (!model.errors.isEmpty()) {
+				for (String error : model.errors) {
+					logger.error("AndroidAnnotations KSP: " + error + " in " + model.qualifiedName, classDeclaration);
+				}
+				models.set(i, null);
+				continue;
+			}
 			outer.nestedModels.add(model);
 		}
 
@@ -157,6 +164,12 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 			List<String> resourceErrors = validateResources(model, environment.getRClassIndex());
 			if (!resourceErrors.isEmpty()) {
 				for (String error : resourceErrors) {
+					logger.error("AndroidAnnotations KSP: " + error + " in " + model.qualifiedName, classDeclaration);
+				}
+				continue;
+			}
+			if (!model.errors.isEmpty()) {
+				for (String error : model.errors) {
 					logger.error("AndroidAnnotations KSP: " + error + " in " + model.qualifiedName, classDeclaration);
 				}
 				continue;

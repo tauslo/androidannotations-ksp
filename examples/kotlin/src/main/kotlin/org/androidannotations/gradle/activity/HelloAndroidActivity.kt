@@ -4,8 +4,10 @@ import android.graphics.Point
 import android.widget.Button
 import android.widget.TextView
 import org.androidannotations.annotations.AfterExtras
+import org.androidannotations.annotations.AfterInject
 import org.androidannotations.annotations.AfterViews
 import org.androidannotations.annotations.Background
+import org.androidannotations.annotations.Bean
 import org.androidannotations.annotations.EActivity
 import org.androidannotations.annotations.EBean
 import org.androidannotations.annotations.Extra
@@ -45,6 +47,9 @@ class HelloAndroidActivity : HelloAndroidBase() {
     @Extra
     protected var myPointsListExtra: ArrayList<Point>? = null
 
+    @Bean
+    protected lateinit var enhancedBean: EnhancedBean
+
     @AfterViews
     protected fun afterViews() {
         computeDateBackground()
@@ -66,6 +71,11 @@ class HelloAndroidActivity : HelloAndroidBase() {
     @AfterExtras
     protected fun onExtrasInjected() {
         // Runs after the extras above were restored (even when the intent bundle is empty).
+    }
+
+    @AfterInject
+    protected fun onInjected() {
+        android.util.Log.d("HelloAndroid", "@Bean injected enhancedBean=" + enhancedBean)
     }
 
     @Background

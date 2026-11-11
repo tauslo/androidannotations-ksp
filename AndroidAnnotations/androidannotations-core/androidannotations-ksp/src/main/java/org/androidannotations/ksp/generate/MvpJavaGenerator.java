@@ -81,6 +81,10 @@ public final class MvpJavaGenerator {
 		if (!model.extras.isEmpty() || !model.afterExtras.isEmpty()) {
 			out.append("\t\tinjectExtras_();\n");
 		}
+		appendBeanInjections(out, model);
+		for (String method : model.afterInject) {
+			out.append("\t\t").append(method).append("();\n");
+		}
 		out.append("\t\torg.androidannotations.api.view.OnViewChangedNotifier.registerOnViewChangedListener(this);\n");
 		out.append("\t}\n\n");
 
@@ -320,6 +324,43 @@ public final class MvpJavaGenerator {
 			out.append(indent).append(injection.propertyName).append(" = ").append(expression).append(";\n");
 		} else {
 			out.append(indent).append(KspAnnotationUtils.setterName(injection.propertyName)).append("(").append(expression).append(");\n");
+		}
+	}
+
+	/** APT BeanHandler parity: field assigns / braced method blocks inside the init-body injection block. */
+	private void appendBeanInjections(StringBuilder out, MvpModel model) {
+		for (MvpModel.BeanInjection bean : model.beans) {
+			if (bean.form == MvpModel.BeanInjection.Form.FIELD) {
+				MvpModel.BeanTarget target = bean.targets.get(0);
+				appendBeanAssign(out, bean.name, bean.jvmField, getInstanceExpr(target));
+			} else {
+				out.append("\t\t{\n");
+				for (MvpModel.BeanTarget target : bean.targets) {
+					out.append("\t\t\t").append(target.declaredType).append(' ').append(target.name)
+							.append(" = ").append(getInstanceExpr(target)).append(";\n");
+				}
+				out.append("\t\t\t").append(bean.name).append('(');
+				for (int i = 0; i < bean.targets.size(); i++) {
+					if (i > 0) {
+						out.append(", ");
+					}
+					out.append(bean.targets.get(i).name);
+				}
+				out.append(");\n");
+				out.append("\t\t}\n");
+			}
+		}
+	}
+
+	private static String getInstanceExpr(MvpModel.BeanTarget target) {
+		return target.beanGeneratedQualifiedName + ".getInstance_(this" + (target.withRootFragmentArg ? ", null" : "") + ")";
+	}
+
+	private void appendBeanAssign(StringBuilder out, String propertyName, boolean jvmField, String expression) {
+		if (jvmField) {
+			out.append("\t\t").append(propertyName).append(" = ").append(expression).append(";\n");
+		} else {
+			out.append("\t\t").append(KspAnnotationUtils.setterName(propertyName)).append('(').append(expression).append(");\n");
 		}
 	}
 

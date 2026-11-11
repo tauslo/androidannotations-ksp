@@ -29,6 +29,8 @@ import com.google.devtools.ksp.symbol.KSFunctionDeclaration;
 import com.google.devtools.ksp.symbol.KSPropertyDeclaration;
 import com.google.devtools.ksp.symbol.KSType;
 import com.google.devtools.ksp.symbol.KSTypeReference;
+import com.google.devtools.ksp.symbol.KSValueParameter;
+import com.google.devtools.ksp.symbol.Modifier;
 
 import kotlin.sequences.Sequence;
 import kotlin.sequences.SequencesKt;
@@ -94,7 +96,7 @@ public final class MvpHandler {
 			if (declaration instanceof KSPropertyDeclaration) {
 				collectProperty(resolver, (KSPropertyDeclaration) declaration, model);
 			} else if (declaration instanceof KSFunctionDeclaration) {
-				collectFunction((KSFunctionDeclaration) declaration, model);
+				collectFunction(resolver, (KSFunctionDeclaration) declaration, model);
 			}
 		}
 	}
@@ -148,12 +150,30 @@ public final class MvpHandler {
 					templates.read,
 					templates.unchecked));
 		}
+
+		KSAnnotation bean = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.BEAN);
+		if (bean != null) {
+			collectBeanField(resolver, property, name, jvmField, model);
+		}
 	}
 
-	private void collectFunction(KSFunctionDeclaration function, MvpModel model) {
+	private void collectFunction(Resolver resolver, KSFunctionDeclaration function, MvpModel model) {
 		String name = function.getSimpleName().asString();
 		if ("<init>".equals(name)) {
 			return;
+		}
+
+		KSAnnotation afterInject = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.AFTER_INJECT);
+		if (afterInject != null) {
+			if (model.kind != MvpModel.Kind.ACTIVITY) {
+				model.errors.add("@AfterInject is only supported in @EActivity components: method '" + name + "'");
+			} else if (!function.getParameters().isEmpty()) {
+				model.errors.add("@AfterInject method '" + name + "' must have no parameters");
+			} else if (function.getModifiers().contains(Modifier.PRIVATE)) {
+				model.errors.add("@AfterInject method '" + name + "' must not be private");
+			} else {
+				model.afterInject.add(name);
+			}
 		}
 
 		if (KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.AFTER_VIEWS) != null) {
@@ -186,6 +206,150 @@ public final class MvpHandler {
 					"",
 					reuse));
 		}
+
+		KSAnnotation bean = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.BEAN);
+		if (bean != null) {
+			collectBeanMethod(resolver, function, name, model);
+		} else if (hasBeanParam(function)) {
+			collectBeanParams(resolver, function, name, model);
+		}
+	}
+
+	/** APT BeanHandler.processField parity: one assignment target in the init-body injection block. */
+	private void collectBeanField(Resolver resolver, KSPropertyDeclaration property, String name, boolean jvmField, MvpModel model) {
+		if (model.kind != MvpModel.Kind.ACTIVITY) {
+			model.errors.add("@Bean is only supported in @EActivity components: property '" + name + "'");
+			return;
+		}
+		if (property.getModifiers().contains(Modifier.PRIVATE)) {
+			model.errors.add("@Bean property '" + name + "' must not be private");
+			return;
+		}
+		KSAnnotation bean = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.BEAN);
+		MvpModel.BeanTarget target = resolveBeanTarget(resolver, property.getType(), bean, name, model);
+		if (target != null) {
+			model.beans.add(new MvpModel.BeanInjection(MvpModel.BeanInjection.Form.FIELD, name, jvmField,
+					Collections.singletonList(target)));
+		}
+	}
+
+	/** APT BeanHandler.processMethod parity: @Bean on a method with exactly one parameter. */
+	private void collectBeanMethod(Resolver resolver, KSFunctionDeclaration function, String name, MvpModel model) {
+		if (model.kind != MvpModel.Kind.ACTIVITY) {
+			model.errors.add("@Bean is only supported in @EActivity components: method '" + name + "'");
+			return;
+		}
+		if (function.getModifiers().contains(Modifier.PRIVATE)) {
+			model.errors.add("@Bean method '" + name + "' must not be private");
+			return;
+		}
+		List<KSValueParameter> params = function.getParameters();
+		if (params.size() != 1) {
+			model.errors.add("@Bean method '" + name + "' must have exactly one parameter");
+			return;
+		}
+		KSAnnotation bean = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.BEAN);
+		MvpModel.BeanTarget target = resolveBeanTarget(resolver, params.get(0).getType(), bean, name, model);
+		if (target != null) {
+			MvpModel.BeanTarget local = new MvpModel.BeanTarget(target.name,
+					KspAnnotationUtils.fullTypeNameWithArgs(params.get(0).getType()),
+					target.beanGeneratedQualifiedName, target.withRootFragmentArg);
+			model.beans.add(new MvpModel.BeanInjection(MvpModel.BeanInjection.Form.METHOD, name, false,
+					Collections.singletonList(local)));
+		}
+	}
+
+	/** APT BeanHandler.processParam parity: one shared braced block per method; the call is emitted only when ALL parameters are annotated. */
+	private void collectBeanParams(Resolver resolver, KSFunctionDeclaration function, String name, MvpModel model) {
+		if (model.kind != MvpModel.Kind.ACTIVITY) {
+			model.errors.add("@Bean is only supported in @EActivity components: method '" + name + "'");
+			return;
+		}
+		if (function.getModifiers().contains(Modifier.PRIVATE)) {
+			model.errors.add("@Bean method '" + name + "' must not be private");
+			return;
+		}
+		List<MvpModel.BeanTarget> targets = new ArrayList<>();
+		for (KSValueParameter param : function.getParameters()) {
+			KSAnnotation bean = findParamBean(param);
+			if (bean == null) {
+				return; // partially annotated: APT leaves dead locals, KSP skips the whole block without error
+			}
+			MvpModel.BeanTarget target = resolveBeanTarget(resolver, param.getType(), bean, name, model);
+			if (target == null) {
+				return;
+			}
+			targets.add(new MvpModel.BeanTarget(target.name, KspAnnotationUtils.fullTypeNameWithArgs(param.getType()),
+					target.beanGeneratedQualifiedName, target.withRootFragmentArg));
+		}
+		model.beans.add(new MvpModel.BeanInjection(MvpModel.BeanInjection.Form.METHOD, name, false, targets));
+	}
+
+	private static KSAnnotation findParamBean(KSValueParameter param) {
+		for (KSAnnotation annotation : SequencesKt.toList(param.getAnnotations())) {
+			if (AnnotationNames.BEAN.equals(KspAnnotationUtils.safeQualifiedName(annotation))) {
+				return annotation;
+			}
+		}
+		return null;
+	}
+
+	private static boolean hasBeanParam(KSFunctionDeclaration function) {
+		for (KSValueParameter param : function.getParameters()) {
+			if (findParamBean(param) != null) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * APT BeanHandler.assignValue parity: the injected bean class is the @Bean {@code value} argument when present,
+	 * otherwise the erasure of the element type; it must carry @EBean. The two-argument getInstance_ form (context +
+	 * literal null root fragment) is used unless the bean scope is Singleton or Activity.
+	 */
+	private MvpModel.BeanTarget resolveBeanTarget(Resolver resolver, KSTypeReference elementType, KSAnnotation bean, String name, MvpModel model) {
+		KSClassDeclaration beanDecl = null;
+		Object value = bean != null ? KspAnnotationUtils.argValue(bean, "value") : null;
+		if (value instanceof KSTypeReference) {
+			try {
+				KSType type = ((KSTypeReference) value).resolve();
+				if (type.getDeclaration() instanceof KSClassDeclaration) {
+					beanDecl = (KSClassDeclaration) type.getDeclaration();
+				}
+			} catch (Exception ignored) {
+				// fall back to the element type below
+			}
+		}
+		if (beanDecl == null || beanDecl.getQualifiedName() == null) {
+			beanDecl = resolveClassDeclaration(resolver, KspAnnotationUtils.typeName(elementType));
+		}
+		if (beanDecl == null || beanDecl.getQualifiedName() == null) {
+			model.errors.add("@Bean on '" + name + "': could not resolve the injected bean type");
+			return null;
+		}
+		String beanQualifiedName = beanDecl.getQualifiedName().asString();
+		KSAnnotation eBean = KspAnnotationUtils.findAnnotation(beanDecl.getAnnotations(), AnnotationNames.E_BEAN);
+		if (eBean == null) {
+			model.errors.add("@Bean on '" + name + "': " + beanQualifiedName + " must be annotated with @EBean");
+			return null;
+		}
+		String scope = KspAnnotationUtils.enumArg(eBean, "scope", "Default");
+		boolean withRootFragmentArg = !"Singleton".equals(scope) && !"Activity".equals(scope);
+		return new MvpModel.BeanTarget(name, null, generatedBeanQualifiedName(beanQualifiedName), withRootFragmentArg);
+	}
+
+	/** Mirrors APT AnnotationHelper.generatedClassQualifiedNameFromQualifiedName: the "_" suffix lands on every class segment; the package is untouched. */
+	private static String generatedBeanQualifiedName(String beanQualifiedName) {
+		int lastDot = beanQualifiedName.lastIndexOf('.');
+		if (lastDot < 0) {
+			return beanQualifiedName + "_";
+		}
+		StringBuilder sb = new StringBuilder(beanQualifiedName.substring(0, lastDot));
+		for (String segment : beanQualifiedName.substring(lastDot + 1).split("\\.")) {
+			sb.append('.').append(segment).append('_');
+		}
+		return sb.toString();
 	}
 
 	/** Write/read expression templates for one @Extra, mirroring APT IntentBuilder.getSuperPutExtraInvocation + BundleHelper. */

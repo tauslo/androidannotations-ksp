@@ -86,6 +86,41 @@ public final class MvpModel {
 		}
 	}
 
+	public static final class BeanTarget {
+		public final String name;
+		/** METHOD form only: local declaration type of the injected parameter (full Java name incl. generics). */
+		public final String declaredType;
+		public final String beanGeneratedQualifiedName;
+		/** True when getInstance_ takes the (context, rootFragment) overload: scope is Default or Fragment. */
+		public final boolean withRootFragmentArg;
+
+		public BeanTarget(String name, String declaredType, String beanGeneratedQualifiedName, boolean withRootFragmentArg) {
+			this.name = name;
+			this.declaredType = declaredType;
+			this.beanGeneratedQualifiedName = beanGeneratedQualifiedName;
+			this.withRootFragmentArg = withRootFragmentArg;
+		}
+	}
+
+	public static final class BeanInjection {
+		public enum Form {
+			FIELD, METHOD
+		}
+
+		public final Form form;
+		public final String name;
+		/** FIELD form only: @JvmField means direct assignment instead of a setter call. */
+		public final boolean jvmField;
+		public final List<BeanTarget> targets;
+
+		public BeanInjection(Form form, String name, boolean jvmField, List<BeanTarget> targets) {
+			this.form = form;
+			this.name = name;
+			this.jvmField = jvmField;
+			this.targets = targets;
+		}
+	}
+
 	public final Kind kind;
 	public final String packageName;
 	public final String simpleName;
@@ -98,6 +133,10 @@ public final class MvpModel {
 	public final List<FieldInjection> extras = new ArrayList<>();
 	public final List<String> afterViews = new ArrayList<>();
 	public final List<String> afterExtras = new ArrayList<>();
+	public final List<BeanInjection> beans = new ArrayList<>();
+	public final List<String> afterInject = new ArrayList<>();
+	/** Validation failures recorded by the handler (it has no logger); the processor logs each and skips generation. */
+	public final List<String> errors = new ArrayList<>();
 	public final List<MethodInfo> backgrounds = new ArrayList<>();
 	public final List<MethodInfo> uiThreads = new ArrayList<>();
 	/** True when the generated class is a static nested class inside its enclosing annotated class's generated class. */
