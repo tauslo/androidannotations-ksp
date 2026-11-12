@@ -22,7 +22,7 @@ import java.util.List;
 public final class MvpModel {
 
 	public enum Kind {
-		ACTIVITY, BEAN
+		ACTIVITY, BEAN, FRAGMENT
 	}
 
 	public static final class Param {
@@ -124,6 +124,19 @@ public final class MvpModel {
 		}
 	}
 
+	public static final class FragmentInjection {
+		public final String propertyName;
+		public final String typeName;
+		public final int resId;
+		public final String resName;
+		public final boolean childFragment;
+
+		public FragmentInjection(String propertyName, String typeName, int resId, String resName, boolean childFragment) {
+			this.propertyName = propertyName; this.typeName = typeName; this.resId = resId;
+			this.resName = resName; this.childFragment = childFragment;
+		}
+	}
+
 	public final Kind kind;
 	public final String packageName;
 	public final String simpleName;
@@ -134,6 +147,9 @@ public final class MvpModel {
 	public final List<FieldInjection> viewByIds = new ArrayList<>();
 	public final List<FieldInjection> stringRes = new ArrayList<>();
 	public final List<FieldInjection> extras = new ArrayList<>();
+	public final List<FieldInjection> fragmentArgs = new ArrayList<>();
+	public final List<FragmentInjection> fragmentByTags = new ArrayList<>();
+	public final List<FragmentInjection> fragmentByIds = new ArrayList<>();
 	public final List<String> afterViews = new ArrayList<>();
 	public final List<String> afterExtras = new ArrayList<>();
 	public final List<BeanInjection> beans = new ArrayList<>();
@@ -148,6 +164,8 @@ public final class MvpModel {
 	public final List<MvpModel> nestedModels = new ArrayList<>();
 	/** @EBean scope name: Default / Activity / Fragment / Singleton ("Default" when unspecified). */
 	public final String scope;
+	/** True when @EFragment(forceLayoutInjection=true): onCreateView inflates even if the host already created a view. */
+	public boolean forceLayoutInjection = false;
 
 	public MvpModel(Kind kind, String packageName, String simpleName, String qualifiedName, String classSuffix, int layoutId, String layoutResName, boolean nested, String scope) {
 		this.kind = kind;

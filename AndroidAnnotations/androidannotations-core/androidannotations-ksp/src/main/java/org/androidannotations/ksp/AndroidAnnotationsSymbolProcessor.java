@@ -68,6 +68,7 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 		List<KSClassDeclaration> classes = new ArrayList<>();
 		classes.addAll(toClassList(resolver.getSymbolsWithAnnotation(AnnotationNames.E_ACTIVITY, false)));
 		classes.addAll(toClassList(resolver.getSymbolsWithAnnotation(AnnotationNames.E_BEAN, false)));
+		classes.addAll(toClassList(resolver.getSymbolsWithAnnotation(AnnotationNames.E_FRAGMENT, false)));
 
 		environment.prepare(resolver, containingFiles(classes));
 		if (!environment.isValid()) {
@@ -187,7 +188,7 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 
 	private boolean needsResourcePackage(MvpModel model) {
 		return !model.stringRes.isEmpty() || !model.viewByIds.isEmpty() || model.layoutId != AnnotationNames.RES_DEFAULT
-				|| (model.layoutResName != null && !model.layoutResName.isEmpty());
+				|| (model.layoutResName != null && !model.layoutResName.isEmpty()) || !model.fragmentByIds.isEmpty();
 	}
 
 	/**
@@ -217,6 +218,9 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 		for (MvpModel.FieldInjection stringRes : model.stringRes) {
 			errors.addAll(validateInjection(canCheckValues, index, "string", stringRes));
 		}
+		for (MvpModel.FragmentInjection byId : model.fragmentByIds) {
+			errors.addAll(validateFragmentById(canCheckValues, index, byId));
+		}
 		return errors;
 	}
 
@@ -233,6 +237,23 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 			}
 		} else if (!index.containsField(resType, injection.propertyName)) {
 			errors.add("Resource name not found in R." + resType + ": " + injection.propertyName);
+		}
+		return errors;
+	}
+
+	/** Mirrors APT {@code resIdsExist} for {@code @FragmentById}. */
+	private List<String> validateFragmentById(boolean canCheckValues, RClassIndex index, MvpModel.FragmentInjection byId) {
+		List<String> errors = new ArrayList<>();
+		if (byId.resId != AnnotationNames.RES_DEFAULT) {
+			if (canCheckValues && !index.containsIdValue("id", byId.resId)) {
+				errors.add("Resource id value not found in R.id: " + byId.resId);
+			}
+		} else if (byId.resName != null && !byId.resName.isEmpty()) {
+			if (!index.containsField("id", byId.resName)) {
+				errors.add("Resource name not found in R.id: " + byId.resName);
+			}
+		} else if (!index.containsField("id", byId.propertyName)) {
+			errors.add("Resource name not found in R.id: " + byId.propertyName);
 		}
 		return errors;
 	}

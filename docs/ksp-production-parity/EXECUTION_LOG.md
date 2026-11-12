@@ -479,3 +479,55 @@
 1. **P0b**：按 [`CHECKLIST_P0b.md`](CHECKLIST_P0b.md) 从 Fragment BLOCKER 块开始（`@EFragment` + `FragmentBuilder_` + `@FragmentArg`）
 2. 注意工作区可能已有未跟踪的 `examples/kotlin-bench/.../BenchFragment*.kt` / `fragment_*.xml` — 接手时先 `git status` 决定纳入或清理
 3. 并行可选：[`CHECKLIST_PERF.md`](CHECKLIST_PERF.md) 增量，不阻塞 P0b
+
+## Session 2026-11-12 ? P0b: @EFragment + FragmentBuilder_ + @FragmentArg/@FragmentBy{Id,Tag}
+
+- **Agent**: Codex
+- **Goal slice**: P0b item 1?Fragment BLOCKER ??? `@EFragment` ??? + ?? `FragmentBuilder_` + `@FragmentArg`??? APT `EFragmentHolder` / `FragmentArgHandler`
+- **Git**: branch=`ksp/main` HEAD=`2b288771` remote=`ksp/main` synced??? commit ????? push?
+- **Status**: done
+
+### Done
+- `generate()` ?? `Kind.FRAGMENT` ? `generateFragment(model)`???? extends ?? fragment?implements `BeanHolder` + `HasViews`?+ view support ?? `OnViewChangedListener`?`!viewByIds.isEmpty() || !afterViews.isEmpty()`?? APT `EComponentWithViewSupportHolder` ???
+- ?????`onCreate`?notifier swap ? `init_` ? super ? restore????? `onViewCreated`?`notifyViewChanged(this)`??`onDestroyView`?? `contentView_` + `@ViewById` ????`internalFindViewById`
+- `appendFragmentOnCreateView`?layout inflate + `forceLayoutInjection`????? super view?null-check ? inflate?force=true ?? inflate?
+- `@FragmentArg`??????? APT `camelCaseToUpperSnakeCase(name, "Arg")`?`title`?`TITLE_ARG`???? key ? resName??`injectFragmentArguments_()` ? `getArguments()` restore?null-guard??builder fluent putX + `build()`
+- ?? `public static class FragmentBuilder_ extends FragmentBuilder<FragmentBuilder_, Foo>` + `public static FragmentBuilder_ builder()`?putX cast ???? APT????????Parcelable ?? `(android.os.Parcelable)`??? Serializable?
+- `@FragmentById` / `@FragmentByTag`?byId ? `getFragmentManager().findFragmentById(R.id.x)`?byTag ? `findFragmentByTag(???)`?? byId ? `needsResourcePackage` ?????R ???
+- Processor?`E_FRAGMENT` symbols ? `E_BEAN` ?????`validateModel` ?? `fragmentByIds` ???`validateFragmentById`?id ??? R index ????? error?
+- Model?`Kind.FRAGMENT`?`fragmentArgs`/`fragmentByTags`/`fragmentByIds`?FragmentInjection: propertyName/typeName/resId/resName/childFragment??`forceLayoutInjection`
+- Fixtures?kotlin-bench??`BenchFragment001`?view support + @ViewById + @FragmentByTag + title arg + fragment_main??`002`?? view support???? key "label"?fragment_simple??`003`?@ViewById(R.id.fragmentText) + @FragmentById(R.id.childContainer) + ??? key "count_key"?
+
+### Changed paths
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/AndroidAnnotationsSymbolProcessor.java
+- .../AnnotationNames.java
+- .../KspAnnotationUtils.java
+- .../MvpModel.java
+- .../handler/MvpHandler.java
+- .../generate/MvpJavaGenerator.java
+- examples/kotlin-bench/src/main/kotlin/org/androidannotations/bench/BenchFragment001.kt???
+- examples/kotlin-bench/src/main/kotlin/org/androidannotations/bench/BenchFragment002.kt???
+- examples/kotlin-bench/src/main/kotlin/org/androidannotations/bench/BenchFragment003.kt???
+- examples/kotlin-bench/src/main/res/layout/fragment_main.xml???
+- examples/kotlin-bench/src/main/res/layout/fragment_simple.xml???
+
+### Verify
+- [x] mvn install ksp module BUILD SUCCESS?4.9.0-SNAPSHOT ????
+- [x] examples/kotlin-bench `clean assembleDebug -Paa.processor=ksp` BUILD SUCCESSFUL?KSP ?? `generated 203 class(es)`?compileDebugJavaWithJavac ???? Java?? Fragment deprecated ???????fixtures ? android.app.Fragment?
+- [x] ??????? 200 ?????? P0a ???C:\temp\ksp-p0a-before??????????? 3 ? fragment ??
+- [x] GT ????? `-Paa.processor=kapt` ???? APT ?????????????? C:\temp\gt_cmp4.py??`BenchFragment00{1,2,3}_.java` ???? diff = `beans_` ?? `HashMap` vs `Map`???????
+- [x] ?????KSP ????? clean ???????
+
+### Known limitations????????
+- Fragment ? `@Bean` / `@Extra` / `@StringRes` / `@AfterExtras` ????? emit???????
+- ? map builder putX best-effort?`Parcelable[]` / `ArrayList<Parcelable>` ?? `putSerializable`
+- Fragment ? `@Background` / `@UiThread` placement ??? GT ??
+- ?? KDoc ???? builder ?? javadoc
+
+### Blockers
+- none
+
+### Next
+1. **P0b View listeners**?`@Click` + `@LongClick`?BLOCKER??? APT `AbstractViewListenerHandler`?0 ? / View ????? id???? [`CHECKLIST_P0b.md`](CHECKLIST_P0b.md)
+2. Fragment ???Fragment ??? `@Bean`/`@AfterInject`/`@AfterViews`?Activity ??????`examples/kotlin` ?? Fragment + Arg + builder demo
+3. res handlers?@ColorRes/@DrawableRes??? @OptionsMenu ?? ? @InstanceState / @OnActivityResult / @SystemService ? @EApplication/@EService

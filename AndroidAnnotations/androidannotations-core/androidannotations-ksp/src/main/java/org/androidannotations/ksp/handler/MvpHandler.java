@@ -68,15 +68,22 @@ public final class MvpHandler {
 
 		KSAnnotation eActivity = KspAnnotationUtils.findAnnotation(classDeclaration.getAnnotations(), AnnotationNames.E_ACTIVITY);
 		KSAnnotation eBean = KspAnnotationUtils.findAnnotation(classDeclaration.getAnnotations(), AnnotationNames.E_BEAN);
+		KSAnnotation eFragment = KspAnnotationUtils.findAnnotation(classDeclaration.getAnnotations(), AnnotationNames.E_FRAGMENT);
 
 		MvpModel.Kind kind;
 		int layoutId = AnnotationNames.RES_DEFAULT;
 		String layoutResName = "";
 		String scope = "Default";
+		boolean forceLayoutInjection = false;
 		if (eActivity != null) {
 			kind = MvpModel.Kind.ACTIVITY;
 			layoutId = KspAnnotationUtils.intArg(eActivity, "value", AnnotationNames.RES_DEFAULT);
 			layoutResName = KspAnnotationUtils.stringArg(eActivity, "resName", "");
+		} else if (eFragment != null) {
+			kind = MvpModel.Kind.FRAGMENT;
+			layoutId = KspAnnotationUtils.intArg(eFragment, "value", AnnotationNames.RES_DEFAULT);
+			layoutResName = KspAnnotationUtils.stringArg(eFragment, "resName", "");
+			forceLayoutInjection = KspAnnotationUtils.booleanArg(eFragment, "forceLayoutInjection", false);
 		} else if (eBean != null) {
 			kind = MvpModel.Kind.BEAN;
 			scope = KspAnnotationUtils.enumArg(eBean, "scope", "Default");
@@ -85,6 +92,7 @@ public final class MvpHandler {
 		}
 
 		MvpModel model = new MvpModel(kind, packageName, simpleName, qualifiedName, classSuffix, layoutId, layoutResName, nested, scope);
+		model.forceLayoutInjection = forceLayoutInjection;
 
 		collectMembers(resolver, classDeclaration.getDeclarations(), model);
 		for (KSClassDeclaration ancestor : superclasses(classDeclaration)) {
@@ -151,6 +159,35 @@ public final class MvpHandler {
 					templates.write,
 					templates.read,
 					templates.unchecked));
+		}
+
+		KSAnnotation fragmentArg = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.FRAGMENT_ARG);
+		if (fragmentArg != null) {
+			String fullType = KspAnnotationUtils.fullTypeNameWithArgs(property.getType());
+			ExtraTemplates templates = templatesFor(resolver, fullType, "args_");
+			model.fragmentArgs.add(new MvpModel.FieldInjection(name, typeName, jvmField,
+					AnnotationNames.RES_DEFAULT,
+					KspAnnotationUtils.stringArg(fragmentArg, "value", ""),
+					fullType,
+					templates.write,
+					templates.read,
+					templates.unchecked));
+		}
+
+		KSAnnotation fragmentById = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.FRAGMENT_BY_ID);
+		if (fragmentById != null) {
+			model.fragmentByIds.add(new MvpModel.FragmentInjection(name, typeName,
+					KspAnnotationUtils.intArg(fragmentById, "value", AnnotationNames.RES_DEFAULT),
+					KspAnnotationUtils.stringArg(fragmentById, "resName", ""),
+					KspAnnotationUtils.booleanArg(fragmentById, "childFragment", false)));
+		}
+
+		KSAnnotation fragmentByTag = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.FRAGMENT_BY_TAG);
+		if (fragmentByTag != null) {
+			model.fragmentByTags.add(new MvpModel.FragmentInjection(name, typeName,
+					AnnotationNames.RES_DEFAULT,
+					KspAnnotationUtils.stringArg(fragmentByTag, "value", ""),
+					KspAnnotationUtils.booleanArg(fragmentByTag, "childFragment", false)));
 		}
 
 		KSAnnotation bean = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.BEAN);
@@ -380,7 +417,7 @@ public final class MvpHandler {
 		return sb.toString();
 	}
 
-	/** Write/read expression templates for one @Extra, mirroring APT IntentBuilder.getSuperPutExtraInvocation + BundleHelper. */
+	/** Write/read expression templates for one @Extra or @FragmentArg, mirroring APT IntentBuilder.getSuperPutExtraInvocation + BundleHelper. */
 	private static final class ExtraTemplates {
 		final String write; // template with {arg} placeholder
 		final String read; // template with {key} placeholder
@@ -394,6 +431,10 @@ public final class MvpHandler {
 	}
 
 	private ExtraTemplates extraTemplatesFor(Resolver resolver, String fullType) {
+		return templatesFor(resolver, fullType, "extras_");
+	}
+
+	private ExtraTemplates templatesFor(Resolver resolver, String fullType, String bundleVar) {
 		String base = fullType.contains("<") ? fullType.substring(0, fullType.indexOf('<')) : fullType;
 		KSClassDeclaration typeDeclaration = resolveClassDeclaration(resolver, base);
 		boolean parcelable = typeDeclaration != null && implementsInterface(typeDeclaration, "android.os.Parcelable");
@@ -421,35 +462,35 @@ public final class MvpHandler {
 		boolean unchecked = false;
 		String suffix = KspAnnotationUtils.BUNDLE_GET_SUFFIX.get(fullType);
 		if (suffix != null) {
-			read = "extras_.get" + suffix + "({key})";
+			read = bundleVar + ".get" + suffix + "({key})";
 		} else if (fullType.endsWith("[]")) {
 			String component = fullType.substring(0, fullType.length() - 2);
 			KSClassDeclaration componentDecl = resolveClassDeclaration(resolver, component);
 			if (componentDecl != null && implementsInterface(componentDecl, "android.os.Parcelable")) {
-				read = "org.androidannotations.api.bundle.BundleHelper.getParcelableArray(extras_, {key}, " + component + "[].class)";
+				read = "org.androidannotations.api.bundle.BundleHelper.getParcelableArray(" + bundleVar + ", {key}, " + component + "[].class)";
 			} else {
-				read = "(" + fullType + ") extras_.getSerializable({key})";
+				read = "(" + fullType + ") " + bundleVar + ".getSerializable({key})";
 			}
 		} else if (fullType.startsWith("java.util.ArrayList<")) {
 			String arg = topLevelGenericArg(fullType);
 			KSClassDeclaration argDecl = resolveClassDeclaration(resolver, arg);
 			if (argDecl != null && implementsInterface(argDecl, "android.os.Parcelable")) {
-				read = "extras_.getParcelableArrayList({key})";
+				read = bundleVar + ".getParcelableArrayList({key})";
 			} else {
-				read = "(" + fullType + ") extras_.getSerializable({key})";
+				read = "(" + fullType + ") " + bundleVar + ".getSerializable({key})";
 				unchecked = true;
 			}
 		} else if (fullType.startsWith("android.util.SparseArray<")) {
-			read = "extras_.getSparseParcelableArray({key})";
+			read = bundleVar + ".getSparseParcelableArray({key})";
 		} else if (parceler) {
-			read = "org.parceler.Parcels.unwrap(extras_.getParcelable({key}))";
+			read = "org.parceler.Parcels.unwrap(" + bundleVar + ".getParcelable({key}))";
 		} else if (parcelable) {
-			read = "extras_.getParcelable({key})";
+			read = bundleVar + ".getParcelable({key})";
 		} else if (serializable) {
-			read = "(" + fullType + ") extras_.getSerializable({key})";
+			read = "(" + fullType + ") " + bundleVar + ".getSerializable({key})";
 			unchecked = fullType.contains("<");
 		} else {
-			read = "(" + fullType + ") extras_.get({key})";
+			read = "(" + fullType + ") " + bundleVar + ".get({key})";
 		}
 
 		return new ExtraTemplates(write, read, unchecked);

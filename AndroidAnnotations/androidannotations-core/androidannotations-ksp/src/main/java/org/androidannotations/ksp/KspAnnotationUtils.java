@@ -97,6 +97,14 @@ public final class KspAnnotationUtils {
 		return defaultValue;
 	}
 
+	public static boolean booleanArg(KSAnnotation annotation, String name, boolean defaultValue) {
+		Object value = argValue(annotation, name);
+		if (value instanceof Boolean) {
+			return (Boolean) value;
+		}
+		return defaultValue;
+	}
+
 	/** Enum-typed annotation argument: KSP exposes it as a KSTypeReference to the enum entry. */
 	public static String enumArg(KSAnnotation annotation, String name, String defaultValue) {
 		Object value = argValue(annotation, name);
@@ -278,6 +286,16 @@ public final class KspAnnotationUtils {
 		String name = fieldName;
 		if (!name.toLowerCase(Locale.ROOT).endsWith("extra")) {
 			name = name + "_Extra";
+		}
+		return camelCaseToSnake(name).toUpperCase(Locale.ROOT);
+	}
+
+	public static String fragmentArgKeyConstant(String fieldName) {
+		// Mirrors APT CaseHelper.camelCaseToUpperSnakeCase(null, fieldName, "Arg"): the "_Arg" suffix is only
+		// appended when the field name does not already end with "arg" (case-insensitive), then snake-cased.
+		String name = fieldName;
+		if (!name.toLowerCase(Locale.ROOT).endsWith("arg")) {
+			name = name + "_Arg";
 		}
 		return camelCaseToSnake(name).toUpperCase(Locale.ROOT);
 	}

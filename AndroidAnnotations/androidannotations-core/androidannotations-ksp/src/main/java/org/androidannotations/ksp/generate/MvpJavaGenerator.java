@@ -37,6 +37,9 @@ public final class MvpJavaGenerator {
 		if (model.kind == MvpModel.Kind.ACTIVITY) {
 			return generateActivity(model);
 		}
+		if (model.kind == MvpModel.Kind.FRAGMENT) {
+			return generateFragment(model);
+		}
 		return generateBean(model);
 	}
 
@@ -163,6 +166,130 @@ public final class MvpJavaGenerator {
 		appendNestedClasses(out, model);
 		out.append("}\n");
 		return out.toString();
+	}
+
+	private String generateFragment(MvpModel model) {
+		StringBuilder out = new StringBuilder();
+		appendHeader(out, model);
+		boolean hasViewSupport = !model.viewByIds.isEmpty() || !model.afterViews.isEmpty();
+		out.append("public final class ").append(model.generatedSimpleName())
+				.append(" extends ").append(model.simpleName)
+				.append(" implements org.androidannotations.api.bean.BeanHolder, org.androidannotations.api.view.HasViews")
+				.append(hasViewSupport ? ", org.androidannotations.api.view.OnViewChangedListener" : "")
+				.append(" {\n\n");
+
+		out.append("\tprivate final org.androidannotations.api.view.OnViewChangedNotifier onViewChangedNotifier_ = new org.androidannotations.api.view.OnViewChangedNotifier();\n");
+		out.append("\tprivate android.view.View contentView_;\n");
+		out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new java.util.HashMap<Class<?>, Object>();\n");
+		for (MvpModel.FieldInjection arg : model.fragmentArgs) {
+			String key = arg.resName != null && !arg.resName.isEmpty() ? arg.resName : arg.propertyName;
+			out.append("\tpublic final static String ").append(KspAnnotationUtils.fragmentArgKeyConstant(arg.propertyName))
+					.append(" = \"").append(key).append("\";\n");
+		}
+		if (!model.fragmentArgs.isEmpty()) {
+			out.append("\n");
+		}
+
+		out.append("\t@Override\n");
+		out.append("\tpublic void onCreate(android.os.Bundle savedInstanceState) {\n");
+		out.append("\t\torg.androidannotations.api.view.OnViewChangedNotifier previousNotifier = org.androidannotations.api.view.OnViewChangedNotifier.replaceNotifier(onViewChangedNotifier_);\n");
+		out.append("\t\tinit_(savedInstanceState);\n");
+		out.append("\t\tsuper.onCreate(savedInstanceState);\n");
+		out.append("\t\torg.androidannotations.api.view.OnViewChangedNotifier.replaceNotifier(previousNotifier);\n");
+		out.append("\t}\n\n");
+
+		out.append("\t@Override\n");
+		out.append("\tpublic <T extends android.view.View> T internalFindViewById(int id) {\n");
+		out.append("\t\treturn ((T)((contentView_ == null)?null:contentView_.findViewById(id)));\n");
+		out.append("\t}\n\n");
+
+		appendFragmentOnCreateView(out, model);
+
+		out.append("\t@Override\n");
+		out.append("\tpublic void onDestroyView() {\n");
+		out.append("\t\tsuper.onDestroyView();\n");
+		out.append("\t\tcontentView_ = null;\n");
+		for (MvpModel.FieldInjection view : model.viewByIds) {
+			out.append("\t\t").append(view.propertyName).append(" = null;\n");
+		}
+		out.append("\t}\n\n");
+
+		out.append("\tprivate void init_(android.os.Bundle savedInstanceState) {\n");
+		if (hasViewSupport) {
+			out.append("\t\torg.androidannotations.api.view.OnViewChangedNotifier.registerOnViewChangedListener(this);\n");
+		}
+		out.append("\t\tinjectFragmentArguments_();\n");
+		out.append("\t}\n\n");
+
+		out.append("\t@Override\n");
+		out.append("\tpublic void onViewCreated(android.view.View view, android.os.Bundle savedInstanceState) {\n");
+		out.append("\t\tsuper.onViewCreated(view, savedInstanceState);\n");
+		out.append("\t\tonViewChangedNotifier_.notifyViewChanged(this);\n");
+		out.append("\t}\n\n");
+
+		out.append("\tpublic static FragmentBuilder_ builder() {\n");
+		out.append("\t\treturn new FragmentBuilder_();\n");
+		out.append("\t}\n\n");
+
+		appendFragmentBeanHolderMethods(out);
+
+		if (hasViewSupport) {
+			out.append("\t@Override\n");
+			out.append("\tpublic void onViewChanged(org.androidannotations.api.view.HasViews hasViews) {\n");
+			for (MvpModel.FieldInjection view : model.viewByIds) {
+				String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "id", view.propertyName, view.resId, view.resName, rClassIndex);
+				out.append("\t\tthis.").append(view.propertyName).append(" = hasViews.internalFindViewById(").append(resExpr).append(");\n");
+			}
+			for (MvpModel.FragmentInjection byTag : model.fragmentByTags) {
+				String tag = byTag.resName != null && !byTag.resName.isEmpty() ? byTag.resName : byTag.propertyName;
+				String manager = byTag.childFragment ? "getChildFragmentManager()" : "getFragmentManager()";
+				out.append("\t\tthis.").append(byTag.propertyName).append(" = ((").append(byTag.typeName).append(") ").append(manager).append(".findFragmentByTag(\"").append(tag).append("\"));\n");
+			}
+			for (MvpModel.FragmentInjection byId : model.fragmentByIds) {
+				String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "id", byId.propertyName, byId.resId, byId.resName, rClassIndex);
+				String manager = byId.childFragment ? "getChildFragmentManager()" : "getFragmentManager()";
+				out.append("\t\tthis.").append(byId.propertyName).append(" = ((").append(byId.typeName).append(") ").append(manager).append(".findFragmentById(").append(resExpr).append("));\n");
+			}
+			for (String method : model.afterViews) {
+				out.append("\t\t").append(method).append("();\n");
+			}
+			out.append("\t}\n\n");
+		}
+
+		appendFragmentArgsMethod(out, model);
+		appendBackgroundMethods(out, model);
+		appendUiThreadMethods(out, model);
+		appendFragmentBuilder(out, model);
+
+		appendNestedClasses(out, model);
+		out.append("}\n");
+		return out.toString();
+	}
+
+	private void appendFragmentOnCreateView(StringBuilder out, MvpModel model) {
+		boolean hasLayoutId = model.layoutId != AnnotationNames.RES_DEFAULT;
+		boolean hasLayoutName = model.layoutResName != null && !model.layoutResName.isEmpty();
+		boolean hasLayout = hasLayoutId || hasLayoutName;
+		out.append("\t@Override\n");
+		out.append("\tpublic android.view.View onCreateView(android.view.LayoutInflater inflater, android.view.ViewGroup container, android.os.Bundle savedInstanceState) {\n");
+		if (hasLayout) {
+			String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "layout", "", model.layoutId, hasLayoutName ? model.layoutResName : "", rClassIndex);
+			if (model.forceLayoutInjection) {
+				out.append("\t\treturn inflater.inflate(").append(resExpr).append(", container, false);\n");
+			} else {
+				out.append("\t\tcontentView_ = super.onCreateView(inflater, container, savedInstanceState);\n");
+				out.append("\t\tif (contentView_ == null) {\n");
+				out.append("\t\t\tcontentView_ = inflater.inflate(").append(resExpr).append(", container, false);\n");
+				out.append("\t\t}\n");
+				out.append("\t\treturn contentView_;\n");
+			}
+		} else if (model.forceLayoutInjection) {
+			out.append("\t\treturn contentView_;\n");
+		} else {
+			out.append("\t\tcontentView_ = super.onCreateView(inflater, container, savedInstanceState);\n");
+			out.append("\t\treturn contentView_;\n");
+		}
+		out.append("\t}\n\n");
 	}
 
 	private String generateBean(MvpModel model) {
@@ -404,6 +531,79 @@ public final class MvpJavaGenerator {
 		out.append("\t\t\treturn new org.androidannotations.api.builder.PostActivityStarter(context);\n");
 		out.append("\t\t}\n");
 		out.append("\t}\n");
+	}
+
+	private void appendFragmentBeanHolderMethods(StringBuilder out) {
+		out.append("\t@Override\n");
+		out.append("\tpublic <T> T getBean(Class<T> key) {\n");
+		out.append("\t\treturn ((T) beans_.get(key));\n");
+		out.append("\t}\n\n");
+		out.append("\t@Override\n");
+		out.append("\tpublic <T> void putBean(Class<T> key, T value) {\n");
+		out.append("\t\tbeans_.put(key, value);\n");
+		out.append("\t}\n\n");
+	}
+
+	private void appendFragmentArgsMethod(StringBuilder out, MvpModel model) {
+		boolean unchecked = false;
+		for (MvpModel.FieldInjection arg : model.fragmentArgs) {
+			unchecked |= arg.extraUnchecked;
+		}
+		if (unchecked) {
+			out.append("\t@SuppressWarnings(\"unchecked\")\n");
+		}
+		out.append("\tprivate void injectFragmentArguments_() {\n");
+		out.append("\t\tandroid.os.Bundle args_ = getArguments();\n");
+		if (!model.fragmentArgs.isEmpty()) {
+			out.append("\t\tif (args_!= null) {\n");
+			for (MvpModel.FieldInjection arg : model.fragmentArgs) {
+				String constant = KspAnnotationUtils.fragmentArgKeyConstant(arg.propertyName);
+				out.append("\t\t\tif (args_.containsKey(").append(constant).append(")) {\n");
+				out.append("\t\t\t\tthis.").append(arg.propertyName).append(" = ").append(arg.extraReadExpr.replace("{key}", constant)).append(";\n");
+				out.append("\t\t\t}\n");
+			}
+			out.append("\t\t}\n");
+		}
+		out.append("\t}\n\n");
+	}
+
+	private void appendFragmentBuilder(StringBuilder out, MvpModel model) {
+		String generated = model.generatedSimpleName();
+		out.append("\tpublic static class FragmentBuilder_ extends org.androidannotations.api.builder.FragmentBuilder<FragmentBuilder_, ").append(model.qualifiedName).append("> {\n\n");
+		out.append("\t\t@Override\n");
+		out.append("\t\tpublic ").append(model.qualifiedName).append(" build() { ").append(generated).append(" fragment_ = new ").append(generated).append("(); fragment_.setArguments(args); return fragment_; }\n");
+		for (int i = 0; i < model.fragmentArgs.size(); i++) {
+			MvpModel.FieldInjection arg = model.fragmentArgs.get(i);
+			String constant = KspAnnotationUtils.fragmentArgKeyConstant(arg.propertyName);
+			String paramType = arg.extraFullType != null ? arg.extraFullType : arg.typeName;
+			out.append("\n");
+			out.append("\t\t/**\n");
+			out.append("\t\t * @param ").append(arg.propertyName).append("\n");
+			out.append("\t\t *     value for this Fragment argument\n");
+			out.append("\t\t * @return\n");
+			out.append("\t\t *     the FragmentBuilder to chain calls\n");
+			out.append("\t\t */\n");
+			out.append("\t\tpublic FragmentBuilder_ ").append(arg.propertyName).append('(').append(paramType).append(" ").append(arg.propertyName)
+					.append(") { args.").append(fragmentArgPutMethod(arg)).append('(').append(constant).append(", ")
+					.append(arg.extraWriteExpr.replace("{arg}", arg.propertyName)).append("); return this; }\n");
+			if (i < model.fragmentArgs.size() - 1) {
+				out.append("\n");
+			}
+		}
+		out.append("\t}\n");
+	}
+
+	private String fragmentArgPutMethod(MvpModel.FieldInjection arg) {
+		String fullType = arg.extraFullType != null ? arg.extraFullType : arg.typeName;
+		String suffix = KspAnnotationUtils.BUNDLE_GET_SUFFIX.get(fullType);
+		if (suffix != null) {
+			return "put" + suffix;
+		}
+		String write = arg.extraWriteExpr;
+		if (write.startsWith("(android.os.Parcelable)") || write.startsWith("org.parceler.Parcels.wrap")) {
+			return "putParcelable";
+		}
+		return "putSerializable";
 	}
 
 	/** Inlines directly nested annotated models as static nested classes (APT parity), re-indented one level. */
