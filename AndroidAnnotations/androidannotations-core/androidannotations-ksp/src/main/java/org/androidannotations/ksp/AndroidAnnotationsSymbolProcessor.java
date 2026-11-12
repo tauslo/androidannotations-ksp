@@ -188,7 +188,8 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 
 	private boolean needsResourcePackage(MvpModel model) {
 		return !model.stringRes.isEmpty() || !model.viewByIds.isEmpty() || model.layoutId != AnnotationNames.RES_DEFAULT
-				|| (model.layoutResName != null && !model.layoutResName.isEmpty()) || !model.fragmentByIds.isEmpty();
+				|| (model.layoutResName != null && !model.layoutResName.isEmpty()) || !model.fragmentByIds.isEmpty()
+				|| !model.clickListeners.isEmpty() || !model.longClickListeners.isEmpty();
 	}
 
 	/**
@@ -215,6 +216,8 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 		for (MvpModel.FieldInjection view : model.viewByIds) {
 			errors.addAll(validateInjection(canCheckValues, index, "id", view));
 		}
+		validateViewListeners(canCheckValues, index, model.clickListeners, errors);
+		validateViewListeners(canCheckValues, index, model.longClickListeners, errors);
 		for (MvpModel.FieldInjection stringRes : model.stringRes) {
 			errors.addAll(validateInjection(canCheckValues, index, "string", stringRes));
 		}
@@ -222,6 +225,22 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 			errors.addAll(validateFragmentById(canCheckValues, index, byId));
 		}
 		return errors;
+	}
+
+	/** Mirrors APT {@code AbstractViewListenerHandler} id validation for {@code @Click}/{@code @LongClick}. */
+	private void validateViewListeners(boolean canCheckValues, RClassIndex index, List<MvpModel.ViewListener> listeners, List<String> errors) {
+		for (MvpModel.ViewListener listener : listeners) {
+			for (Integer resId : listener.valueIds) {
+				if (canCheckValues && !index.containsIdValue("id", resId)) {
+					errors.add("Resource id value not found in R.id: " + resId);
+				}
+			}
+			for (String resName : listener.nameIds) {
+				if (!index.containsField("id", resName)) {
+					errors.add("Resource name not found in R.id: " + resName);
+				}
+			}
+		}
 	}
 
 	/** Mirrors APT {@code resIdsExist} with the USE_ELEMENT_NAME fallback for {@code @ViewById}/{@code @StringRes}. */

@@ -105,6 +105,64 @@ public final class KspAnnotationUtils {
 		return defaultValue;
 	}
 
+	public static List<Integer> intArrayArg(KSAnnotation annotation, String name) {
+		Object value = argValue(annotation, name);
+		List<Integer> out = new ArrayList<>();
+		if (value == null) {
+			return out;
+		}
+		if (value instanceof Number) {
+			out.add(((Number) value).intValue());
+			return out;
+		}
+		for (Object o : asArgList(value)) {
+			if (o instanceof Number) {
+				out.add(((Number) o).intValue());
+			}
+		}
+		return out;
+	}
+
+	public static List<String> stringArrayArg(KSAnnotation annotation, String name) {
+		Object value = argValue(annotation, name);
+		List<String> out = new ArrayList<>();
+		if (value == null) {
+			return out;
+		}
+		if (value instanceof String) {
+			out.add((String) value);
+			return out;
+		}
+		for (Object o : asArgList(value)) {
+			if (o instanceof String) {
+				out.add((String) o);
+			}
+		}
+		return out;
+	}
+
+	private static List<Object> asArgList(Object value) {
+		List<Object> out = new ArrayList<>();
+		if (value instanceof List) {
+			for (Object o : (List<?>) value) {
+				out.add(o);
+			}
+		} else if (value instanceof Sequence) {
+			for (Object o : SequencesKt.toList((Sequence<?>) value)) {
+				out.add(o);
+			}
+		} else if (value instanceof int[]) {
+			for (int v : (int[]) value) {
+				out.add(v);
+			}
+		} else if (value instanceof Object[]) {
+			for (Object o : (Object[]) value) {
+				out.add(o);
+			}
+		}
+		return out;
+	}
+
 	/** Enum-typed annotation argument: KSP exposes it as a KSTypeReference to the enum entry. */
 	public static String enumArg(KSAnnotation annotation, String name, String defaultValue) {
 		Object value = argValue(annotation, name);

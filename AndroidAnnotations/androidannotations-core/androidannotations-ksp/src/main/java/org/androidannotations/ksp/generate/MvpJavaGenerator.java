@@ -16,6 +16,11 @@
  */
 package org.androidannotations.ksp.generate;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
 import org.androidannotations.ksp.AnnotationNames;
 import org.androidannotations.ksp.KspAnnotationUtils;
 import org.androidannotations.ksp.MvpModel;
@@ -153,6 +158,7 @@ public final class MvpJavaGenerator {
 			String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "id", view.propertyName, view.resId, view.resName, rClassIndex);
 			appendAssign(out, view, "(" + view.typeName + ") hasViews.internalFindViewById(" + resExpr + ")");
 		}
+		appendViewListeners(out, model);
 		for (String method : model.afterViews) {
 			out.append("\t\t").append(method).append("();\n");
 		}
@@ -171,7 +177,8 @@ public final class MvpJavaGenerator {
 	private String generateFragment(MvpModel model) {
 		StringBuilder out = new StringBuilder();
 		appendHeader(out, model);
-		boolean hasViewSupport = !model.viewByIds.isEmpty() || !model.afterViews.isEmpty();
+		boolean hasViewSupport = !model.viewByIds.isEmpty() || !model.afterViews.isEmpty()
+			|| !model.clickListeners.isEmpty() || !model.longClickListeners.isEmpty();
 		out.append("public final class ").append(model.generatedSimpleName())
 				.append(" extends ").append(model.simpleName)
 				.append(" implements org.androidannotations.api.bean.BeanHolder, org.androidannotations.api.view.HasViews")
@@ -240,6 +247,7 @@ public final class MvpJavaGenerator {
 				String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "id", view.propertyName, view.resId, view.resName, rClassIndex);
 				out.append("\t\tthis.").append(view.propertyName).append(" = hasViews.internalFindViewById(").append(resExpr).append(");\n");
 			}
+			appendViewListeners(out, model);
 			for (MvpModel.FragmentInjection byTag : model.fragmentByTags) {
 				String tag = byTag.resName != null && !byTag.resName.isEmpty() ? byTag.resName : byTag.propertyName;
 				String manager = byTag.childFragment ? "getChildFragmentManager()" : "getFragmentManager()";
@@ -264,6 +272,101 @@ public final class MvpJavaGenerator {
 		appendNestedClasses(out, model);
 		out.append("}\n");
 		return out.toString();
+	}
+
+	private void appendViewListeners(StringBuilder out, MvpModel model) {
+		LinkedHashMap<String, String> refs = new LinkedHashMap<>();
+		LinkedHashMap<String, String> locals = new LinkedHashMap<>();
+		LinkedHashMap<String, List<String>> setters = new LinkedHashMap<>();
+		for (MvpModel.FieldInjection view : model.viewByIds) {
+			String rName = null;
+			if (view.resId != AnnotationNames.RES_DEFAULT) {
+				rName = rClassIndex != null ? rClassIndex.fieldNameForValue("id", view.resId) : null;
+			}
+			if (rName == null && rClassIndex != null) {
+				rName = rClassIndex.resolveFieldName("id", view.propertyName);
+			}
+			if (rName != null) {
+				refs.put(rName, view.propertyName);
+			}
+		}
+		appendListenerIds(model, model.clickListeners, false, refs, locals, setters);
+		appendListenerIds(model, model.longClickListeners, true, refs, locals, setters);
+		for (Map.Entry<String, String> e : locals.entrySet()) {
+			out.append("\t\tandroid.view.View ").append(e.getKey()).append(" = hasViews.internalFindViewById(")
+				.append(e.getValue()).append(");\n");
+		}
+		for (Map.Entry<String, List<String>> e : setters.entrySet()) {
+			out.append("\t\tif (").append(refs.get(e.getKey())).append(" != null) {\n");
+			for (String s : e.getValue()) {
+				out.append(s);
+			}
+			out.append("\t\t}\n");
+		}
+	}
+
+	private void appendListenerIds(MvpModel model, List<MvpModel.ViewListener> listeners, boolean longClick,
+		Map<String, String> refs, Map<String, String> locals, Map<String, List<String>> setters) {
+		for (MvpModel.ViewListener listener : listeners) {
+			for (Integer resId : listener.valueIds) {
+				String rName = rClassIndex != null ? rClassIndex.fieldNameForValue("id", resId) : null;
+				if (rName == null) {
+					rName = Integer.toString(resId);
+				}
+				addListenerEntry(model, refs, locals, setters, rName,
+					KspAnnotationUtils.resExpression(resourcePackage, rClassName, "id", rName, resId, null, rClassIndex),
+					listener, longClick);
+			}
+			for (String resName : listener.nameIds) {
+				String rName = rClassIndex != null ? rClassIndex.resolveFieldName("id", resName) : null;
+				if (rName == null) {
+					rName = resName;
+				}
+				addListenerEntry(model, refs, locals, setters, rName,
+					KspAnnotationUtils.resExpression(resourcePackage, rClassName, "id", rName, AnnotationNames.RES_DEFAULT, resName, rClassIndex),
+					listener, longClick);
+			}
+		}
+	}
+
+	private void addListenerEntry(MvpModel model, Map<String, String> refs, Map<String, String> locals,
+		Map<String, List<String>> setters, String rName, String findExpr, MvpModel.ViewListener listener, boolean longClick) {
+		if (!refs.containsKey(rName)) {
+			String local = "view_" + rName;
+			refs.put(rName, local);
+			locals.put(local, findExpr);
+		}
+		String ref = refs.get(rName);
+		StringBuilder call = new StringBuilder(model.generatedSimpleName()).append(".this.").append(listener.methodName).append("(");
+		if (!listener.params.isEmpty()) {
+			String type = listener.params.get(0).typeName;
+			boolean plainView = "android.view.View".equals(type) || "View".equals(type);
+			call.append(plainView ? "view" : "((" + type + ") view)");
+		}
+		call.append(")");
+		StringBuilder s = new StringBuilder("\t\t\t").append(ref).append(longClick
+		? ".setOnLongClickListener(new android.view.View.OnLongClickListener() {\n"
+		: ".setOnClickListener(new android.view.View.OnClickListener() {\n");
+		s.append("\t\t\t@Override\n");
+		if (longClick) {
+			s.append("\t\t\tpublic boolean onLongClick(android.view.View view) {\n");
+			if (listener.returnsBoolean) {
+				s.append("\t\t\t\treturn ").append(call).append(";\n");
+			} else {
+				s.append("\t\t\t\t").append(call).append(";\n");
+				s.append("\t\t\t\treturn true;\n");
+			}
+		} else {
+			s.append("\t\t\tpublic void onClick(android.view.View view) {\n");
+			s.append("\t\t\t\t").append(call).append(";\n");
+		}
+		s.append("\t\t\t}\n\t\t\t});\n");
+		List<String> list = setters.get(rName);
+		if (list == null) {
+			list = new ArrayList<>();
+			setters.put(rName, list);
+		}
+		list.add(s.toString());
 	}
 
 	private void appendFragmentOnCreateView(StringBuilder out, MvpModel model) {

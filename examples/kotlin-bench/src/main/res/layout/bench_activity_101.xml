@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="fill_parent"
+    android:layout_height="fill_parent"
+    android:orientation="vertical" >
+
+    <Button
+        android:id="@+id/launchButton"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:text="Launch" />
+
+    <Button
+        android:id="@+id/noParam"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:text="No param" />
+
+    <Button
+        android:id="@+id/clickViewButton"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:text="View param" />
+
+    <Button
+        android:id="@+id/casted"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:text="Casted" />
+
+    <Button
+        android:id="@+id/multiA"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:text="Multi A" />
+
+    <Button
+        android:id="@+id/multiB"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:text="Multi B" />
+
+    <Button
+        android:id="@+id/resNameButton"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:text="Res name" />
+
+    <Button
+        android:id="@+id/longVoid"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:text="Long void" />
+
+    <Button
+        android:id="@+id/longBoolean"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:text="Long boolean" />
+
+</LinearLayout>

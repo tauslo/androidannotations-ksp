@@ -252,6 +252,16 @@ public final class MvpHandler {
 		} else if (hasBeanParam(function)) {
 			collectBeanParams(resolver, function, name, model);
 		}
+
+		KSAnnotation click = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.CLICK);
+		if (click != null) {
+			collectViewListener(resolver, function, name, click, false, model);
+		}
+
+		KSAnnotation longClick = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.LONG_CLICK);
+		if (longClick != null) {
+			collectViewListener(resolver, function, name, longClick, true, model);
+		}
 	}
 
 	/** APT elementVisibilityModifierToJMod parity: generated @Background/@UiThread overrides keep the source method's visibility. */
@@ -278,6 +288,80 @@ public final class MvpHandler {
 			}
 		}
 		return "";
+	}
+
+	/** APT AbstractViewListenerHandler parity: @Click/@LongClick method validation and id collection. */
+	private void collectViewListener(Resolver resolver, KSFunctionDeclaration function, String name,
+		KSAnnotation annotation, boolean longClick, MvpModel model) {
+		String label = longClick ? "@LongClick" : "@Click";
+		if (model.kind != MvpModel.Kind.ACTIVITY && model.kind != MvpModel.Kind.FRAGMENT) {
+			model.errors.add(label + " is only supported in @EActivity or @EFragment components: method \'" + name + "\'");
+			return;
+		}
+		List<MvpModel.Param> params = KspAnnotationUtils.methodParams(function);
+		if (params.size() > 1) {
+			model.errors.add(label + " method \'" + name + "\' must have at most one parameter");
+			return;
+		}
+		if (!params.isEmpty() && !isViewSubtype(resolver, params.get(0).typeName)) {
+			model.errors.add(label + " method \'" + name + "\' parameter must be a View subtype");
+			return;
+		}
+		String returnType = functionReturnType(function);
+		boolean returnsBoolean = false;
+		if (longClick) {
+			if (!"void".equals(returnType) && !"boolean".equals(returnType)) {
+				model.errors.add(label + " method \'" + name + "\' must return void or boolean");
+				return;
+			}
+			returnsBoolean = "boolean".equals(returnType);
+		} else if (!"void".equals(returnType)) {
+			model.errors.add(label + " method \'" + name + "\' must return void");
+			return;
+		}
+		List<Integer> valueIds = KspAnnotationUtils.intArrayArg(annotation, "value");
+		if (valueIds.size() == 1 && valueIds.get(0) == AnnotationNames.RES_DEFAULT) {
+			valueIds = new ArrayList<>();
+		}
+		List<String> nameIds;
+		if (!valueIds.isEmpty()) {
+			nameIds = new ArrayList<>();
+		} else {
+			nameIds = KspAnnotationUtils.stringArrayArg(annotation, "resName");
+			if (nameIds.isEmpty() || nameIds.size() == 1 && "".equals(nameIds.get(0))) {
+				String suffix = longClick ? "LongClicked" : "Clicked";
+				int suffixIndex = name.lastIndexOf(suffix);
+				nameIds = Collections.singletonList(suffixIndex == -1 ? name : name.substring(0, suffixIndex));
+			}
+		}
+		List<MvpModel.ViewListener> target = longClick ? model.longClickListeners : model.clickListeners;
+		for (MvpModel.ViewListener other : target) {
+			if ((!valueIds.isEmpty() && other.valueIds.equals(valueIds)) || (!nameIds.isEmpty() && other.nameIds.equals(nameIds))) {
+				model.errors.add(label + " on method \'" + name + "\' has duplicate resource ids");
+				return;
+			}
+		}
+		target.add(new MvpModel.ViewListener(longClick, name, params, returnsBoolean, valueIds, nameIds));
+	}
+
+	private String functionReturnType(KSFunctionDeclaration function) {
+		KSTypeReference ref = function.getReturnType();
+		if (ref == null) {
+			return "void";
+		}
+		try {
+			return KspAnnotationUtils.typeName(ref);
+		} catch (Exception e) {
+			return "void";
+		}
+	}
+
+	private boolean isViewSubtype(Resolver resolver, String typeName) {
+		if ("android.view.View".equals(typeName) || "View".equals(typeName)) {
+			return true;
+		}
+		KSClassDeclaration declaration = resolveClassDeclaration(resolver, typeName);
+		return declaration != null && implementsInterface(declaration, "android.view.View");
 	}
 
 	/** APT BeanHandler.processField parity: one assignment target in the init-body injection block. */

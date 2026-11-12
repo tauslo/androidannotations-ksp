@@ -31,10 +31,10 @@
 
 ## View listeners（高频）
 
-- [ ] **BLOCKER** `@Click`
-- [ ] **BLOCKER** `@LongClick`
-- [ ] Method signatures：0 参 / View 参；多 id / `resName`；对照 `AbstractViewListenerHandler`
-- [ ] Demo：点击启动 `Xxx_.intent(...).start()`（可扩现有 launchButton）
+- [x] **BLOCKER** `@Click`
+- [x] **BLOCKER** `@LongClick`
+- [x] Method signatures：0 参 / View 参；多 id / `resName`；对照 `AbstractViewListenerHandler`
+- [x] Demo：点击启动 `Xxx_.intent(...).start()`（可扩现有 launchButton）
 
 ---
 

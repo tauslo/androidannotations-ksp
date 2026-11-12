@@ -137,6 +137,25 @@ public final class MvpModel {
 		}
 	}
 
+	public static final class ViewListener {
+		public final boolean longClick;
+		public final String methodName;
+		public final List<Param> params;
+		public final boolean returnsBoolean;
+		public final List<Integer> valueIds;
+		public final List<String> nameIds;
+
+		public ViewListener(boolean longClick, String methodName, List<Param> params,
+			boolean returnsBoolean, List<Integer> valueIds, List<String> nameIds) {
+			this.longClick = longClick;
+			this.methodName = methodName;
+			this.params = params;
+			this.returnsBoolean = returnsBoolean;
+			this.valueIds = valueIds;
+			this.nameIds = nameIds;
+		}
+	}
+
 	public final Kind kind;
 	public final String packageName;
 	public final String simpleName;
@@ -150,6 +169,8 @@ public final class MvpModel {
 	public final List<FieldInjection> fragmentArgs = new ArrayList<>();
 	public final List<FragmentInjection> fragmentByTags = new ArrayList<>();
 	public final List<FragmentInjection> fragmentByIds = new ArrayList<>();
+	public final List<ViewListener> clickListeners = new ArrayList<>();
+	public final List<ViewListener> longClickListeners = new ArrayList<>();
 	public final List<String> afterViews = new ArrayList<>();
 	public final List<String> afterExtras = new ArrayList<>();
 	public final List<BeanInjection> beans = new ArrayList<>();

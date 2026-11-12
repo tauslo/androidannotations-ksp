@@ -531,3 +531,52 @@
 1. **P0b View listeners**?`@Click` + `@LongClick`?BLOCKER??? APT `AbstractViewListenerHandler`?0 ? / View ????? id???? [`CHECKLIST_P0b.md`](CHECKLIST_P0b.md)
 2. Fragment ???Fragment ??? `@Bean`/`@AfterInject`/`@AfterViews`?Activity ??????`examples/kotlin` ?? Fragment + Arg + builder demo
 3. res handlers?@ColorRes/@DrawableRes??? @OptionsMenu ?? ? @InstanceState / @OnActivityResult / @SystemService ? @EApplication/@EService
+
+## Session 2026-11-13 — P0b: @Click + @LongClick（APT AbstractViewListenerHandler parity）
+
+- **Agent**: Codex
+- **Goal slice**: P0b View listeners BLOCKER —— `@Click` + `@LongClick`，对照 APT `AbstractViewListenerHandler` / `AbstractListenerHandler`（useElementName=true）
+- **Git**: branch=`ksp/main` HEAD=`dcd68613`（session 起点），commit 仅本地未 push
+- **Status**: done
+
+### Done
+- `MvpHandler.collectViewListener(...)`：方法校验（仅 @EActivity/@EFragment；至多 1 参且须 View 子类型；@Click 必须 void，@LongClick void/boolean）+ id 收集进 `clickListeners` / `longClickListeners`
+- KSP 会暴露注解默认值而 APT 只见显式值：`value={-1}`（ResId.DEFAULT_VALUE）归一化为空；`resName=[""]` 视为缺省；两者皆缺省时按 APT `extractElementName` / `actionName` 规则去掉方法名 `Clicked` / `LongClicked` 后缀推导资源名
+- 重复 id 校验：原始列表比较 + 空列表保护（细节见 Known limitations）
+- `MvpJavaGenerator.appendViewListeners(...)`：Activity/Fragment `onViewChanged` 中 @ViewById 字段循环之后输出监听器局部变量（`view_<rName>`），if-block 紧随其后（afterViews / byTags / byIds 之前）；多 id 每个 id 独立匿名类块；与 @ViewById 字段共享 rName 时复用属性引用不新建局部
+- bean 不接线：bean 上 @Click/@LongClick 直接报错（比 APT 更严格，见 Known limitations）
+- Fixture `BenchActivity101`：8 个方法覆盖 显式 value / 裸方法名 / View 参 / Button 强转 / 多 id / resName / @LongClick void / @LongClick boolean；layout 9 个 id
+
+### Changed paths
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/AnnotationNames.java
+- .../KspAnnotationUtils.java
+- .../MvpModel.java
+- .../handler/MvpHandler.java
+- .../generate/MvpJavaGenerator.java
+- .../AndroidAnnotationsSymbolProcessor.java
+- examples/kotlin-bench/src/main/kotlin/org/androidannotations/bench/BenchActivity101.kt（新增）
+- examples/kotlin-bench/src/main/res/layout/bench_activity_101.xml（新增）
+
+### Verify
+- [x] mvn install（api + ksp，-am）BUILD SUCCESS
+- [x] examples/kotlin-bench `assembleDebug -Paa.processor=ksp` BUILD SUCCESSFUL（未 clean，保留 kapt GT）
+- [x] GT 对比：`BenchActivity101_.java` KSP vs APT（kapt），归一化后逐字一致（3461 字符）；监听器接线区域零差异（9 局部变量顺序、if 块、匿名类、`(Button) view` 强转、longVoid `return true;`、longBoolean 返回转发全部一致）。归一化额外吸收了既有 Activity 模板偏差（见 Known limitations），对比脚本 C:/temp/gt_cmp6.py
+- [x] 回归门禁：ksp/debug/java/org/androidannotations/bench 203 文件与 C:/temp/ksp-p0b-after 逐字节一致，仅新增 BenchActivity101_.java（共 204）；备份已刷新为 204
+- [x] CHECKLIST_P0b.md「View listeners（高频）」4 项全部勾选
+
+### Known limitations（未修复）
+- 与 @ViewById 字段共享 id 的路径无 fixture 覆盖（逻辑已实现：复用属性引用，不新建局部）
+- bean 的 @Click/@LongClick 报错而 APT 忽略（KSP 更严格）
+- Kotlin 方法未做 APT "doesn't throw" 校验
+- value-id 无法解析时退化为 `view_<int>` 局部变量
+- 重复 id 检查比较原始列表而非 resolved qualified ids：name 引用与 value 引用指向同一 int、或两个 name 解析到同一 id 的情况不会报出
+- 既有 Activity 模板偏差（非本切片引入，git diff 未触及；留待「Activity 模板 parity」项）：接口顺序（KSP `HasViews, OnViewChangedListener, BeanHolder` vs GT `BeanHolder` 在前）、beans_ 字段类型 HashMap vs Map、internalFindViewById 位置/`this.`/@SuppressWarnings 风格、getBean/putBean/static intent() 方法顺序、startForResult 局部变量 vs 内联强转
+- 原始实现脚本 C:/temp/p0b_impl.py 含 6 行被传输层破坏的引号消息（勿重跑），已被 p0b_fix*.py 补丁取代；磁盘文件为准
+
+### Blockers
+- none
+
+### Next
+1. **P0b Resources（常用集）**：@ColorRes / @DrawableRes / @ColorStateListRes / @BooleanRes / @IntegerRes / @StringArrayRes / @TextRes / @TextArrayRes / @DimensionRes 等，对照 `ContextCompatAwareResHandler`（CHECKLIST_P0b.md L41-49）
+2. Fragment 监听器 fixture：为 fragment 场景补 @Click/@LongClick 覆盖（当前仅 Activity fixture 101）
+3. res handlers / @OptionsMenu / @InstanceState 等按原计划推进

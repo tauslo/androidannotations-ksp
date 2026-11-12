@@ -25,6 +25,8 @@ public final class AnnotationNames {
 	public static final String FRAGMENT_BY_ID = "org.androidannotations.annotations.FragmentById";
 	public static final String FRAGMENT_BY_TAG = "org.androidannotations.annotations.FragmentByTag";
 	public static final String VIEW_BY_ID = "org.androidannotations.annotations.ViewById";
+	public static final String CLICK = "org.androidannotations.annotations.Click";
+	public static final String LONG_CLICK = "org.androidannotations.annotations.LongClick";
 	public static final String STRING_RES = "org.androidannotations.annotations.res.StringRes";
 	public static final String EXTRA = "org.androidannotations.annotations.Extra";
 	public static final String AFTER_VIEWS = "org.androidannotations.annotations.AfterViews";
@@ -40,7 +42,6 @@ public final class AnnotationNames {
 
 	/** AA annotations recognized by the KSP processor but not implemented yet; their use is reported with a warning. */
 	public static final String[] RECOGNIZED_NOT_IMPLEMENTED = {
-			"org.androidannotations.annotations.Click", // P0b
 			"org.androidannotations.annotations.InstanceState", // P0b
 			"org.androidannotations.annotations.OptionsMenu", // P0b
 			"org.androidannotations.annotations.sharedpreferences.SharedPref" // P1
