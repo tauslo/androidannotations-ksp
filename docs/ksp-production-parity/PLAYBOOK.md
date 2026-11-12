@@ -67,34 +67,22 @@ org.androidannotations.ksp/
 
 ---
 
-## 2. 当前已完成（MVP）
+## 2. 当前进度（以 EXECUTION_LOG 为准）
 
-**已支持注解（浅实现）：**
+**P0a：已完成（exit acceptance done）。** 详见 [`CHECKLIST_P0a.md`](CHECKLIST_P0a.md) / 日志。
 
-`@EActivity` `@EBean` `@ViewById` `@StringRes` `@Extra` `@AfterViews` `@Background` `@UiThread`
+已具备（相对最初 MVP 加深后）：
 
-**已具备：**
+- Options / Manifest / R·R2 索引与校验、组件注册校验
+- `IntentBuilder_`、`@Extra` Bundle 全类型、`@AfterExtras`
+- EBean scopes + `rebind`、`@Bean`、`@AfterInject`、嵌套 `Outer_.Inner_`、父类成员注解
+- `handler/` + `generate/` + `env/` 包拆分；未实现注解 warn
+- `examples/kotlin` / `kotlin-bench`；冷全量 vs kapt 约 −22.6%（`BENCHMARK.md`）
+- Bench APT vs KSP 公开 API spot-check：DECL/SIG 0 mismatch（body 允许等价改写）
 
-- Maven 模块 + `SymbolProcessorProvider` SPI
-- `examples/kotlin` 升工具链并切 KSP，`assembleDebug` 通过
-- `examples/kotlin-bench` 200 类冷构建对比写入 `BENCHMARK.md`
-- README 标明基于上游仓库
+**下一步：P0b**（[`CHECKLIST_P0b.md`](CHECKLIST_P0b.md)）— Fragment / Click / 常用 Res / Menu / InstanceState / …  
 
-**明确缺口（相对 APT）：**
-
-| 能力 | 状态 |
-|------|------|
-| `IntentBuilder_` / `Xxx_.intent(...)` | 无 |
-| `@Bean` + EBean scope 缓存 | 无 |
-| `@AfterInject` | 无 |
-| `@EFragment` / FragmentBuilder / `@FragmentArg` | 无 |
-| Manifest 查找与组件注册校验 | 无（仅 options 默认包名） |
-| R 符号校验 / `useR2` | 无（int 字面量或 `R.x.name` 拼接） |
-| 父类注解传播 | 无 |
-| 嵌套类 → `Outer_.Inner_` | 无（会错误顶层生成） |
-| 未实现注解告警 | 无 |
-| Bundle 全类型（Parcelable 等） | Extra 仅基本类型+String |
-| 增量 KSP | 无 |
+P0a 可选遗留（已转入 P0b Carry-over）：`@ViewById` method-injection、线程包装顺序笔记、Kotlin 字段写入对齐、`@NotNull` 等。
 
 关键源码：
 
@@ -245,6 +233,11 @@ git push ksp HEAD:main
 ## 8. 相关文档
 
 - [`EXECUTION_LOG.md`](EXECUTION_LOG.md) — 执行日记（续跑依据）
-- [`CHECKLIST_P0a.md`](CHECKLIST_P0a.md) — P0a 打勾清单
-- [`../../BENCHMARK.md`](../../BENCHMARK.md) — 已有 MVP 测速
+- [`CHECKLIST_P0a.md`](CHECKLIST_P0a.md) — P0a（已完成主路径）
+- [`CHECKLIST_P0b.md`](CHECKLIST_P0b.md) — **当前主线**
+- [`CHECKLIST_P1.md`](CHECKLIST_P1.md) — 常见旧工程
+- [`CHECKLIST_P2.md`](CHECKLIST_P2.md) — 偏门按需
+- [`CHECKLIST_PLUGINS.md`](CHECKLIST_PLUGINS.md) — ORMLite / REST 等
+- [`CHECKLIST_PERF.md`](CHECKLIST_PERF.md) — 增量与测速（可并行）
+- [`../../BENCHMARK.md`](../../BENCHMARK.md) — 已有测速
 - [`../../README.md`](../../README.md) — 仓库说明

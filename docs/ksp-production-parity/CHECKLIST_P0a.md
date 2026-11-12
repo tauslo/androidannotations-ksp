@@ -40,9 +40,9 @@
 
 ## Deepen views / res / threads（质量）
 
-- [ ] `@ViewById` method-injection form（optional in P0a if time；否则记入 P0b）
-- [ ] Keep `@Background` / `@UiThread` ordering notes compatible with future Trace/IgnoreWhen
-- [ ] Kotlin property → Java setter/field mapping remains correct（含 primitive）
+- [ ] ~~`@ViewById` method-injection~~ → 已转入 [`CHECKLIST_P0b.md`](CHECKLIST_P0b.md) Carry-over
+- [ ] ~~Background/UiThread ordering notes~~ → P0b Carry-over
+- [ ] ~~Kotlin property mapping review~~ → P0b Carry-over
 
 ## Acceptance for P0a exit
 
@@ -50,7 +50,9 @@
 - [x] `examples/kotlin` demonstrates `@Bean` EnhancedBean injection into Activity
 - [x] Spot-check: APT vs KSP generated public API for sample Activity（method names）
 - [x] `EXECUTION_LOG` marks P0a done and sets Next = first P0b item
-- [ ] Push to `ksp/main` when user wants remote updated
+- [ ] Push to `ksp/main` when user wants remote updated（本地曾 ahead；以 `git status` 为准）
+
+**P0a 主路径：DONE**（2026-11-11 exit acceptance）。后续只跟 P0b+。
 
 ## Out of scope for P0a（不要偷跑）
 
