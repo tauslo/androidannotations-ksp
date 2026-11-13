@@ -40,13 +40,13 @@
 
 ## Resources（常用集）
 
-- [ ] `@ColorRes`（ContextCompat 分支，对照 `ColorResHandler` / `ContextCompatAwareResHandler`）
-- [ ] `@DrawableRes`（同上）
-- [ ] `@ColorStateListRes`
-- [ ] `@BooleanRes` `@IntegerRes` `@StringArrayRes` `@TextRes` `@TextArrayRes`
-- [ ] `@DimensionRes` `@DimensionPixelOffsetRes` `@DimensionPixelSizeRes`
+- [x] `@ColorRes`（ContextCompat 分支，对照 `ColorResHandler` / `ContextCompatAwareResHandler`）
+- [x] `@DrawableRes`（同上）
+- [x] `@ColorStateListRes`
+- [x] `@BooleanRes` `@IntegerRes` `@StringArrayRes` `@TextRes` `@TextArrayRes`
+- [x] `@DimensionRes` `@DimensionPixelOffsetRes` `@DimensionPixelSizeRes`
 - [ ] `@AnimationRes` `@HtmlRes` `@LayoutRes`（按样例需要；可先 DefaultRes 通用路径）
-- [ ] 全部走 `RClassIndex` 字段引用 + 缺失报错（复用 P0a）
+- [x] 全部走 `RClassIndex` 字段引用 + 缺失报错（复用 P0a）
 
 ---
 

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <color name="benchAccent">#FF4081</color>
+
+    <bool name="benchFlag">true</bool>
+
+    <integer name="benchNumber">42</integer>
+
+    <string-array name="benchStrings">
+        <item>alpha</item>
+        <item>beta</item>
+    </string-array>
+
+    <dimen name="benchPadding">16dp</dimen>
+
+</resources>

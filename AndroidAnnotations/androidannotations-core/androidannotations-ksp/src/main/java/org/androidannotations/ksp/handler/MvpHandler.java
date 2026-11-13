@@ -40,6 +40,7 @@ import kotlin.sequences.SequencesKt;
 import org.androidannotations.ksp.AnnotationNames;
 import org.androidannotations.ksp.KspAnnotationUtils;
 import org.androidannotations.ksp.MvpModel;
+import org.androidannotations.ksp.ResCompat;
 
 /**
  * Builds the {@link MvpModel} for one annotated class. Mirrors APT ModelExtractor + ModelProcessor:
@@ -146,6 +147,31 @@ public final class MvpHandler {
 			model.stringRes.add(new MvpModel.FieldInjection(name, typeName, jvmField,
 					KspAnnotationUtils.intArg(stringRes, "value", AnnotationNames.RES_DEFAULT),
 					KspAnnotationUtils.stringArg(stringRes, "resName", "")));
+		}
+
+		for (ResCompat.Type type : ResCompat.ALL) {
+			KSAnnotation res = KspAnnotationUtils.findAnnotation(property.getAnnotations(), type.annotationName);
+			if (res == null) {
+				continue;
+			}
+			// APT parity (AbstractResHandler.validate + InjectHelper): final fields first, then the allowed field type.
+			if (!property.isMutable()) {
+				model.errors.add(type.annotationName + " cannot be used on a final element");
+				continue;
+			}
+			String javaType = KspAnnotationUtils.fullJavaTypeName(property.getType());
+			if (!type.allowedTypes.contains(javaType)) {
+				model.errors.add(type.annotationName + " can only be used on a field which is a " + type.allowedTypes + ", not " + javaType);
+				continue;
+			}
+			if (property.getModifiers().contains(Modifier.PRIVATE)) {
+				model.errors.add(type.annotationName + " cannot be used on a private element");
+				continue;
+			}
+			model.resFields.add(new MvpModel.ResField(name, typeName, jvmField,
+				KspAnnotationUtils.intArg(res, "value", AnnotationNames.RES_DEFAULT),
+				KspAnnotationUtils.stringArg(res, "resName", ""),
+				type.rInnerClass, type.method));
 		}
 
 		KSAnnotation extra = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.EXTRA);

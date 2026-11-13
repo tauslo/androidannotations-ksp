@@ -22,8 +22,10 @@ import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import com.google.devtools.ksp.processing.CodeGenerator;
@@ -77,7 +79,14 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 
 		String resourcePackage = environment.getResourcePackage();
 		String classSuffix = environment.getClassSuffix();
-		MvpJavaGenerator generator = new MvpJavaGenerator(resourcePackage, environment.getRClassName(), environment.getRClassIndex());
+		int minSdkVersion = environment.getAndroidManifest() != null ? environment.getAndroidManifest().getMinSdkVersion() : -1;
+		Map<String, ResCompat.Mode> resCompatModes = new HashMap<String, ResCompat.Mode>();
+		for (ResCompat.Type type : ResCompat.ALL) {
+			if (type.contextCompatAware) {
+				resCompatModes.put(type.method, ResCompat.modeFor(resolver, minSdkVersion, type));
+			}
+		}
+		MvpJavaGenerator generator = new MvpJavaGenerator(resourcePackage, environment.getRClassName(), environment.getRClassIndex(), resCompatModes);
 
 		MvpHandler handler = new MvpHandler();
 
@@ -189,7 +198,7 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 	private boolean needsResourcePackage(MvpModel model) {
 		return !model.stringRes.isEmpty() || !model.viewByIds.isEmpty() || model.layoutId != AnnotationNames.RES_DEFAULT
 				|| (model.layoutResName != null && !model.layoutResName.isEmpty()) || !model.fragmentByIds.isEmpty()
-				|| !model.clickListeners.isEmpty() || !model.longClickListeners.isEmpty();
+				|| !model.clickListeners.isEmpty() || !model.longClickListeners.isEmpty() || !model.resFields.isEmpty();
 	}
 
 	/**
@@ -221,6 +230,9 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 		for (MvpModel.FieldInjection stringRes : model.stringRes) {
 			errors.addAll(validateInjection(canCheckValues, index, "string", stringRes));
 		}
+		for (MvpModel.ResField resField : model.resFields) {
+			errors.addAll(validateInjection(canCheckValues, index, resField.rInnerClass, resField.propertyName, resField.resId, resField.resName));
+		}
 		for (MvpModel.FragmentInjection byId : model.fragmentByIds) {
 			errors.addAll(validateFragmentById(canCheckValues, index, byId));
 		}
@@ -245,17 +257,21 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 
 	/** Mirrors APT {@code resIdsExist} with the USE_ELEMENT_NAME fallback for {@code @ViewById}/{@code @StringRes}. */
 	private List<String> validateInjection(boolean canCheckValues, RClassIndex index, String resType, MvpModel.FieldInjection injection) {
+		return validateInjection(canCheckValues, index, resType, injection.propertyName, injection.resId, injection.resName);
+	}
+
+	private List<String> validateInjection(boolean canCheckValues, RClassIndex index, String resType, String propertyName, int resId, String resName) {
 		List<String> errors = new ArrayList<>();
-		if (injection.resId != AnnotationNames.RES_DEFAULT) {
-			if (canCheckValues && !index.containsIdValue(resType, injection.resId)) {
-				errors.add("Resource id value not found in R." + resType + ": " + injection.resId);
+		if (resId != AnnotationNames.RES_DEFAULT) {
+			if (canCheckValues && !index.containsIdValue(resType, resId)) {
+				errors.add("Resource id value not found in R." + resType + ": " + resId);
 			}
-		} else if (injection.resName != null && !injection.resName.isEmpty()) {
-			if (!index.containsField(resType, injection.resName)) {
-				errors.add("Resource name not found in R." + resType + ": " + injection.resName);
+		} else if (resName != null && !resName.isEmpty()) {
+			if (!index.containsField(resType, resName)) {
+				errors.add("Resource name not found in R." + resType + ": " + resName);
 			}
-		} else if (!index.containsField(resType, injection.propertyName)) {
-			errors.add("Resource name not found in R." + resType + ": " + injection.propertyName);
+		} else if (!index.containsField(resType, propertyName)) {
+			errors.add("Resource name not found in R." + resType + ": " + propertyName);
 		}
 		return errors;
 	}

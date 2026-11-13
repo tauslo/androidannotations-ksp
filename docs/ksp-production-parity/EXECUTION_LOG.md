@@ -580,3 +580,56 @@
 1. **P0b Resources（常用集）**：@ColorRes / @DrawableRes / @ColorStateListRes / @BooleanRes / @IntegerRes / @StringArrayRes / @TextRes / @TextArrayRes / @DimensionRes 等，对照 `ContextCompatAwareResHandler`（CHECKLIST_P0b.md L41-49）
 2. Fragment 监听器 fixture：为 fragment 场景补 @Click/@LongClick 覆盖（当前仅 Activity fixture 101）
 3. res handlers / @OptionsMenu / @InstanceState 等按原计划推进
+
+## Session 2026-11-13 — P0b: Resources 常用集（APT AbstractResHandler/ContextCompatAwareResHandler parity）
+
+- **Agent**: Codex
+- **Goal slice**: P0b Resources（常用集）—— 11 个 res 注解（@ColorRes/@DrawableRes/@ColorStateListRes/@BooleanRes/@IntegerRes/@StringArrayRes/@TextRes/@TextArrayRes/@DimensionRes/@DimensionPixelOffsetRes/@DimensionPixelSizeRes），对照 APT `AbstractResHandler` / `ContextCompatAwareResHandler`（CHECKLIST_P0b.md「Resources（常用集）」）
+- **Git**: branch=`ksp/main` HEAD=`ce86a9b5`（session 起点），commit 仅本地未 push
+- **Status**: done
+
+### Done
+- 新增 `ResCompat.java`：11 个 res 注解类型表（注解名 / R 内部类 / Resources 查找方法 / 允许字段类型，与 APT `AndroidRes` 枚举逐项一致）+ ContextCompat-aware 分支选择 `modeFor(...)`（ANDROIDX_COMPAT → SUPPORT_COMPAT → CONTEXT_METHOD(minSdk≥平台版本) → IF_GUARD(编译期存在平台方法) → RESOURCES），对照 APT `ContextCompatAwareResHandler.getInstanceInvocation`；compat 三类为 color(23/M)、drawable(21/LOLLIPOP)、csl(23/M)
+- `MvpModel.ResField` + `model.resFields`：属性名 / Java 类型 / jvmField / value / resName / R 内部类 / 查找方法
+- `MvpHandler`：收集属性上的 11 个注解并校验（对照 APT：final → "cannot be used on a final element"；类型不符 → "can only be used on a field which is a ... not ..."；private → "cannot be used on a private element"）
+- `MvpJavaGenerator.appendResAssign(...)`：Activity/Fragment/Bean 三种 init_ 中在 stringRes 赋值之后按 mode 输出 —— RESOURCES → `resources_.getX(R...)`；ANDROIDX/SUPPORT_COMPAT → `ContextCompat.getX(context, R...)`；CONTEXT_METHOD → 裸 context 调用；IF_GUARD → `if (SDK_INT >= PLATFORM) {context 方法} else {resources_}`
+- `AndroidAnnotationsSymbolProcessor`：处理前按 compat 类型预计算 resCompatModes（minSdk 取自 manifest）；`needsResourcePackage` 扩展 resFields；value/resName/属性名缺失校验复用既有 RClassIndex 路径（validateInjection 重构为重载）
+- `KspAnnotationUtils`：`kotlin.CharSequence` → `java.lang.CharSequence`；`kotlin.Array<T>` → `T[]`（StringArrayRes 需要）；新增 `fullJavaTypeName(...)`
+- Fixture `BenchActivity102`：6 个带初始化器 primitive var + 4 个 lateinit 引用类型 var，覆盖 10 个 res 注解（TextArrayRes 无字段，见 Known limitations）；resources：color/bool/integer/string-array/dimen + layout
+- `examples/kotlin-bench/build.gradle`：ksp 块新增 `arg("androidManifestFile", ...)` 指向 raw manifest（见 Known limitations minSdk 不对称）
+
+### Changed paths
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/ResCompat.java（新增）
+- .../ksp/AnnotationNames.java
+- .../ksp/MvpModel.java
+- .../ksp/KspAnnotationUtils.java
+- .../ksp/handler/MvpHandler.java
+- .../ksp/generate/MvpJavaGenerator.java
+- .../ksp/AndroidAnnotationsSymbolProcessor.java
+- examples/kotlin-bench/build.gradle
+- examples/kotlin-bench/src/main/kotlin/org/androidannotations/bench/BenchActivity102.kt（新增）
+- examples/kotlin-bench/src/main/res/values/bench_res_102.xml（新增）
+- examples/kotlin-bench/src/main/res/layout/bench_activity_102.xml（新增）
+- docs/ksp-production-parity/CHECKLIST_P0b.md
+
+### Verify
+- [x] mvn install（api + ksp，-am）BUILD SUCCESS
+- [x] examples/kotlin-bench `assembleDebug -Paa.processor=ksp` BUILD SUCCESSFUL；KSP 输出含全部 10 个 res 字段（setter 调用）+ 3 个 IF_GUARD（color M / drawable LOLLIPOP / csl M），init_ 内 `resources_` 局部在前
+- [x] GT 对比：BenchActivity102_.java KSP vs APT(kapt)，归一化后逐字一致（2111 字符）；3 个 IF_GUARD 分支、setter 调用 vs 字段赋值形态、init_ 语句顺序均由比较器吸收；脚本 C:/temp/gt_cmp7.py（修复：setter 首字母大写 + 平衡括号整体替换、onViewChanged 正则容忍参数名）
+- [x] 回归门禁：ksp/debug/java/org/androidannotations/bench 205 文件与 C:/temp/ksp-p0b-after 逐字节一致，仅新增 BenchActivity102_.java（共 205）；备份已刷新为 205
+- [x] CHECKLIST_P0b.md「Resources（常用集）」6 项勾选（@ColorRes/@DrawableRes/@ColorStateListRes；Boolean/Integer/StringArray/Text/TextArray；Dimension trio；RClassIndex）；Animation/Html/Layout 保持未勾
+
+### Known limitations（未修复）
+- kapt stub 行为：Kotlin `var` 带初始化器 → kapt stub 中 private backing field → APT 拒绝 res 注解（"cannot be used on a private element"，6 个 primitive 字段，kapt task FAILS）；且 @JvmField 不能用于非 final var。故提交的 fixture（无 JvmField）使 GT 构建按设计为红；GT 参考用临时 @JvmField-on-primitives 变体生成并保存于 C:/temp/gt102_jvmfield.java（比较器对该副本而非 live 目录）
+- minSdk 不对称：KSP `AndroidManifestFinder` 默认优先 merged manifest（minSdk=21，来自 build.gradle），而 kapt 收到的是 raw src/main/AndroidManifest.xml（无 uses-sdk → −1）；已用对称的 androidManifestFile ksp arg 修复并验证 drawable 两侧均为 IF_GUARD
+- TextArrayRes = 仅校验 parity：APT 允许类型字面为 CharSequence（APT quirk，非 CharSequence[]），KSP 原样镜像；无 GT 字段覆盖
+- Bean/Fragment 的 res 字段无 GT 覆盖（生成器支持三种 kind，fixture 仅 Activity）
+- setter 调用 vs `this.field=` + init_ 语句顺序由比较器吸收（KSP 对 Kotlin property 发 setter，APT 直接写字段）
+
+### Blockers
+- none
+
+### Next
+1. **P0b Resources 剩余**：@AnimationRes / @HtmlRes / @LayoutRes（按样例需要；DefaultRes 通用路径，CHECKLIST_P0b.md「Resources（常用集）」末项）
+2. Fragment 监听器 fixture：为 fragment 场景补 @Click/@LongClick 覆盖（当前仅 Activity fixture 101）
+3. res handlers / @OptionsMenu / @InstanceState 等按原计划推进

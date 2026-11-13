@@ -28,6 +28,17 @@ public final class AnnotationNames {
 	public static final String CLICK = "org.androidannotations.annotations.Click";
 	public static final String LONG_CLICK = "org.androidannotations.annotations.LongClick";
 	public static final String STRING_RES = "org.androidannotations.annotations.res.StringRes";
+	public static final String COLOR_RES = "org.androidannotations.annotations.res.ColorRes";
+	public static final String DRAWABLE_RES = "org.androidannotations.annotations.res.DrawableRes";
+	public static final String COLOR_STATE_LIST_RES = "org.androidannotations.annotations.res.ColorStateListRes";
+	public static final String BOOLEAN_RES = "org.androidannotations.annotations.res.BooleanRes";
+	public static final String INTEGER_RES = "org.androidannotations.annotations.res.IntegerRes";
+	public static final String STRING_ARRAY_RES = "org.androidannotations.annotations.res.StringArrayRes";
+	public static final String TEXT_RES = "org.androidannotations.annotations.res.TextRes";
+	public static final String TEXT_ARRAY_RES = "org.androidannotations.annotations.res.TextArrayRes";
+	public static final String DIMENSION_RES = "org.androidannotations.annotations.res.DimensionRes";
+	public static final String DIMENSION_PIXEL_SIZE_RES = "org.androidannotations.annotations.res.DimensionPixelSizeRes";
+	public static final String DIMENSION_PIXEL_OFFSET_RES = "org.androidannotations.annotations.res.DimensionPixelOffsetRes";
 	public static final String EXTRA = "org.androidannotations.annotations.Extra";
 	public static final String AFTER_VIEWS = "org.androidannotations.annotations.AfterViews";
 	public static final String BACKGROUND = "org.androidannotations.annotations.Background";

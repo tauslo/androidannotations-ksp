@@ -24,6 +24,7 @@ import java.util.Map;
 import org.androidannotations.ksp.AnnotationNames;
 import org.androidannotations.ksp.KspAnnotationUtils;
 import org.androidannotations.ksp.MvpModel;
+import org.androidannotations.ksp.ResCompat;
 import org.androidannotations.ksp.env.RClassIndex;
 
 public final class MvpJavaGenerator {
@@ -32,10 +33,13 @@ public final class MvpJavaGenerator {
 	private final String rClassName;
 	private final RClassIndex rClassIndex;
 
-	public MvpJavaGenerator(String resourcePackage, String rClassName, RClassIndex rClassIndex) {
+	private final Map<String, ResCompat.Mode> resCompatModes;
+
+	public MvpJavaGenerator(String resourcePackage, String rClassName, RClassIndex rClassIndex, Map<String, ResCompat.Mode> resCompatModes) {
 		this.resourcePackage = resourcePackage;
 		this.rClassName = rClassName;
 		this.rClassIndex = rClassIndex;
+		this.resCompatModes = resCompatModes;
 	}
 
 	public String generate(MvpModel model) {
@@ -79,12 +83,15 @@ public final class MvpJavaGenerator {
 		out.append("\t}\n\n");
 
 		out.append("\tprivate void init_(android.os.Bundle savedInstanceState) {\n");
-		if (!model.stringRes.isEmpty()) {
+		if (!model.stringRes.isEmpty() || !model.resFields.isEmpty()) {
 			out.append("\t\tandroid.content.res.Resources resources_ = getResources();\n");
 		}
 		for (MvpModel.FieldInjection injection : model.stringRes) {
 			String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "string", injection.propertyName, injection.resId, injection.resName, rClassIndex);
 			appendAssign(out, injection, "resources_.getString(" + resExpr + ")");
+		}
+		for (MvpModel.ResField resField : model.resFields) {
+			appendResAssign(out, model.kind, resField);
 		}
 		if (!model.extras.isEmpty() || !model.afterExtras.isEmpty()) {
 			out.append("\t\tinjectExtras_();\n");
@@ -222,8 +229,14 @@ public final class MvpJavaGenerator {
 		out.append("\t}\n\n");
 
 		out.append("\tprivate void init_(android.os.Bundle savedInstanceState) {\n");
+		if (!model.resFields.isEmpty()) {
+			out.append("\t\tandroid.content.res.Resources resources_ = getActivity().getResources();\n");
+		}
 		if (hasViewSupport) {
 			out.append("\t\torg.androidannotations.api.view.OnViewChangedNotifier.registerOnViewChangedListener(this);\n");
+		}
+		for (MvpModel.ResField resField : model.resFields) {
+			appendResAssign(out, model.kind, resField);
 		}
 		out.append("\t\tinjectFragmentArguments_();\n");
 		out.append("\t}\n\n");
@@ -504,12 +517,15 @@ public final class MvpJavaGenerator {
 		}
 
 		out.append("\tprivate void init_() {\n");
-		if (!model.stringRes.isEmpty()) {
+		if (!model.stringRes.isEmpty() || !model.resFields.isEmpty()) {
 			out.append("\t\tandroid.content.res.Resources resources_ = context_.getResources();\n");
 		}
 		for (MvpModel.FieldInjection injection : model.stringRes) {
 			String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "string", injection.propertyName, injection.resId, injection.resName, rClassIndex);
 			appendAssign(out, injection, "resources_.getString(" + resExpr + ")");
+		}
+		for (MvpModel.ResField resField : model.resFields) {
+			appendResAssign(out, model.kind, resField);
 		}
 		if (hasViewSupport) {
 			out.append("\t\torg.androidannotations.api.view.OnViewChangedNotifier.registerOnViewChangedListener(this);\n");
@@ -551,6 +567,46 @@ public final class MvpJavaGenerator {
 		if (hasLayoutId || hasLayoutName) {
 			String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "layout", "", model.layoutId, hasLayoutName ? model.layoutResName : "", rClassIndex);
 			out.append("\t\tsetContentView(").append(resExpr).append(");\n");
+		}
+	}
+
+	/** Mirrors APT ContextCompatAwareResHandler branch selection for one resource field. */
+	private void appendResAssign(StringBuilder out, MvpModel.Kind kind, MvpModel.ResField resField) {
+		String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, resField.rInnerClass, resField.propertyName, resField.resId, resField.resName, rClassIndex);
+		ResCompat.Mode mode = resCompatModes.get(resField.method);
+		String contextRef = kind == MvpModel.Kind.BEAN ? "context_" : (kind == MvpModel.Kind.FRAGMENT ? "getActivity()" : "this");
+		String contextCall = kind == MvpModel.Kind.BEAN ? "context_." + resField.method : (kind == MvpModel.Kind.FRAGMENT ? "getActivity()." + resField.method : resField.method);
+		if (mode == null || "RESOURCES".equals(mode.kind)) {
+			appendAssign(out, resField.propertyName, resField.jvmField, "resources_." + resField.method + "(" + resExpr + ")");
+			return;
+		}
+		if ("ANDROIDX_COMPAT".equals(mode.kind) || "SUPPORT_COMPAT".equals(mode.kind)) {
+			String compatClass = "ANDROIDX_COMPAT".equals(mode.kind) ? "androidx.core.content.ContextCompat" : "android.support.v4.content.ContextCompat";
+			appendAssign(out, resField.propertyName, resField.jvmField, compatClass + "." + resField.method + "(" + contextRef + ", " + resExpr + ")");
+			return;
+		}
+		if ("CONTEXT_METHOD".equals(mode.kind)) {
+			appendAssign(out, resField.propertyName, resField.jvmField, contextCall + "(" + resExpr + ")");
+			return;
+		}
+		// IF_GUARD: mirrors APT ContextCompatAwareResHandler.createCallWithIfGuard.
+		out.append("\t\tif (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.").append(mode.platformName).append(") {\n");
+		appendAssign(out, resField.propertyName, resField.jvmField, contextCall + "(" + resExpr + ")", "\t\t\t");
+		out.append("\t\t} else {\n");
+		appendAssign(out, resField.propertyName, resField.jvmField, "resources_." + resField.method + "(" + resExpr + ")", "\t\t\t");
+		out.append("\t\t}\n");
+	}
+
+	private void appendAssign(StringBuilder out, String propertyName, boolean jvmField, String expression) {
+		appendAssign(out, propertyName, jvmField, expression, "\t\t");
+	}
+
+	private void appendAssign(StringBuilder out, String propertyName, boolean jvmField, String expression, String indent) {
+		if (jvmField) {
+			out.append(indent).append(propertyName).append(" = ").append(expression).append(";\n");
+		}
+		else {
+			out.append(indent).append(KspAnnotationUtils.setterName(propertyName)).append("(").append(expression).append(");\n");
 		}
 	}
 
@@ -836,3 +892,4 @@ public final class MvpJavaGenerator {
 		return value == null ? "" : value.replace("\\", "\\\\").replace("\"", "\\\"");
 	}
 }
+

@@ -68,6 +68,28 @@ public final class MvpModel {
 		}
 	}
 
+	public static final class ResField {
+		public final String propertyName;
+		public final String typeName;
+		public final boolean jvmField;
+		public final int resId;
+		public final String resName;
+		/** R inner class of the resource (color, drawable, bool, integer, array, string, dimen). */
+		public final String rInnerClass;
+		/** Resources lookup method (getColor, getBoolean, getStringArray, ...). */
+		public final String method;
+
+		public ResField(String propertyName, String typeName, boolean jvmField, int resId, String resName, String rInnerClass, String method) {
+			this.propertyName = propertyName;
+			this.typeName = typeName;
+			this.jvmField = jvmField;
+			this.resId = resId;
+			this.resName = resName;
+			this.rInnerClass = rInnerClass;
+			this.method = method;
+		}
+	}
+
 	public static final class MethodInfo {
 		public final String name;
 		public final List<Param> params;
@@ -165,6 +187,7 @@ public final class MvpModel {
 	public final String layoutResName;
 	public final List<FieldInjection> viewByIds = new ArrayList<>();
 	public final List<FieldInjection> stringRes = new ArrayList<>();
+	public final List<ResField> resFields = new ArrayList<>();
 	public final List<FieldInjection> extras = new ArrayList<>();
 	public final List<FieldInjection> fragmentArgs = new ArrayList<>();
 	public final List<FragmentInjection> fragmentByTags = new ArrayList<>();

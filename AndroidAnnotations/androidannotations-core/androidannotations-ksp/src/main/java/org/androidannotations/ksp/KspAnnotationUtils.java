@@ -199,6 +199,11 @@ public final class KspAnnotationUtils {
 	}
 
 	public static String toJavaTypeName(String kotlinOrJavaName) {
+		/** kotlin.Array<T> maps to the Java array type T[] (APT stubs expose Kotlin arrays as such). */
+		if (kotlinOrJavaName.startsWith("kotlin.Array<") && kotlinOrJavaName.endsWith(">")) {
+			String inner = kotlinOrJavaName.substring("kotlin.Array<".length(), kotlinOrJavaName.length() - 1);
+			return toJavaTypeName(inner) + "[]";
+		}
 		switch (kotlinOrJavaName) {
 		case "kotlin.String":
 			return "java.lang.String";
@@ -252,6 +257,8 @@ public final class KspAnnotationUtils {
 			return "java.util.Set";
 		case "kotlin.collections.MutableSet":
 			return "java.util.Set";
+		case "kotlin.CharSequence":
+			return "java.lang.CharSequence";
 		default:
 			return kotlinOrJavaName;
 		}
@@ -278,6 +285,11 @@ public final class KspAnnotationUtils {
 			sb.append('>');
 		}
 		return sb.toString();
+	}
+
+	/** Java canonical name including generic type arguments; kotlin.Array<T> maps to T[]. */
+	public static String fullJavaTypeName(KSTypeReference reference) {
+		return toJavaTypeName(fullTypeNameWithArgs(reference));
 	}
 
 	/** Mirrors APT BundleHelper.METHOD_SUFFIX_BY_TYPE_NAME (Java canonical names, incl. arrays and 3 ArrayList variants). */
