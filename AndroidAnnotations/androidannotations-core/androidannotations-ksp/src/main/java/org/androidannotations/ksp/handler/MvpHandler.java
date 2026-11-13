@@ -207,6 +207,11 @@ public final class MvpHandler {
 					templates.unchecked));
 		}
 
+		KSAnnotation instanceState = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.INSTANCE_STATE);
+		if (instanceState != null) {
+			collectInstanceState(resolver, property, name, model);
+		}
+
 		KSAnnotation fragmentById = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.FRAGMENT_BY_ID);
 		if (fragmentById != null) {
 			model.fragmentByIds.add(new MvpModel.FragmentInjection(name, typeName,
@@ -895,6 +900,162 @@ public final class MvpHandler {
 		}
 
 		return new ExtraTemplates(write, read, unchecked);
+	}
+
+	/** APT InstanceStateHandler parity: validate one @InstanceState property and build its save/restore statements. */
+	private void collectInstanceState(Resolver resolver, KSPropertyDeclaration property, String name, MvpModel model) {
+		String fqn = AnnotationNames.INSTANCE_STATE;
+		// APT validation order (ValidatorHelper): enclosing type, private, bundle-able type, final; all accumulate.
+		boolean badEnclosing = model.kind == MvpModel.Kind.BEAN;
+		if (badEnclosing) {
+			model.errors.add(fqn + " can only be used in a field annotated with @org.androidannotations.annotations.EActivity, @org.androidannotations.annotations.EFragment, @org.androidannotations.annotations.EView, @org.androidannotations.annotations.EViewGroup.");
+		}
+		boolean privateElement = property.getModifiers().contains(Modifier.PRIVATE);
+		if (privateElement) {
+			model.errors.add(fqn + " cannot be used on a private element");
+		}
+		String typeString = KspAnnotationUtils.instanceStateStubTypeName(property);
+		String typeError = instanceStateTypeError(resolver, typeString);
+		boolean finalElement = !property.isMutable();
+		if (finalElement) {
+			model.errors.add(fqn + " cannot be used on a final element");
+		}
+		if (badEnclosing || privateElement || typeError != null || finalElement) {
+			return;
+		}
+
+		String saveStmt;
+		String restoreStmt;
+		boolean unchecked = false;
+		String suffix = KspAnnotationUtils.BUNDLE_GET_SUFFIX.get(typeString);
+		if (suffix != null) {
+			saveStmt = "bundle_.put" + suffix + "(\"" + name + "\", " + name + ");";
+			restoreStmt = name + " = savedInstanceState.get" + suffix + "(\"" + name + "\");";
+		} else if (typeString.endsWith("[]")) {
+			String component = typeString.substring(0, typeString.length() - 2);
+			KSClassDeclaration componentDecl = resolveClassDeclaration(resolver, component);
+			if (componentDecl != null && implementsInterface(componentDecl, "android.os.Parcelable")) {
+				saveStmt = "bundle_.putParcelableArray(\"" + name + "\", " + name + ");";
+				restoreStmt = name + " = org.androidannotations.api.bundle.BundleHelper.getParcelableArray(savedInstanceState, \"" + name + "\", "
+						+ displayType(model, component) + "[].class);";
+				unchecked = component.contains("<");
+			} else {
+				saveStmt = "bundle_.putSerializable(\"" + name + "\", " + name + ");";
+				restoreStmt = name + " = ((" + displayType(model, typeString) + ") savedInstanceState.getSerializable(\"" + name + "\"));";
+			}
+		} else if (typeString.startsWith("java.util.ArrayList<")) {
+			String arg = topLevelGenericArg(typeString);
+			KSClassDeclaration argDecl = resolveClassDeclaration(resolver, arg);
+			if (argDecl != null && implementsInterface(argDecl, "android.os.Parcelable")) {
+				saveStmt = "bundle_.putParcelableArrayList(\"" + name + "\", " + name + ");";
+				restoreStmt = name + " = savedInstanceState.getParcelableArrayList(\"" + name + "\");";
+				unchecked = arg.contains("<");
+			} else {
+				saveStmt = "bundle_.putSerializable(\"" + name + "\", " + name + ");";
+				restoreStmt = name + " = ((" + displayType(model, typeString) + ") savedInstanceState.getSerializable(\"" + name + "\"));";
+				unchecked = true;
+			}
+		} else if (typeString.startsWith("android.util.SparseArray<")) {
+			saveStmt = "bundle_.putSparseParcelableArray(\"" + name + "\", " + name + ");";
+			restoreStmt = name + " = savedInstanceState.getSparseParcelableArray(\"" + name + "\");";
+		} else {
+			String base = typeString.contains("<") ? typeString.substring(0, typeString.indexOf('<')) : typeString;
+			KSClassDeclaration declaration = resolveClassDeclaration(resolver, base);
+			boolean parcelable = declaration != null && implementsInterface(declaration, "android.os.Parcelable");
+			if (parcelable) {
+				saveStmt = "bundle_.putParcelable(\"" + name + "\", " + name + ");";
+				restoreStmt = name + " = savedInstanceState.getParcelable(\"" + name + "\");";
+			} else if (isParcelerType(resolver, typeString)) {
+				saveStmt = "bundle_.putParcelable(\"" + name + "\", org.parceler.Parcels.wrap(" + name + "));";
+				restoreStmt = name + " = org.parceler.Parcels.unwrap(savedInstanceState.getParcelable(\"" + name + "\"));";
+			} else {
+				saveStmt = "bundle_.putSerializable(\"" + name + "\", " + name + ");";
+				restoreStmt = name + " = ((" + displayType(model, typeString) + ") savedInstanceState.getSerializable(\"" + name + "\"));";
+				unchecked = typeString.contains("<");
+			}
+		}
+		model.instanceStates.add(new MvpModel.InstanceState(name, saveStmt, restoreStmt, unchecked));
+	}
+
+	/** Mirrors APT BundleHelper.canBePutInABundle; returns null when the (stub) type is bundle-compatible. */
+	private String instanceStateTypeError(Resolver resolver, String typeString) {
+		if (KspAnnotationUtils.BUNDLE_GET_SUFFIX.containsKey(typeString)) {
+			return null;
+		}
+		String base = typeString;
+		while (base.endsWith("[]")) {
+			base = base.substring(0, base.length() - 2);
+		}
+		if (base.startsWith("android.util.SparseArray<")) {
+			String arg = topLevelGenericArg(base);
+			KSClassDeclaration declaration = resolveClassDeclaration(resolver, arg);
+			return declaration != null && implementsInterface(declaration, "android.os.Parcelable") ? null
+					: "Unrecognized type. The type argument of SparseArray should implement Parcelable.";
+		}
+		KSClassDeclaration declaration = resolveClassDeclaration(resolver, base);
+		boolean parcelable = declaration != null && implementsInterface(declaration, "android.os.Parcelable");
+		boolean serializable = declaration != null && implementsInterface(declaration, "java.io.Serializable");
+		if (!parcelable && !serializable && !isParcelerType(resolver, typeString)) {
+			return "Unrecognized type. Please let your attribute be primitive or implement Serializable or Parcelable or an annotated Parceler bean.";
+		}
+		return null;
+	}
+
+	/** Display form for generated text: java.lang.* and same-package types bare, other packages fully qualified (gate maps FQNs via imports). */
+	private String displayType(MvpModel model, String type) {
+		if (type == null || type.isEmpty()) {
+			return type;
+		}
+		String base = type;
+		StringBuilder suffix = new StringBuilder();
+		while (base.endsWith("[]")) {
+			suffix.insert(0, "[]");
+			base = base.substring(0, base.length() - 2);
+		}
+		int lt = base.indexOf('<');
+		int gt = base.lastIndexOf('>');
+		if (lt < 0 || gt <= lt) {
+			return displayHead(model, base) + suffix;
+		}
+		StringBuilder args = new StringBuilder();
+		for (String arg : splitTopLevelArgs(base.substring(lt + 1, gt))) {
+			if (args.length() > 0) {
+				args.append(", ");
+			}
+			args.append(displayType(model, arg.trim()));
+		}
+		return displayHead(model, base.substring(0, lt)) + "<" + args + ">" + suffix;
+	}
+
+	private String displayHead(MvpModel model, String qualifiedName) {
+		String javaLang = "java.lang.";
+		if (qualifiedName.startsWith(javaLang) && !qualifiedName.substring(javaLang.length()).contains(".")) {
+			return qualifiedName.substring(javaLang.length());
+		}
+		String packagePrefix = model.packageName + ".";
+		if (qualifiedName.startsWith(packagePrefix) && !qualifiedName.substring(packagePrefix.length()).contains(".")) {
+			return qualifiedName.substring(packagePrefix.length());
+		}
+		return qualifiedName;
+	}
+
+	private static List<String> splitTopLevelArgs(String args) {
+		List<String> result = new ArrayList<>();
+		int depth = 0;
+		int start = 0;
+		for (int i = 0; i < args.length(); i++) {
+			char c = args.charAt(i);
+			if (c == '<') {
+				depth++;
+			} else if (c == '>') {
+				depth--;
+			} else if (c == ',' && depth == 0) {
+				result.add(args.substring(start, i));
+				start = i + 1;
+			}
+		}
+		result.add(args.substring(start));
+		return result;
 	}
 
 	private boolean isPrimitiveOrPrimitiveArray(String fullType) {

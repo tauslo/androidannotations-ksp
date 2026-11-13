@@ -47,6 +47,7 @@ public final class AnnotationNames {
 	public static final String HTML_RES = "org.androidannotations.annotations.res.HtmlRes";
 	public static final String LAYOUT_RES = "org.androidannotations.annotations.res.LayoutRes";
 	public static final String EXTRA = "org.androidannotations.annotations.Extra";
+	public static final String INSTANCE_STATE = "org.androidannotations.annotations.InstanceState";
 	public static final String AFTER_VIEWS = "org.androidannotations.annotations.AfterViews";
 	public static final String BACKGROUND = "org.androidannotations.annotations.Background";
 	public static final String UI_THREAD = "org.androidannotations.annotations.UiThread";
@@ -60,7 +61,6 @@ public final class AnnotationNames {
 
 	/** AA annotations recognized by the KSP processor but not implemented yet; their use is reported with a warning. */
 	public static final String[] RECOGNIZED_NOT_IMPLEMENTED = {
-			"org.androidannotations.annotations.InstanceState", // P0b
 			"org.androidannotations.annotations.sharedpreferences.SharedPref" // P1
 	};
 

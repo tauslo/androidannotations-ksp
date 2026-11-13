@@ -736,3 +736,36 @@
 
 ### Next
 - @InstanceState → @OnActivityResult（+参数 @Extra）→ @SystemService，随后剩余 checklist 块（Fragment 其余、Application/Service、IntentBuilder Fragment overloads、Unimplemented 警告集——InstanceState 在其 slice 前保持 RECOGNIZED_NOT_IMPLEMENTED）、P0b exit acceptance
+## Session 2026-11-14 — P0b: @InstanceState APT parity
+
+- **Agent**: Codex
+- **Goal slice**: P0b — @InstanceState（APT InstanceStateHandler parity）
+- **Git**: branch=`ksp/main` HEAD=`56c3ccdc`（local only, not pushed）
+- **Status**: done（门禁通过；余 1 个既有 mismatch，见 Known limitations）
+
+### Done
+- **@InstanceState APT parity**（KSP MvpHandler + MvpJavaGenerator 全量实现）：EActivity/EFragment 等组件的 @InstanceState 字段 → onSaveInstanceState_ 保存 + restoreSavedInstanceState_ 恢复
+  - 类型矩阵：String→putString；值类型 int/boolean/float/long/short/char/byte/double→putSerializable（装箱显示类型）；Bundle→putBundle；IntArray→putIntArray；Array<String>/ArrayList<String>→putStringArray/putStringArrayList；Parcelable→putParcelable；ArrayList<P>→putParcelableArrayList；P[]→putParcelableArray（恢复走 org.androidannotations.api.bundle.BundleHelper.getParcelableArray FQN + import）；Serializable→putSerializable；HashMap<K,V>→putSerializable（mapProp 恢复侧带 @SuppressWarnings("unchecked")）；SparseArray<P>→putSparseParcelableArray
+  - **lateinit/nullable 装箱规则**（stub 证据驱动）：值类型仅在顶层且 lateinit||nullable 时装箱；泛型参数位置恒装箱；kotlin.Array<T> 原语元素仅当 T 非空时按原语处理
+  - 放置（与 GT 逐字节对齐）：activity restore 调用在 init_ 内 bean 注入之后、方法位于 appendOptionsMenuMethods 与 appendUiThreadMethods 之间；fragment restore 调用在 init_ 末尾（setHasOptionsMenu 块之后）、方法位于 appendFragmentArgsMethod 与 appendBackgroundMethods 之间；onSaveInstanceState_ = @Override + super + save 语句；restoreSavedInstanceState_ = private + null-check 早退 + restore 语句
+  - APT 校验顺序（全部累积）：enclosing kind → private → bundle 类型 → final；错误消息与 GT 逐字一致（含 "can only be used in a field annotated with @EActivity, @EFragment, @EView, @EViewGroup."、"cannot be used on a private element"、"Unrecognized type. The type argument of SparseArray should implement Parcelable." 等）
+- **新 fixture**：BenchActivity107（13 属性全矩阵）、BenchActivity108（6 属性，全 lateinit protected：Parcelable/ArrayList<P>/P[]/Serializable/Serializable[]/HashMap）、BenchFragment109（3 属性）+ 辅助类 BenchParcelable/BenchSerializable + layout ×3
+- **双括号 cast bug**（门禁发现并修复）：restore cast 生成 `((Integer))expr`，GT 为 `((Integer) expr)`——右括号必须包住整个表达式。MvpHandler.java L944/L955/L973 三行相同缺陷；修复 = 中段 `")) saved` → `") saved` + 尾字面量 `");` → `""));`。本 session 首次修复时漏掉语句终止分号（MVN_EXIT=1，3× "';' expected"），补回后 BUILD SUCCESS
+- **门禁 gt_cmp_all**：GT 213 / KSP live 213、missing/KSP-only 均空、**MISMATCHES=1（仅既有 BenchActivity102_）**；回归备份刷新至 `C:\temp\ksp-p0b-is`（213 文件，hash 全匹配）
+- mvn install androidannotations-ksp BUILD SUCCESS
+
+### 构建退出码说明（两侧均 exit 1，按输出文件判定）
+- KSP 侧 GRADLE_EXIT=1：fixture 自身 `lateinit var intProp: Int` 为非法 Kotlin（故意构造以验证 lateinit 装箱规则），:compileDebugKotlin 报 9 错（107×8 + 109×1）；KSP 任务本身成功，213 文件全部生成
+- kapt GT 侧 GRADLE_EXIT=1：:kaptDebugKotlin 在既有 BenchActivity102 问题上失败（kapt stubs 使已初始化 var 变 private → APT 拒绝其 res 注解 "cannot be used on a private element"）；APT 失败前已写出全部 213 文件，其中 BenchActivity102_.java 不完整（4033 B vs KSP 完整 4271 B）
+
+### Known limitations（未修复）
+- BenchActivity102_ 唯一 mismatch：KSP 输出与 pre-session 备份 `C:\temp\ksp-p0b-after` **SHA256 逐字节一致** → 非回归；GT 侧文件不完整系 APT 生成中途失败（既有已知限制，见 menu session 条目）
+- fixture lateinit-on-primitive 非法 Kotlin → 两侧均无法编译到底，门禁按生成文件判定
+
+### 门禁语义备注
+- gt_cmp_all 去除全部空白（**括号不剥离**——cast 括号位置敏感）、双文件 import 并集 FQN→简名、HashMap→Map 回退、final static↔static final、R. 特判、OnViewChangedNotifier/Builder_ 前缀剥离
+- jcodel global-imports quirk：每个 GT 文件均含 `import java.util.HashMap; import java.util.Map;`（即使未用），门禁 import 并集映射已吸收
+
+### Next
+1. @OnActivityResult（+参数形式 @Extra）→ @SystemService → fragment @Bean 其余 → Application/Service → IntentBuilder Fragment overloads → 遗留 @ViewById 方法注入形式
+2. P0b exit acceptance → P1

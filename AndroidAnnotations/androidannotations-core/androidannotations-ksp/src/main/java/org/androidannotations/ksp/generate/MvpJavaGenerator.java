@@ -107,6 +107,9 @@ public final class MvpJavaGenerator {
 			out.append("\t\tinjectExtras_();\n");
 		}
 		appendBeanInjections(out, model);
+		if (!model.instanceStates.isEmpty()) {
+			out.append("\t\trestoreSavedInstanceState_(savedInstanceState);\n");
+		}
 		for (String method : model.afterInject) {
 			out.append("\t\t").append(method).append("();\n");
 		}
@@ -182,6 +185,7 @@ public final class MvpJavaGenerator {
 			out.append("\t}\n\n");
 		}
 		appendOptionsMenuMethods(out, model);
+		appendInstanceStateMethods(out, model);
 		appendUiThreadMethods(out, model);
 		appendBackgroundMethods(out, model);
 		appendIntentBuilder(out, model);
@@ -254,6 +258,9 @@ public final class MvpJavaGenerator {
 		if (!model.optionsMenus.isEmpty() || !model.injectMenuInjections.isEmpty() || !model.optionsMenuItemInjections.isEmpty()) {
 			out.append("\t\tsetHasOptionsMenu(true);\n");
 		}
+		if (!model.instanceStates.isEmpty()) {
+			out.append("\t\trestoreSavedInstanceState_(savedInstanceState);\n");
+		}
 		out.append("\t}\n\n");
 
 		out.append("\t@Override\n");
@@ -299,6 +306,7 @@ public final class MvpJavaGenerator {
 		}
 
 		appendFragmentArgsMethod(out, model);
+		appendInstanceStateMethods(out, model);
 		appendBackgroundMethods(out, model);
 		appendUiThreadMethods(out, model);
 		appendFragmentBuilder(out, model);
@@ -1009,6 +1017,36 @@ public final class MvpJavaGenerator {
 			out.append("\t\t});\n");
 			out.append("\t}\n\n");
 		}
+	}
+
+	/** APT InstanceStateHandler parity: onSaveInstanceState override + restoreSavedInstanceState_ helper. */
+	private void appendInstanceStateMethods(StringBuilder out, MvpModel model) {
+		if (model.instanceStates.isEmpty()) {
+			return;
+		}
+		out.append("\t@Override\n");
+		out.append("\tpublic void onSaveInstanceState(android.os.Bundle bundle_) {\n");
+		out.append("\t\tsuper.onSaveInstanceState(bundle_);\n");
+		for (MvpModel.InstanceState instanceState : model.instanceStates) {
+			out.append("\t\t").append(instanceState.saveStmt).append("\n");
+		}
+		out.append("\t}\n\n");
+
+		boolean unchecked = false;
+		for (MvpModel.InstanceState instanceState : model.instanceStates) {
+			unchecked |= instanceState.unchecked;
+		}
+		if (unchecked) {
+			out.append("\t@SuppressWarnings(\"unchecked\")\n");
+		}
+		out.append("\tprivate void restoreSavedInstanceState_(android.os.Bundle savedInstanceState) {\n");
+		out.append("\t\tif (savedInstanceState == null) {\n");
+		out.append("\t\t\treturn;\n");
+		out.append("\t\t}\n");
+		for (MvpModel.InstanceState instanceState : model.instanceStates) {
+			out.append("\t\t").append(instanceState.restoreStmt).append("\n");
+		}
+		out.append("\t}\n\n");
 	}
 
 	private void appendUiThreadMethods(StringBuilder out, MvpModel model) {

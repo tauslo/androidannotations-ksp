@@ -12,8 +12,8 @@
 
 - [ ] `@ViewById` **method-injection** form（单参数方法；对照 `ViewByIdHandler` + `MethodInjectionHandler`）
 - [ ] Document / enforce `@Background` / `@UiThread` ordering relative to future `@Trace` / `@IgnoreWhen` / `@WakeLock`（对照 `CorePlugin` 注册顺序）
-- [ ] Kotlin property → Java field/setter mapping review（含 primitive / `@JvmField`）；bench 里 kapt stub 直接写字段 vs KSP setter 的已知偏差是否可接受或需对齐
-- [ ] Optional：emit `@NotNull`（或等价）on generated override params if APT does（CLASS retention；非公开 API 阻塞项）
+- [x] Kotlin property → Java field/setter mapping review（含 primitive / `@JvmField`）；bench 里 kapt stub 直接写字段 vs KSP setter 的已知偏差是否可接受或需对齐
+- [x] Optional：emit `@NotNull`（或等价）on generated override params if APT does（CLASS retention；非公开 API 阻塞项）
 
 ---
 
@@ -52,16 +52,16 @@
 
 ## Menu
 
-- [ ] `@OptionsMenu`（inflate）
-- [ ] `@OptionsItem`（选中回调）
-- [ ] `@OptionsMenuItem`（注入 MenuItem）
-- [ ] `@InjectMenu`（若样例需要）
+- [x] `@OptionsMenu`（inflate）
+- [x] `@OptionsItem`（选中回调）
+- [x] `@OptionsMenuItem`（注入 MenuItem）
+- [x] `@InjectMenu`（若样例需要）
 
 ---
 
 ## State / results / system
 
-- [ ] `@InstanceState`（onSaveInstanceState / restore；BundleHelper 类型复用 Extra）
+- [x] `@InstanceState`（onSaveInstanceState / restore；BundleHelper 类型复用 Extra）
 - [ ] `@OnActivityResult` + 参数级 `@Extra`（对照内部 `ExtraHandler`）
 - [ ] `@SystemService`
 - [ ] 确认 `@AfterExtras` 在 P0a 已有；Fragment/Service 若需要则补齐调用点

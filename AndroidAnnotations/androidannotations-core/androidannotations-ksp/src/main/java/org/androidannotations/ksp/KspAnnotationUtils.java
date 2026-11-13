@@ -35,6 +35,7 @@ import com.google.devtools.ksp.symbol.KSTypeArgument;
 import com.google.devtools.ksp.symbol.KSTypeReference;
 import com.google.devtools.ksp.symbol.KSValueArgument;
 import com.google.devtools.ksp.symbol.KSValueParameter;
+import com.google.devtools.ksp.symbol.Modifier;
 
 import kotlin.sequences.Sequence;
 import kotlin.sequences.SequencesKt;
@@ -251,6 +252,8 @@ public final class KspAnnotationUtils {
 			return "java.util.List";
 		case "kotlin.collections.MutableList":
 			return "java.util.List";
+		case "kotlin.collections.HashMap":
+			return "java.util.HashMap";
 		case "kotlin.collections.Map":
 			return "java.util.Map";
 		case "kotlin.collections.MutableMap":
@@ -292,6 +295,111 @@ public final class KspAnnotationUtils {
 	/** Java canonical name including generic type arguments; kotlin.Array<T> maps to T[]. */
 	public static String fullJavaTypeName(KSTypeReference reference) {
 		return toJavaTypeName(fullTypeNameWithArgs(reference));
+	}
+
+	/**
+	 * kapt-stub form of a Kotlin property type for @InstanceState parity (APT sees stub field types): value types are boxed at
+	 * top level when the property is lateinit or nullable, always boxed in generic-argument positions, and kotlin.Array&lt;T&gt;
+	 * keeps primitive components for non-null value T.
+	 */
+	public static String instanceStateStubTypeName(KSPropertyDeclaration property) {
+		KSType type = property.getType().resolve();
+		return instanceStateStubType(type, property.getModifiers().contains(Modifier.LATEINIT) || type.isMarkedNullable());
+	}
+
+	private static String instanceStateStubType(KSType type, boolean boxValueTypes) {
+		String qualified = type.getDeclaration() != null && type.getDeclaration().getQualifiedName() != null
+				? type.getDeclaration().getQualifiedName().asString() : "kotlin.Any";
+		if ("kotlin.Array".equals(qualified)) {
+			KSTypeArgument argument = type.getArguments().isEmpty() ? null : type.getArguments().get(0);
+			String component;
+			if (argument == null || argument.getType() == null) {
+				component = "java.lang.Object";
+			} else {
+				KSType componentType = argument.getType().resolve();
+				String componentQualified = componentType.getDeclaration() != null && componentType.getDeclaration().getQualifiedName() != null
+						? componentType.getDeclaration().getQualifiedName().asString() : "kotlin.Any";
+				component = isValueTypeName(componentQualified) && !componentType.isMarkedNullable()
+						? toJavaTypeName(componentQualified)
+						: instanceStateStubType(componentType, true);
+			}
+			return component + "[]";
+		}
+		String base = toJavaTypeName(qualified);
+		if (isPrimitiveJavaName(base)) {
+			return boxValueTypes ? boxedJavaName(base) : base;
+		}
+		String result = base;
+		List<KSTypeArgument> args = type.getArguments();
+		if (!args.isEmpty()) {
+			StringBuilder sb = new StringBuilder(result);
+			sb.append('<');
+			for (int i = 0; i < args.size(); i++) {
+				if (i > 0) {
+					sb.append(", ");
+				}
+				KSTypeReference argType = args.get(i).getType();
+				sb.append(argType != null ? instanceStateStubType(argType.resolve(), true) : "java.lang.Object");
+			}
+			sb.append('>');
+			result = sb.toString();
+		}
+		return result;
+	}
+
+	private static boolean isValueTypeName(String qualifiedName) {
+		switch (qualifiedName) {
+		case "kotlin.Int":
+		case "kotlin.Boolean":
+		case "kotlin.Float":
+		case "kotlin.Double":
+		case "kotlin.Long":
+		case "kotlin.Short":
+		case "kotlin.Byte":
+		case "kotlin.Char":
+			return true;
+		default:
+			return false;
+		}
+	}
+
+	private static boolean isPrimitiveJavaName(String name) {
+		switch (name) {
+		case "int":
+		case "boolean":
+		case "float":
+		case "double":
+		case "long":
+		case "short":
+		case "byte":
+		case "char":
+			return true;
+		default:
+			return false;
+		}
+	}
+
+	private static String boxedJavaName(String primitive) {
+		switch (primitive) {
+		case "int":
+			return "java.lang.Integer";
+		case "boolean":
+			return "java.lang.Boolean";
+		case "float":
+			return "java.lang.Float";
+		case "double":
+			return "java.lang.Double";
+		case "long":
+			return "java.lang.Long";
+		case "short":
+			return "java.lang.Short";
+		case "byte":
+			return "java.lang.Byte";
+		case "char":
+			return "java.lang.Character";
+		default:
+			return primitive;
+		}
 	}
 
 	/** Mirrors APT BundleHelper.METHOD_SUFFIX_BY_TYPE_NAME (Java canonical names, incl. arrays and 3 ArrayList variants). */

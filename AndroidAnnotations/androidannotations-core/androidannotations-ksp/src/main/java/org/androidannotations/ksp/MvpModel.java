@@ -166,6 +166,24 @@ public final class MvpModel {
 		}
 	}
 
+	/** APT InstanceStateHandler parity: one @InstanceState property with its pre-built save/restore statements. */
+	public static final class InstanceState {
+		public final String propertyName;
+		/** Statement for the onSaveInstanceState body, e.g. bundle_.putString("n", n); */
+		public final String saveStmt;
+		/** Statement for the restoreSavedInstanceState_ body, e.g. n = savedInstanceState.getString("n"); */
+		public final String restoreStmt;
+		/** True when the restore statement needs @SuppressWarnings("unchecked") on the method. */
+		public final boolean unchecked;
+
+		public InstanceState(String propertyName, String saveStmt, String restoreStmt, boolean unchecked) {
+			this.propertyName = propertyName;
+			this.saveStmt = saveStmt;
+			this.restoreStmt = restoreStmt;
+			this.unchecked = unchecked;
+		}
+	}
+
 	public static final class ViewListener {
 		public final boolean longClick;
 		public final String methodName;
@@ -250,6 +268,7 @@ public final class MvpModel {
 	public final List<ResField> resFields = new ArrayList<>();
 	public final List<FieldInjection> extras = new ArrayList<>();
 	public final List<FieldInjection> fragmentArgs = new ArrayList<>();
+	public final List<InstanceState> instanceStates = new ArrayList<>();
 	public final List<FragmentInjection> fragmentByTags = new ArrayList<>();
 	public final List<FragmentInjection> fragmentByIds = new ArrayList<>();
 	public final List<ViewListener> clickListeners = new ArrayList<>();
