@@ -18,7 +18,9 @@ package org.androidannotations.ksp.handler;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import com.google.devtools.ksp.processing.Resolver;
 import com.google.devtools.ksp.symbol.ClassKind;
@@ -233,6 +235,11 @@ public final class MvpHandler {
 			collectBeanField(resolver, property, name, jvmField, model);
 		}
 
+		KSAnnotation systemService = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.SYSTEM_SERVICE);
+		if (systemService != null) {
+			collectSystemServiceField(resolver, property, name, jvmField, model);
+		}
+
 		KSAnnotation injectMenu = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.INJECT_MENU);
 		if (injectMenu != null) {
 			collectMenuField(resolver, property, name, false, injectMenu, model);
@@ -299,6 +306,13 @@ public final class MvpHandler {
 			collectBeanMethod(resolver, function, name, model);
 		} else if (hasBeanParam(function)) {
 			collectBeanParams(resolver, function, name, model);
+		}
+
+		KSAnnotation systemService = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.SYSTEM_SERVICE);
+		if (systemService != null) {
+			collectSystemServiceMethod(resolver, function, name, model);
+		} else if (hasSystemServiceParam(function)) {
+			collectSystemServiceParams(resolver, function, name, model);
 		}
 
 		KSAnnotation click = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.CLICK);
@@ -777,6 +791,203 @@ public final class MvpHandler {
 			}
 		}
 		return false;
+	}
+
+	/** APT AndroidSystemServices parity: full Java type name -> android.content.Context.* constant, in alphabetical order. */
+	private static final Map<String, String> SYSTEM_SERVICES = new HashMap<>();
+
+	static {
+		SYSTEM_SERVICES.put("android.view.accessibility.AccessibilityManager", "android.content.Context.ACCESSIBILITY_SERVICE");
+		SYSTEM_SERVICES.put("android.accounts.AccountManager", "android.content.Context.ACCOUNT_SERVICE");
+		SYSTEM_SERVICES.put("android.app.ActivityManager", "android.content.Context.ACTIVITY_SERVICE");
+		SYSTEM_SERVICES.put("android.app.AlarmManager", "android.content.Context.ALARM_SERVICE");
+		SYSTEM_SERVICES.put("android.app.AppOpsManager", "android.content.Context.APP_OPS_SERVICE");
+		SYSTEM_SERVICES.put("android.appwidget.AppWidgetManager", "android.content.Context.APPWIDGET_SERVICE");
+		SYSTEM_SERVICES.put("android.media.AudioManager", "android.content.Context.AUDIO_SERVICE");
+		SYSTEM_SERVICES.put("android.app.backup.IBackupManager", "android.content.Context.BACKUP_SERVICE");
+		SYSTEM_SERVICES.put("android.os.BatteryManager", "android.content.Context.BATTERY_SERVICE");
+		SYSTEM_SERVICES.put("android.bluetooth.BluetoothManager", "android.content.Context.BLUETOOTH_SERVICE");
+		SYSTEM_SERVICES.put("android.hardware.camera2.CameraManager", "android.content.Context.CAMERA_SERVICE");
+		SYSTEM_SERVICES.put("android.view.accessibility.CaptioningManager", "android.content.Context.CAPTIONING_SERVICE");
+		SYSTEM_SERVICES.put("android.telephony.CarrierConfigManager", "android.content.Context.CARRIER_CONFIG_SERVICE");
+		SYSTEM_SERVICES.put("android.content.ClipboardManager", "android.content.Context.CLIPBOARD_SERVICE");
+		SYSTEM_SERVICES.put("android.text.ClipboardManager", "android.content.Context.CLIPBOARD_SERVICE");
+		SYSTEM_SERVICES.put("android.net.ConnectivityManager", "android.content.Context.CONNECTIVITY_SERVICE");
+		SYSTEM_SERVICES.put("android.hardware.ConsumerIrManager", "android.content.Context.CONSUMER_IR_SERVICE");
+		SYSTEM_SERVICES.put("android.location.CountryDetector", "android.content.Context.COUNTRY_DETECTOR");
+		SYSTEM_SERVICES.put("android.app.admin.DevicePolicyManager", "android.content.Context.DEVICE_POLICY_SERVICE");
+		SYSTEM_SERVICES.put("android.hardware.display.DisplayManager", "android.content.Context.DISPLAY_SERVICE");
+		SYSTEM_SERVICES.put("android.app.DownloadManager", "android.content.Context.DOWNLOAD_SERVICE");
+		SYSTEM_SERVICES.put("android.os.DropBoxManager", "android.content.Context.DROPBOX_SERVICE");
+		SYSTEM_SERVICES.put("android.net.EthernetManager", "android.content.Context.ETHERNET_SERVICE");
+		SYSTEM_SERVICES.put("android.hardware.fingerprint.FingerprintManager", "android.content.Context.FINGERPRINT_SERVICE");
+		SYSTEM_SERVICES.put("android.os.HardwarePropertiesManager", "android.content.Context.HARDWARE_PROPERTIES_SERVICE");
+		SYSTEM_SERVICES.put("android.hardware.hdmi.HdmiControlManager", "android.content.Context.HDMI_CONTROL_SERVICE");
+		SYSTEM_SERVICES.put("android.hardware.input.InputManager", "android.content.Context.INPUT_SERVICE");
+		SYSTEM_SERVICES.put("android.view.inputmethod.InputMethodManager", "android.content.Context.INPUT_METHOD_SERVICE");
+		SYSTEM_SERVICES.put("android.app.job.JobScheduler", "android.content.Context.JOB_SCHEDULER_SERVICE");
+		SYSTEM_SERVICES.put("android.app.KeyguardManager", "android.content.Context.KEYGUARD_SERVICE");
+		SYSTEM_SERVICES.put("android.content.pm.LauncherApps", "android.content.Context.LAUNCHER_APPS_SERVICE");
+		SYSTEM_SERVICES.put("android.view.LayoutInflater", "android.content.Context.LAYOUT_INFLATER_SERVICE");
+		SYSTEM_SERVICES.put("android.location.LocationManager", "android.content.Context.LOCATION_SERVICE");
+		SYSTEM_SERVICES.put("android.media.projection.MediaProjectionManager", "android.content.Context.MEDIA_PROJECTION_SERVICE");
+		SYSTEM_SERVICES.put("android.media.MediaRouter", "android.content.Context.MEDIA_ROUTER_SERVICE");
+		SYSTEM_SERVICES.put("android.media.session.MediaSessionManager", "android.content.Context.MEDIA_SESSION_SERVICE");
+		SYSTEM_SERVICES.put("android.media.midi.MidiManager", "android.content.Context.MIDI_SERVICE");
+		SYSTEM_SERVICES.put("android.net.NetworkScoreManager", "android.content.Context.NETWORK_SCORE_SERVICE");
+		SYSTEM_SERVICES.put("android.net.NetworkManagementService", "android.content.Context.NETWORKMANAGEMENT_SERVICE");
+		SYSTEM_SERVICES.put("android.net.NetworkPolicyManager", "android.content.Context.NETWORK_POLICY_SERVICE");
+		SYSTEM_SERVICES.put("android.app.usage.NetworkStatsManager", "android.content.Context.NETWORK_STATS_SERVICE");
+		SYSTEM_SERVICES.put("android.nfc.NfcManager", "android.content.Context.NFC_SERVICE");
+		SYSTEM_SERVICES.put("android.app.NotificationManager", "android.content.Context.NOTIFICATION_SERVICE");
+		SYSTEM_SERVICES.put("android.net.nsd.NsdManager", "android.content.Context.NSD_SERVICE");
+		SYSTEM_SERVICES.put("android.service.persistentdata.PersistentDataBlockManager", "android.content.Context.PERSISTENT_DATA_BLOCK_SERVICE");
+		SYSTEM_SERVICES.put("android.print.PrintManager", "android.content.Context.PRINT_SERVICE");
+		SYSTEM_SERVICES.put("android.os.PowerManager", "android.content.Context.POWER_SERVICE");
+		SYSTEM_SERVICES.put("android.content.RestrictionsManager", "android.content.Context.RESTRICTIONS_SERVICE");
+		SYSTEM_SERVICES.put("android.app.SearchManager", "android.content.Context.SEARCH_SERVICE");
+		SYSTEM_SERVICES.put("android.hardware.SerialManager", "android.content.Context.SERIAL_SERVICE");
+		SYSTEM_SERVICES.put("android.hardware.SensorManager", "android.content.Context.SENSOR_SERVICE");
+		SYSTEM_SERVICES.put("android.net.sip.SipManager", "android.content.Context.SIP_SERVICE");
+		SYSTEM_SERVICES.put("android.content.pm.ShortcutManager", "android.content.Context.SHORTCUT_SERVICE");
+		SYSTEM_SERVICES.put("android.app.StatusBarManager", "android.content.Context.STATUS_BAR_SERVICE");
+		SYSTEM_SERVICES.put("android.os.storage.StorageManager", "android.content.Context.STORAGE_SERVICE");
+		SYSTEM_SERVICES.put("android.telephony.SubscriptionManager", "android.content.Context.TELEPHONY_SUBSCRIPTION_SERVICE");
+		SYSTEM_SERVICES.put("android.os.health.SystemHealthManager", "android.content.Context.SYSTEM_HEALTH_SERVICE");
+		SYSTEM_SERVICES.put("android.telecom.TelecomManager", "android.content.Context.TELECOM_SERVICE");
+		SYSTEM_SERVICES.put("android.telephony.TelephonyManager", "android.content.Context.TELEPHONY_SERVICE");
+		SYSTEM_SERVICES.put("android.view.textservice.TextServicesManager", "android.content.Context.TEXT_SERVICES_MANAGER_SERVICE");
+		SYSTEM_SERVICES.put("android.net.ThrottleManager", "android.content.Context.THROTTLE_SERVICE");
+		SYSTEM_SERVICES.put("android.app.trust.TrustManager", "android.content.Context.TRUST_SERVICE");
+		SYSTEM_SERVICES.put("android.media.tv.TvInputManager", "android.content.Context.TV_INPUT_SERVICE");
+		SYSTEM_SERVICES.put("android.app.UiModeManager", "android.content.Context.UI_MODE_SERVICE");
+		SYSTEM_SERVICES.put("android.os.IUpdateLock", "android.content.Context.UPDATE_LOCK_SERVICE");
+		SYSTEM_SERVICES.put("android.app.usage.UsageStatsManager", "android.content.Context.USAGE_STATS_SERVICE");
+		SYSTEM_SERVICES.put("android.hardware.usb.UsbManager", "android.content.Context.USB_SERVICE");
+		SYSTEM_SERVICES.put("android.os.UserManager", "android.content.Context.USER_SERVICE");
+		SYSTEM_SERVICES.put("android.os.Vibrator", "android.content.Context.VIBRATOR_SERVICE");
+		SYSTEM_SERVICES.put("android.app.WallpaperManager", "android.content.Context.WALLPAPER_SERVICE");
+		SYSTEM_SERVICES.put("android.net.wifi.WifiManager", "android.content.Context.WIFI_SERVICE");
+		SYSTEM_SERVICES.put("android.net.wifi.passpoint.WifiPasspointManager", "android.content.Context.WIFI_PASSPOINT_SERVICE");
+		SYSTEM_SERVICES.put("android.net.wifi.p2p.WifiP2pManager", "android.content.Context.WIFI_P2P_SERVICE");
+		SYSTEM_SERVICES.put("android.net.wifi.RttManager", "android.content.Context.WIFI_RTT_SERVICE");
+		SYSTEM_SERVICES.put("android.view.WindowManager", "android.content.Context.WINDOW_SERVICE");
+	}
+
+	/**
+	 * APT SystemServiceHandler + InjectHelper parity: @SystemService on a field. Validation order: enclosing component,
+	 * final, known service type, private. AppWidgetManager's minSdk&lt;21 special path (APT createSpecialInjection) is not
+	 * replicated: the KSP processor has no manifest minSdk, so the normal getSystemService path is always emitted.
+	 */
+	private void collectSystemServiceField(Resolver resolver, KSPropertyDeclaration property, String name, boolean jvmField, MvpModel model) {
+		String fqn = AnnotationNames.SYSTEM_SERVICE;
+		if (model.kind != MvpModel.Kind.ACTIVITY && model.kind != MvpModel.Kind.FRAGMENT) {
+			model.errors.add(fqn + " can only be used in a field annotated with @org.androidannotations.annotations.EActivity, @org.androidannotations.annotations.EFragment");
+			return;
+		}
+		if (!property.isMutable()) {
+			model.errors.add(fqn + " cannot be used on a final element");
+			return;
+		}
+		MvpModel.SystemServiceTarget target = resolveSystemServiceTarget(name, KspAnnotationUtils.fullJavaTypeName(property.getType()), model);
+		if (target == null) {
+			return;
+		}
+		if (property.getModifiers().contains(Modifier.PRIVATE)) {
+			model.errors.add(fqn + " cannot be used on a private element");
+			return;
+		}
+		model.systemServices.add(new MvpModel.SystemServiceInjection(MvpModel.SystemServiceInjection.Form.FIELD, name, jvmField,
+				Collections.singletonList(target)));
+	}
+
+	/** APT SystemServiceHandler parity: @SystemService on a method with exactly one parameter (local var named after the PARAM). */
+	private void collectSystemServiceMethod(Resolver resolver, KSFunctionDeclaration function, String name, MvpModel model) {
+		String fqn = AnnotationNames.SYSTEM_SERVICE;
+		if (model.kind != MvpModel.Kind.ACTIVITY && model.kind != MvpModel.Kind.FRAGMENT) {
+			model.errors.add(fqn + " can only be used in a field annotated with @org.androidannotations.annotations.EActivity, @org.androidannotations.annotations.EFragment");
+			return;
+		}
+		if (!"void".equals(functionReturnType(function))) {
+			model.errors.add(fqn + " can only be used on a method with a void return type");
+			return;
+		}
+		List<KSValueParameter> params = function.getParameters();
+		if (params.size() != 1) {
+			model.errors.add("The method can only have 1 parameter");
+			return;
+		}
+		KSValueParameter param = params.get(0);
+		MvpModel.SystemServiceTarget target = resolveSystemServiceTarget(param.getName().asString(),
+				KspAnnotationUtils.fullJavaTypeName(param.getType()), model);
+		if (target == null) {
+			return;
+		}
+		if (function.getModifiers().contains(Modifier.PRIVATE)) {
+			model.errors.add(fqn + " cannot be used on a private element");
+			return;
+		}
+		model.systemServices.add(new MvpModel.SystemServiceInjection(MvpModel.SystemServiceInjection.Form.METHOD, name, false,
+				Collections.singletonList(target)));
+	}
+
+	/** APT SystemServiceHandler parity: @SystemService on method parameters; the block is emitted only when ALL parameters are annotated (partial: skip without error, @Bean precedent). */
+	private void collectSystemServiceParams(Resolver resolver, KSFunctionDeclaration function, String name, MvpModel model) {
+		String fqn = AnnotationNames.SYSTEM_SERVICE;
+		if (model.kind != MvpModel.Kind.ACTIVITY && model.kind != MvpModel.Kind.FRAGMENT) {
+			model.errors.add(fqn + " can only be used in a field annotated with @org.androidannotations.annotations.EActivity, @org.androidannotations.annotations.EFragment");
+			return;
+		}
+		if (!"void".equals(functionReturnType(function))) {
+			model.errors.add(fqn + " can only be used on a method with a void return type");
+			return;
+		}
+		if (function.getModifiers().contains(Modifier.PRIVATE)) {
+			model.errors.add(fqn + " cannot be used on a private element");
+			return;
+		}
+		List<MvpModel.SystemServiceTarget> targets = new ArrayList<>();
+		for (KSValueParameter param : function.getParameters()) {
+			if (findParamSystemService(param) == null) {
+				return; // partially annotated: KSP skips the whole block without error (@Bean precedent)
+			}
+			MvpModel.SystemServiceTarget target = resolveSystemServiceTarget(param.getName().asString(),
+					KspAnnotationUtils.fullJavaTypeName(param.getType()), model);
+			if (target == null) {
+				return;
+			}
+			targets.add(target);
+		}
+		model.systemServices.add(new MvpModel.SystemServiceInjection(MvpModel.SystemServiceInjection.Form.METHOD, name, false, targets));
+	}
+
+	private static KSAnnotation findParamSystemService(KSValueParameter param) {
+		for (KSAnnotation annotation : SequencesKt.toList(param.getAnnotations())) {
+			if (AnnotationNames.SYSTEM_SERVICE.equals(KspAnnotationUtils.safeQualifiedName(annotation))) {
+				return annotation;
+			}
+		}
+		return null;
+	}
+
+	private static boolean hasSystemServiceParam(KSFunctionDeclaration function) {
+		for (KSValueParameter param : function.getParameters()) {
+			if (findParamSystemService(param) != null) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** APT AndroidSystemServices + CanonicalNameConstants parity: look up the Context.* constant for a full Java type name. */
+	private static MvpModel.SystemServiceTarget resolveSystemServiceTarget(String name, String typeString, MvpModel model) {
+		String serviceConst = SYSTEM_SERVICES.get(typeString);
+		if (serviceConst == null) {
+			model.errors.add("Unknown service type: " + typeString);
+			return null;
+		}
+		boolean appContext = "android.net.wifi.WifiManager".equals(typeString) || "android.media.AudioManager".equals(typeString);
+		return new MvpModel.SystemServiceTarget(name, typeString, serviceConst, appContext);
 	}
 
 	/**

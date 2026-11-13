@@ -54,6 +54,7 @@ public final class AnnotationNames {
 	public static final String BACKGROUND = "org.androidannotations.annotations.Background";
 	public static final String UI_THREAD = "org.androidannotations.annotations.UiThread";
 	public static final String AFTER_EXTRAS = "org.androidannotations.annotations.AfterExtras";
+	public static final String SYSTEM_SERVICE = "org.androidannotations.annotations.SystemService";
 	public static final String BEAN = "org.androidannotations.annotations.Bean";
 	public static final String AFTER_INJECT = "org.androidannotations.annotations.AfterInject";
 	public static final String PARCEL_ANNOTATION = "org.parceler.Parcel";

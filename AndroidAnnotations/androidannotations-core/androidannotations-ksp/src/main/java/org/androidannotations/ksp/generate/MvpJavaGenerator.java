@@ -105,6 +105,7 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 		for (MvpModel.ResField resField : model.resFields) {
 			appendResAssign(out, model.kind, resField);
 		}
+		appendSystemServiceInjections(out, model, "this");
 		if (!model.extras.isEmpty() || !model.afterExtras.isEmpty()) {
 			out.append("\t\tinjectExtras_();\n");
 		}
@@ -256,6 +257,7 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 		for (MvpModel.ResField resField : model.resFields) {
 			appendResAssign(out, model.kind, resField);
 		}
+		appendSystemServiceInjections(out, model, "getActivity()");
 		if (!model.fragmentArgs.isEmpty()) {
 			out.append("\t\tinjectFragmentArguments_();\n");
 		}
@@ -841,6 +843,36 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 		} else {
 			out.append("\t\t").append(setterName(propertyName)).append("(").append(expression).append(");\n");
 		}
+	}
+
+	/** APT SystemServiceHandler parity: field assigns / braced method blocks inside the init-body injection block. */
+	private void appendSystemServiceInjections(StringBuilder out, MvpModel model, String contextRef) {
+		for (MvpModel.SystemServiceInjection injection : model.systemServices) {
+			if (injection.form == MvpModel.SystemServiceInjection.Form.FIELD) {
+				MvpModel.SystemServiceTarget target = injection.targets.get(0);
+				appendAssign(out, injection.name, injection.jvmField, getSystemServiceExpr(target, contextRef));
+			} else {
+				out.append("\t\t{\n");
+				for (MvpModel.SystemServiceTarget target : injection.targets) {
+					out.append("\t\t\t").append(target.declaredType).append(' ').append(target.name).append(" = null;\n");
+					out.append("\t\t\t").append(target.name).append(" = ").append(getSystemServiceExpr(target, contextRef)).append(";\n");
+				}
+				out.append("\t\t\t").append(injection.name).append('(');
+				for (int i = 0; i < injection.targets.size(); i++) {
+					if (i > 0) {
+						out.append(", ");
+					}
+					out.append(injection.targets.get(i).name);
+				}
+				out.append(");\n");
+				out.append("\t\t}\n");
+			}
+		}
+	}
+
+	private static String getSystemServiceExpr(MvpModel.SystemServiceTarget target, String contextRef) {
+		String ctx = target.appContext ? contextRef + ".getApplicationContext()" : contextRef;
+		return "((" + target.declaredType + ") " + ctx + ".getSystemService(" + target.serviceConst + "))";
 	}
 
 	private static String setterName(String propertyName) {

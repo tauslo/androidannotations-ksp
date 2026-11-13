@@ -153,6 +153,43 @@ public final class MvpModel {
 		}
 	}
 
+	/** APT SystemServiceHandler parity: one getSystemService() lookup target in an injection statement or block. */
+	public static final class SystemServiceTarget {
+		public final String name; // field/param name (local decl + call arg)
+		/** Full Java type name (cast + local declaration). */
+		public final String declaredType;
+		/** e.g. android.content.Context.WIFI_SERVICE. */
+		public final String serviceConst;
+		/** True when getSystemService must run on the application context (WifiManager/AudioManager). */
+		public final boolean appContext;
+
+		public SystemServiceTarget(String name, String declaredType, String serviceConst, boolean appContext) {
+			this.name = name;
+			this.declaredType = declaredType;
+			this.serviceConst = serviceConst;
+			this.appContext = appContext;
+		}
+	}
+
+	public static final class SystemServiceInjection {
+		public enum Form {
+			FIELD, METHOD
+		}
+
+		public final Form form;
+		public final String name; // field name (FIELD) / method name (METHOD)
+		/** FIELD form only: direct assignment (lateinit/@JvmField) instead of a setter call. */
+		public final boolean jvmField;
+		public final List<SystemServiceTarget> targets; // FIELD=1; METHOD/param=N (all parameters)
+
+		public SystemServiceInjection(Form form, String name, boolean jvmField, List<SystemServiceTarget> targets) {
+			this.form = form;
+			this.name = name;
+			this.jvmField = jvmField;
+			this.targets = targets;
+		}
+	}
+
 	public static final class FragmentInjection {
 		public final String propertyName;
 		public final String typeName;
@@ -319,6 +356,7 @@ public final class MvpModel {
 	public final List<String> afterViews = new ArrayList<>();
 	public final List<String> afterExtras = new ArrayList<>();
 	public final List<BeanInjection> beans = new ArrayList<>();
+	public final List<SystemServiceInjection> systemServices = new ArrayList<>();
 	public final List<String> afterInject = new ArrayList<>();
 	/** Validation failures recorded by the handler (it has no logger); the processor logs each and skips generation. */
 	public final List<String> errors = new ArrayList<>();

@@ -800,3 +800,36 @@
 ### Next
 1. @SystemService → fragment @Bean remainder → Application/Service（@EApplication/@App/@EService + Manifest checks）→ IntentBuilder Fragment overloads → 遗留 @ViewById 方法注入形式
 2. P0b exit acceptance（demo coverage、kapt-vs-ksp public API spot-check、known-deviations 文档声明、EXECUTION_LOG 标 P0b done + Next=P1）→ P1
+
+## Session 2026-11-14 — P0b: @SystemService APT parity
+
+- **Agent**: Codex
+- **Goal slice**: P0b — @SystemService（APT SystemServiceHandler/AndroidSystemServices parity）：field form / 单参 method form / 参数级多参 form
+- **Git**: branch=`ksp/main` HEAD=`62a7e697`（local only, not pushed）
+- **Status**: done（门禁通过；余 1 个既有 mismatch，见 Known limitations）
+
+### Done
+- **收集**（MvpHandler）：collectSystemServiceField / collectSystemServiceMethod（单参，局部变量按参数名命名）/ collectSystemServiceParams（参数级，全部参数带 @SystemService 才出块；partial → 整块静默跳过，@Bean precedent）；findParamSystemService / hasSystemServiceParam
+- **service 表**：SYSTEM_SERVICES 75 条静态 map，从 APT AndroidSystemServices.java 源 regex 直接提取（零转录偏差）；WifiManager/AudioManager → appContext=true（getApplicationContext()，APT SystemServiceHandlerContextTest 实证）
+- **校验 parity**（顺序）：kind=ACTIVITY|FRAGMENT → final（field）→ 已知类型（"Unknown service type: X"）→ private；method form 另加 void 返回 + 恰 1 参（"The method can only have 1 parameter"）
+- **生成**（MvpJavaGenerator）：appendSystemServiceInjections + getSystemServiceExpr。FIELD form 复用 appendAssign（lateinit → `this.x = ((T) ctx.getSystemService(Context.X));`，cast 2 个前导括号）；METHOD form brace block 每 target 两条语句（先 `T name = null;` 再单独赋值）后调 `method(args...)`；activity contextRef=`this`、fragment=`getActivity()`；插入点 resFields 循环后
+- MvpModel：SystemServiceTarget + SystemServiceInjection（Form FIELD/METHOD）+ systemServices 列表；AnnotationNames SYSTEM_SERVICE 条目
+- 新 fixture：BenchActivity111（6 fields + 单参 method + 2 参 param form）、BenchFragment111（3 fields + 单参 method）+ layout ×2
+- 门禁：GT 217 / KSP live 217、missing/KSP-only 均空、**MISMATCHES=1（仅既有 BenchActivity102_）**；回归备份刷新至 `C:\temp\ksp-p0b-ss`（217 文件，hash 全匹配）
+- mvn install androidannotations-ksp BUILD SUCCESS
+
+### 构建退出码说明
+- KSP 侧 GRADLE_EXIT=1：仅 9 个既有 Kotlin 错误（BenchActivity107×8 + BenchFragment109×1，lateinit-on-primitive 故意构造）；KSP 任务本身成功，217 文件全生成；按输出文件判定
+
+### Bugs discovered & fixed
+- KSValueParameter 无 getSimpleName()（KSP API 为 getName()），编译错误暴露；两处改 `param.getName().asString()`
+- fixture BenchActivity111.kt L45 `println(wifi and audio)` 笔误（Kotlin 无 and 运算符）致 1 条新 :compileDebugKotlin 错；改两行 println
+
+### Known limitations（未修复）
+- BenchActivity102_ 唯一 mismatch：既有已知限制（kapt stub 生成失败致 GT 文件不完整），KSP 输出与 pre-session 备份 `C:\temp\ksp-p0b-oar` SHA256 逐字节一致 = 非回归
+- AppWidgetManager minSdk<21 特殊路径（APT createSpecialInjection）未实现：KSP processor 无 manifest minSdk，恒走 normal getSystemService path
+- param form partial annotation（非全部参数带 @SystemService）：整块静默跳过不报错（@Bean precedent）
+
+### Next
+1. fragment @Bean remainder → Application/Service（@EApplication/@App/@EService + Manifest checks）→ IntentBuilder Fragment overloads → 遗留 @ViewById 方法注入形式
+2. P0b exit acceptance（demo coverage、kapt-vs-ksp public API spot-check、known-deviations 文档声明、EXECUTION_LOG 标 P0b done + Next=P1）→ P1
