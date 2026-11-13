@@ -633,3 +633,47 @@
 1. **P0b Resources 剩余**：@AnimationRes / @HtmlRes / @LayoutRes（按样例需要；DefaultRes 通用路径，CHECKLIST_P0b.md「Resources（常用集）」末项）
 2. Fragment 监听器 fixture：为 fragment 场景补 @Click/@LongClick 覆盖（当前仅 Activity fixture 101）
 3. res handlers / @OptionsMenu / @InstanceState 等按原计划推进
+
+## Session 2026-11-13 — P0b: Resources 剩余（@AnimationRes/@HtmlRes/@LayoutRes，APT AnimationResHandler/HtmlResHandler parity）
+
+- **Agent**: Codex
+- **Goal slice**: P0b Resources（常用集）末项 —— 3 个 res 注解 @AnimationRes / @HtmlRes / @LayoutRes，对照 APT `AnimationResHandler` / `HtmlResHandler` / `DefaultResHandler`（CHECKLIST_P0b.md「Resources（常用集）」末行）
+- **Git**: branch=`ksp/main` HEAD=`ea29fb25`（session 起点），commit 仅本地未 push
+- **Status**: done
+
+### Done
+- `ResCompat.Type` 新增 `invocation` 字段（调用风格）；类型表新增 3 项：AnimationRes（anim / getAnimation / [XmlResourceParser, Animation] / ANIMATION_UTILS）、HtmlRes（string / getString / [CharSequence, Spanned] / HTML_FROM_HTML）、LayoutRes（layout / getLayout / [XmlResourceParser]），与 APT `AndroidRes` 枚举逐项一致
+- `MvpModel.ResField` + `MvpHandler`：传递 invocation 风格
+- `MvpJavaGenerator.appendResAssign(...)`：mode 处理之前新增两个分支 —— ANIMATION_UTILS → `AnimationUtils.loadAnimation(contextRef, R.anim...)`（Activity=this / Fragment=getActivity() / Bean=context_）；HTML_FROM_HTML → `Html.fromHtml(resources_.getString(R.string...))`；LayoutRes 走既有 RESOURCES 路径输出 `resources_.getLayout(...)`
+- Fixture `BenchActivity103`：3 个 lateinit 引用类型字段（@AnimationRes Animation / @HtmlRes CharSequence / @LayoutRes XmlResourceParser），全引用类型 → kapt stub 为 protected，GT 构建直接兼容（无需 JvmField）；resources：anim + layout + values(string)
+
+### Changed paths
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/ResCompat.java
+- .../ksp/MvpModel.java
+- .../ksp/handler/MvpHandler.java
+- .../ksp/generate/MvpJavaGenerator.java
+- .../ksp/AnnotationNames.java
+- examples/kotlin-bench/src/main/kotlin/org/androidannotations/bench/BenchActivity103.kt（新增）
+- examples/kotlin-bench/src/main/res/anim/bench_anim.xml（新增）
+- examples/kotlin-bench/src/main/res/layout/bench_activity_103.xml（新增）
+- examples/kotlin-bench/src/main/res/values/bench_res_103.xml（新增）
+- docs/ksp-production-parity/CHECKLIST_P0b.md
+
+### Verify
+- [x] mvn install（api + ksp，-am）BUILD SUCCESS
+- [x] examples/kotlin-bench `assembleDebug -Paa.processor=ksp` BUILD SUCCESSFUL；generated 206 class(es)；KSP 输出含 3 个赋值：AnimationUtils.loadAnimation(this, R.anim.bench_anim) / Html.fromHtml(resources_.getString(R.string.benchHtml)) / resources_.getLayout(R.layout.bench_activity_103)
+- [x] GT 对比：BenchActivity103_.java KSP vs APT(kapt)，归一化后逐字一致（1505 字符）；脚本 C:/temp/gt_cmp8.py（修复：通用 FQN 折叠前定向折叠 `android.view.animation.AnimationUtils.` → `AnimationUtils.`、`android.text.Html.` → `Html.`，吸收 jcodegen simple name + import 与 KSP FQN 的差异）
+- [x] 回归门禁：ksp/debug/java/org/androidannotations/bench 206 文件与 C:/temp/ksp-p0b-after（205）逐字节一致，仅新增 BenchActivity103_.java；备份已刷新为 206
+- [x] CHECKLIST_P0b.md「Resources（常用集）」末项勾选；本节全部完成（7 项）
+
+### Known limitations（未修复）
+- aapt2 文件型资源 R 名为 snake_case：`res/anim/bench_anim.xml` → `R.anim.bench_anim`（非 camelCase），fixture 显式值引用须用 `R.anim.bench_anim`；KSP `RClassIndex.resolveFieldName` 已镜像 APT CaseHelper 的 camel→snake fallback
+- jcodegen 对 AnimationUtils/Html 输出 simple class name + import，KSP 输出 FQN；由 gt_cmp8.py 定向预折叠吸收
+- Bean/Fragment 的 res 字段无 GT 覆盖（生成器支持三种 kind，fixture 仅 Activity）
+
+### Blockers
+- none
+
+### Next
+1. Fragment 监听器 fixture：为 fragment 场景补 @Click/@LongClick 覆盖（当前仅 Activity fixture 101）
+2. @OptionsMenu / @InstanceState / @OnActivityResult / @SystemService 等按原计划推进

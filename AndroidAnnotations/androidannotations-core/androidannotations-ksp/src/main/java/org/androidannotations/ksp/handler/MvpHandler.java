@@ -171,7 +171,7 @@ public final class MvpHandler {
 			model.resFields.add(new MvpModel.ResField(name, typeName, jvmField,
 				KspAnnotationUtils.intArg(res, "value", AnnotationNames.RES_DEFAULT),
 				KspAnnotationUtils.stringArg(res, "resName", ""),
-				type.rInnerClass, type.method));
+				type.rInnerClass, type.method, type.invocation));
 		}
 
 		KSAnnotation extra = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.EXTRA);

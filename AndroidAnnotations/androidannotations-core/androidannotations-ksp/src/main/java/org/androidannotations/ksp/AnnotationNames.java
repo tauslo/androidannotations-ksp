@@ -39,6 +39,9 @@ public final class AnnotationNames {
 	public static final String DIMENSION_RES = "org.androidannotations.annotations.res.DimensionRes";
 	public static final String DIMENSION_PIXEL_SIZE_RES = "org.androidannotations.annotations.res.DimensionPixelSizeRes";
 	public static final String DIMENSION_PIXEL_OFFSET_RES = "org.androidannotations.annotations.res.DimensionPixelOffsetRes";
+	public static final String ANIMATION_RES = "org.androidannotations.annotations.res.AnimationRes";
+	public static final String HTML_RES = "org.androidannotations.annotations.res.HtmlRes";
+	public static final String LAYOUT_RES = "org.androidannotations.annotations.res.LayoutRes";
 	public static final String EXTRA = "org.androidannotations.annotations.Extra";
 	public static final String AFTER_VIEWS = "org.androidannotations.annotations.AfterViews";
 	public static final String BACKGROUND = "org.androidannotations.annotations.Background";

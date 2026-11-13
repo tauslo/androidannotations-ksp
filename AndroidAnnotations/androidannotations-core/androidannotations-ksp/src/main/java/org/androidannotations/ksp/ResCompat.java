@@ -44,9 +44,11 @@ public final class ResCompat {
 		public final boolean contextCompatAware;
 		public final int minSdkWithMethod;
 		public final String minSdkPlatformName;
+		/** Invocation style: RESOURCES / ANIMATION_UTILS / HTML_FROM_HTML (APT handler parity). */
+		public final String invocation;
 
 		Type(String annotationName, String simpleName, String rInnerClass, String method, List<String> allowedTypes,
-			boolean contextCompatAware, int minSdkWithMethod, String minSdkPlatformName) {
+			boolean contextCompatAware, int minSdkWithMethod, String minSdkPlatformName, String invocation) {
 			this.annotationName = annotationName;
 			this.simpleName = simpleName;
 			this.rInnerClass = rInnerClass;
@@ -55,14 +57,25 @@ public final class ResCompat {
 			this.contextCompatAware = contextCompatAware;
 			this.minSdkWithMethod = minSdkWithMethod;
 			this.minSdkPlatformName = minSdkPlatformName;
+			this.invocation = invocation;
 		}
 
 		static Type of(String annotationName, String rInnerClass, String method, List<String> allowedTypes) {
-			return new Type(annotationName, simpleOf(annotationName), rInnerClass, method, allowedTypes, false, -1, "");
+			return new Type(annotationName, simpleOf(annotationName), rInnerClass, method, allowedTypes, false, -1, "", "RESOURCES");
 		}
 
 		static Type compatOf(String annotationName, String rInnerClass, String method, List<String> allowedTypes, int minSdkWithMethod, String minSdkPlatformName) {
-			return new Type(annotationName, simpleOf(annotationName), rInnerClass, method, allowedTypes, true, minSdkWithMethod, minSdkPlatformName);
+			return new Type(annotationName, simpleOf(annotationName), rInnerClass, method, allowedTypes, true, minSdkWithMethod, minSdkPlatformName, "RESOURCES");
+		}
+
+		/** APT AnimationResHandler parity: {@code AnimationUtils.loadAnimation(context, R.anim.x)}. */
+		static Type animationOf(String annotationName, List<String> allowedTypes) {
+			return new Type(annotationName, simpleOf(annotationName), "anim", "getAnimation", allowedTypes, false, -1, "", "ANIMATION_UTILS");
+		}
+
+		/** APT HtmlResHandler parity: {@code Html.fromHtml(resources_.getString(R.string.x))}. */
+		static Type htmlOf(String annotationName, List<String> allowedTypes) {
+			return new Type(annotationName, simpleOf(annotationName), "string", "getString", allowedTypes, false, -1, "", "HTML_FROM_HTML");
 		}
 
 		private static String simpleOf(String annotationName) {
@@ -88,6 +101,9 @@ public final class ResCompat {
 		list.add(Type.of(RES_PKG + "StringArrayRes", "array", "getStringArray", Arrays.asList("java.lang.String[]")));
 		list.add(Type.of(RES_PKG + "TextRes", "string", "getText", Arrays.asList("java.lang.CharSequence")));
 		list.add(Type.of(RES_PKG + "TextArrayRes", "array", "getTextArray", Arrays.asList("java.lang.CharSequence")));
+		list.add(Type.animationOf(RES_PKG + "AnimationRes", Arrays.asList("android.content.res.XmlResourceParser", "android.view.animation.Animation")));
+		list.add(Type.htmlOf(RES_PKG + "HtmlRes", Arrays.asList("java.lang.CharSequence", "android.text.Spanned")));
+		list.add(Type.of(RES_PKG + "LayoutRes", "layout", "getLayout", Arrays.asList("android.content.res.XmlResourceParser")));
 		ALL = Collections.unmodifiableList(list);
 	}
 

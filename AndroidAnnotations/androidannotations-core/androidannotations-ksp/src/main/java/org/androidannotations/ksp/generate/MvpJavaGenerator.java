@@ -576,6 +576,16 @@ public final class MvpJavaGenerator {
 		ResCompat.Mode mode = resCompatModes.get(resField.method);
 		String contextRef = kind == MvpModel.Kind.BEAN ? "context_" : (kind == MvpModel.Kind.FRAGMENT ? "getActivity()" : "this");
 		String contextCall = kind == MvpModel.Kind.BEAN ? "context_." + resField.method : (kind == MvpModel.Kind.FRAGMENT ? "getActivity()." + resField.method : resField.method);
+		if ("ANIMATION_UTILS".equals(resField.invocation)) {
+			// APT AnimationResHandler parity: AnimationUtils.loadAnimation(context, R.anim.x).
+			appendAssign(out, resField.propertyName, resField.jvmField, "android.view.animation.AnimationUtils.loadAnimation(" + contextRef + ", " + resExpr + ")");
+			return;
+		}
+		if ("HTML_FROM_HTML".equals(resField.invocation)) {
+			// APT HtmlResHandler parity: Html.fromHtml(resources_.getString(R.string.x)).
+			appendAssign(out, resField.propertyName, resField.jvmField, "android.text.Html.fromHtml(resources_." + resField.method + "(" + resExpr + "))");
+			return;
+		}
 		if (mode == null || "RESOURCES".equals(mode.kind)) {
 			appendAssign(out, resField.propertyName, resField.jvmField, "resources_." + resField.method + "(" + resExpr + ")");
 			return;

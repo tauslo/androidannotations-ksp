@@ -78,8 +78,10 @@ public final class MvpModel {
 		public final String rInnerClass;
 		/** Resources lookup method (getColor, getBoolean, getStringArray, ...). */
 		public final String method;
+		/** Invocation style from ResCompat.Type: RESOURCES / ANIMATION_UTILS / HTML_FROM_HTML. */
+		public final String invocation;
 
-		public ResField(String propertyName, String typeName, boolean jvmField, int resId, String resName, String rInnerClass, String method) {
+		public ResField(String propertyName, String typeName, boolean jvmField, int resId, String resName, String rInnerClass, String method, String invocation) {
 			this.propertyName = propertyName;
 			this.typeName = typeName;
 			this.jvmField = jvmField;
@@ -87,6 +89,7 @@ public final class MvpModel {
 			this.resName = resName;
 			this.rInnerClass = rInnerClass;
 			this.method = method;
+			this.invocation = invocation;
 		}
 	}
 

@@ -45,7 +45,7 @@
 - [x] `@ColorStateListRes`
 - [x] `@BooleanRes` `@IntegerRes` `@StringArrayRes` `@TextRes` `@TextArrayRes`
 - [x] `@DimensionRes` `@DimensionPixelOffsetRes` `@DimensionPixelSizeRes`
-- [ ] `@AnimationRes` `@HtmlRes` `@LayoutRes`（按样例需要；可先 DefaultRes 通用路径）
+- [x] `@AnimationRes` `@HtmlRes` `@LayoutRes`（按样例需要；可先 DefaultRes 通用路径）
 - [x] 全部走 `RClassIndex` 字段引用 + 缺失报错（复用 P0a）
 
 ---
