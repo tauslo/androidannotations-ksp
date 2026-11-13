@@ -256,6 +256,41 @@ public final class MvpModel {
 		}
 	}
 
+	/** APT OnActivityResultHandler parity: one @OnActivityResult method with its resolved invocation args and extra reads. */
+	public static final class ActivityResultMethod {
+		public final String methodName;
+		/** Invocation argument expressions in source parameter order (data / resultCode / extra local names). */
+		public final List<String> argExprs = new ArrayList<>();
+		/** Full local-declaration statements for @Extra params, in source parameter order. */
+		public final List<String> extraDecls = new ArrayList<>();
+
+		public ActivityResultMethod(String methodName) {
+			this.methodName = methodName;
+		}
+	}
+
+	/** APT OnActivityResultDelegate parity: one switch case grouping all methods sharing a requestCode. */
+	public static final class ActivityResultGroup {
+		public final int requestCode;
+		/** Member methods in source order. */
+		public final List<ActivityResultMethod> methods = new ArrayList<>();
+
+		public ActivityResultGroup(int requestCode) {
+			this.requestCode = requestCode;
+		}
+	}
+
+	/** APT ExtraParameterHandler.getStaticExtraField parity: one generated @OnActivityResult extra key constant. */
+	public static final class ExtraConstant {
+		public final String constantName;
+		public final String key;
+
+		public ExtraConstant(String constantName, String key) {
+			this.constantName = constantName;
+			this.key = key;
+		}
+	}
+
 	public final Kind kind;
 	public final String packageName;
 	public final String simpleName;
@@ -277,6 +312,10 @@ public final class MvpModel {
 	public final List<OptionsItem> optionsItems = new ArrayList<>();
 	public final List<MenuInjection> injectMenuInjections = new ArrayList<>();
 	public final List<MenuInjection> optionsMenuItemInjections = new ArrayList<>();
+	public final List<ActivityResultGroup> activityResults = new ArrayList<>();
+	public final List<ExtraConstant> oarExtraConstants = new ArrayList<>();
+	/** OR of per-extra unchecked-cast flags: method-level @SuppressWarnings("unchecked") on the generated onActivityResult. */
+	public boolean activityResultUnchecked = false;
 	public final List<String> afterViews = new ArrayList<>();
 	public final List<String> afterExtras = new ArrayList<>();
 	public final List<BeanInjection> beans = new ArrayList<>();

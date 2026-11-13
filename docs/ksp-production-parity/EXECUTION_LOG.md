@@ -769,3 +769,34 @@
 ### Next
 1. @OnActivityResult（+参数形式 @Extra）→ @SystemService → fragment @Bean 其余 → Application/Service → IntentBuilder Fragment overloads → 遗留 @ViewById 方法注入形式
 2. P0b exit acceptance → P1
+## Session 2026-11-14 — P0b: @OnActivityResult + 参数级 @Extra APT parity
+
+- **Agent**: Codex
+- **Goal slice**: P0b — @OnActivityResult（APT OnActivityResultHandler/OnActivityResultDelegate/BundleHelper parity）+ 参数级 @Extra
+- **Git**: branch=`ksp/main` HEAD=`28760b9d`（local only, not pushed）
+- **Status**: done（门禁通过；余 1 个既有 mismatch，见 Known limitations）
+
+### Done
+- **OAR 收集**（MvpHandler）：collectActivityResult + findOrCreateActivityResultGroup + addOarExtraConstant + bundleReadExpr；activity/fragment 双链
+- **生成**（MvpJavaGenerator）：appendActivityResultConstants + appendActivityResultMethods。常量 `public final static String X = "key";` 紧跟 beans_ 行（activity: beans_ 的 `\n\n` 处拆开插入；fragment: fragmentArgs 循环后，空行条件扩为 `!fragmentArgs.isEmpty() || !oarExtraConstants.isEmpty()`）；方法 @Override（+@SuppressWarnings("unchecked") 仅当 flag，本 fixture activity 有/fragment 无）位于 instanceState 与 uiThread(activity)/background(fragment) 之间；`case  N :` 两空格 quirk；**每 case 一个 break（该 case 全部方法语句之后）**
+- **校验 parity**（errorsBefore 快照定界，错误累积）：kind=ACTIVITY|FRAGMENT、非 private、requestCode 0..0xFFFF、void 返回、参数矩阵 [Intent?]+[int|Integer?]+[@Extra*]；case 按 requestCode 分组、方法源序；常量 first-wins 去重（含 field-level @Extra）
+- **bundleReadExpr 规则**：BUNDLE_GET_SUFFIX → 数组（parcelable 组件→`org.androidannotations.api.bundle.BundleHelper.getParcelableArray(FQN)`，unchecked 仅当组件含 `<`；否则双括号 cast getSerializable）→ ArrayList 前缀（单一可解析 parcelable 参数→getParcelableArrayList + `unchecked |= arg.contains("<")`；否则无条件 suppress + cast）→ SparseArray → parcelable base getParcelable → parceler Parcels.unwrap → else cast getSerializable + unchecked 仅当含 `<`
+- AnnotationNames 两条目；MvpModel 三内部类（ActivityResultMethod/ActivityResultGroup/ExtraConstant）+ 三字段（activityResults/oarExtraConstants/activityResultUnchecked）
+- 新 fixture：BenchActivity110（cases 11/22×2/23/24/25/26/27/28/29/30/31×2/32）、BenchFragment110（41/42）+ BenchGeneric&lt;T&gt;=Parcelable / BenchSerGeneric&lt;T&gt;=Serializable + layout ×2
+- 门禁：GT 215 / KSP live 215、missing/KSP-only 均空、**MISMATCHES=1（仅既有 BenchActivity102_）**；回归备份刷新至 `C:\temp\ksp-p0b-oar`（215 文件，hash 全匹配）
+- mvn install androidannotations-ksp BUILD SUCCESS
+
+### 构建退出码说明
+- KSP 侧 GRADLE_EXIT=1：仅 9 个既有 Kotlin 错误（BenchActivity107×8 + BenchFragment109×1，lateinit-on-primitive 故意构造）；KSP 任务本身成功，215 文件全生成；按输出文件判定
+
+### Bugs discovered & fixed（门禁 diff 定位）
+- break 原在 per-method 循环内（每方法一个 break）⇒ 不可达代码且与 GT 不符。GT 实证：每 case 仅一个 `break;`，位于该 case 全部方法语句之后；已移出循环
+- invocation 缺分号（`BenchActivity110_.this.onResult()` 无 `;`，flat 与 brace-block 两处共用该串）⇒ 末尾补 `+ ");"`
+
+### Known limitations（未修复）
+- BenchActivity102_ 唯一 mismatch：既有已知限制（kapt stub 生成失败致 GT 文件不完整），KSP 输出与 pre-session 备份逐字节一致 = 非回归
+- isParcelerType 比 APT ParcelerHelper 表窄（与 InstanceState 共享的已知偏差，勿扩展——回归风险）
+
+### Next
+1. @SystemService → fragment @Bean remainder → Application/Service（@EApplication/@App/@EService + Manifest checks）→ IntentBuilder Fragment overloads → 遗留 @ViewById 方法注入形式
+2. P0b exit acceptance（demo coverage、kapt-vs-ksp public API spot-check、known-deviations 文档声明、EXECUTION_LOG 标 P0b done + Next=P1）→ P1

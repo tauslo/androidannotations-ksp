@@ -46,6 +46,8 @@ public final class AnnotationNames {
 	public static final String ANIMATION_RES = "org.androidannotations.annotations.res.AnimationRes";
 	public static final String HTML_RES = "org.androidannotations.annotations.res.HtmlRes";
 	public static final String LAYOUT_RES = "org.androidannotations.annotations.res.LayoutRes";
+	public static final String ON_ACTIVITY_RESULT = "org.androidannotations.annotations.OnActivityResult";
+	public static final String ON_ACTIVITY_RESULT_EXTRA = "org.androidannotations.annotations.OnActivityResult.Extra";
 	public static final String EXTRA = "org.androidannotations.annotations.Extra";
 	public static final String INSTANCE_STATE = "org.androidannotations.annotations.InstanceState";
 	public static final String AFTER_VIEWS = "org.androidannotations.annotations.AfterViews";

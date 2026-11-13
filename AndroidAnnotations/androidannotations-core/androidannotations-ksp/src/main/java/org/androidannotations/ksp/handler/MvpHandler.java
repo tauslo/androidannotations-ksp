@@ -329,6 +329,11 @@ public final class MvpHandler {
 		} else if (hasMenuParam(function, AnnotationNames.OPTIONS_MENU_ITEM)) {
 			collectMenuParams(resolver, function, name, true, model);
 		}
+
+		KSAnnotation onActivityResult = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.ON_ACTIVITY_RESULT);
+		if (onActivityResult != null) {
+			collectActivityResult(resolver, function, name, onActivityResult, model);
+		}
 	}
 
 	/** APT elementVisibilityModifierToJMod parity: generated @Background/@UiThread overrides keep the source method's visibility. */
@@ -999,6 +1004,148 @@ public final class MvpHandler {
 			return "Unrecognized type. Please let your attribute be primitive or implement Serializable or Parcelable or an annotated Parceler bean.";
 		}
 		return null;
+	}
+
+	/** APT OnActivityResultHandler parity: validate one @OnActivityResult method and record its case group, extra reads and constants. */
+	private void collectActivityResult(Resolver resolver, KSFunctionDeclaration function, String name, KSAnnotation annotation, MvpModel model) {
+		String fqn = AnnotationNames.ON_ACTIVITY_RESULT;
+		int errorsBefore = model.errors.size();
+		if (model.kind != MvpModel.Kind.ACTIVITY && model.kind != MvpModel.Kind.FRAGMENT) {
+			model.errors.add(fqn + " can only be used in a method annotated with @org.androidannotations.annotations.EActivity or @org.androidannotations.annotations.EFragment.");
+		}
+		boolean privateElement = function.getModifiers().contains(Modifier.PRIVATE);
+		if (privateElement) {
+			model.errors.add(fqn + " cannot be used on a private element");
+		}
+		int requestCode = KspAnnotationUtils.intArg(annotation, "value", 0);
+		if (requestCode < 0 || requestCode > 0xFFFF) {
+			model.errors.add("Due to a restriction in the fragment API, the requestCode has to be a positive integer inferior or equal to 0xFFFF");
+		}
+		if (!"void".equals(functionReturnType(function))) {
+			model.errors.add(fqn + " can only be used on a method with a void return type");
+		}
+		String paramError = fqn + " can only have the following parameters: [ [ android.content.Intent (optional) ], [ int or java.lang.Integer (optional) ], [ annotated with Extra (multiple) (optional) ] ] in any order";
+		int intentCount = 0;
+		int resultCodeCount = 0;
+		for (KSValueParameter parameter : function.getParameters()) {
+			if (KspAnnotationUtils.findAnnotation(parameter.getAnnotations(), AnnotationNames.ON_ACTIVITY_RESULT_EXTRA) == null) {
+				String type = KspAnnotationUtils.typeName(parameter.getType());
+				if ("android.content.Intent".equals(type)) {
+					intentCount++;
+				} else if ("int".equals(type) || "java.lang.Integer".equals(type)) {
+					resultCodeCount++;
+				} else {
+					model.errors.add(paramError);
+				}
+			}
+		}
+		if (intentCount > 1 || resultCodeCount > 1) {
+			model.errors.add(paramError);
+		}
+		if (model.errors.size() > errorsBefore) {
+			return;
+		}
+
+		MvpModel.ActivityResultMethod method = new MvpModel.ActivityResultMethod(name);
+		for (KSValueParameter parameter : function.getParameters()) {
+			KSAnnotation extra = KspAnnotationUtils.findAnnotation(parameter.getAnnotations(), AnnotationNames.ON_ACTIVITY_RESULT_EXTRA);
+			String paramName = parameter.getName().asString();
+			if (extra != null) {
+				String typeString = KspAnnotationUtils.fullJavaTypeName(parameter.getType());
+				String typeError = instanceStateTypeError(resolver, typeString);
+				if (typeError != null) {
+					model.errors.add(typeError);
+					return;
+				}
+				String key = KspAnnotationUtils.stringArg(extra, "value", "");
+				if (key.isEmpty()) {
+					key = paramName;
+				}
+				String constantName = KspAnnotationUtils.extraKeyConstant(key);
+				addOarExtraConstant(model, constantName, key);
+				method.extraDecls.add(displayType(model, typeString) + " " + paramName + " = " + bundleReadExpr(resolver, model, typeString, constantName) + ";");
+				method.argExprs.add(paramName);
+			} else if ("android.content.Intent".equals(KspAnnotationUtils.typeName(parameter.getType()))) {
+				method.argExprs.add("data");
+			} else {
+				method.argExprs.add("resultCode");
+			}
+		}
+		findOrCreateActivityResultGroup(model, requestCode).methods.add(method);
+	}
+
+	private MvpModel.ActivityResultGroup findOrCreateActivityResultGroup(MvpModel model, int requestCode) {
+		for (MvpModel.ActivityResultGroup group : model.activityResults) {
+			if (group.requestCode == requestCode) {
+				return group;
+			}
+		}
+		MvpModel.ActivityResultGroup group = new MvpModel.ActivityResultGroup(requestCode);
+		model.activityResults.add(group);
+		return group;
+	}
+
+	/** APT ExtraParameterHandler.getStaticExtraField parity: first declaration wins, also against field-level @Extra constants. */
+	private void addOarExtraConstant(MvpModel model, String constantName, String key) {
+		for (MvpModel.ExtraConstant existing : model.oarExtraConstants) {
+			if (existing.constantName.equals(constantName)) {
+				return;
+			}
+		}
+		for (MvpModel.FieldInjection extra : model.extras) {
+			if (constantName.equals(KspAnnotationUtils.extraKeyConstant(extra.propertyName))) {
+				return;
+			}
+		}
+		model.oarExtraConstants.add(new MvpModel.ExtraConstant(constantName, key));
+	}
+
+	/** Mirrors APT BundleHelper.getExpressionToRestoreFromBundle for @OnActivityResult @Extra params (jcodemodel double-paren cast form). */
+	private String bundleReadExpr(Resolver resolver, MvpModel model, String typeString, String constant) {
+		String suffix = KspAnnotationUtils.BUNDLE_GET_SUFFIX.get(typeString);
+		if (suffix != null) {
+			return "extras_.get" + suffix + "(" + constant + ")";
+		}
+		if (typeString.endsWith("[]")) {
+			String component = typeString.substring(0, typeString.length() - 2);
+			KSClassDeclaration componentDecl = resolveClassDeclaration(resolver, component);
+			if (componentDecl != null && implementsInterface(componentDecl, "android.os.Parcelable")) {
+				model.activityResultUnchecked |= component.contains("<");
+				return "org.androidannotations.api.bundle.BundleHelper.getParcelableArray(extras_, " + constant + ", " + displayType(model, component) + "[].class)";
+			}
+			return "((" + displayType(model, typeString) + ") extras_.getSerializable(" + constant + "))";
+		}
+		if (typeString.startsWith("java.util.ArrayList")) {
+			String arg = null;
+			int lt = typeString.indexOf('<');
+			if (lt >= 0 && typeString.endsWith(">")) {
+				List<String> args = splitTopLevelArgs(typeString.substring(lt + 1, typeString.length() - 1));
+				if (args.size() == 1) {
+					arg = args.get(0).trim();
+				}
+			}
+			KSClassDeclaration argDecl = arg != null ? resolveClassDeclaration(resolver, arg) : null;
+			if (argDecl != null && implementsInterface(argDecl, "android.os.Parcelable")) {
+				model.activityResultUnchecked |= arg.contains("<");
+				return "extras_.getParcelableArrayList(" + constant + ")";
+			}
+			model.activityResultUnchecked = true;
+			return "((" + displayType(model, typeString) + ") extras_.getSerializable(" + constant + "))";
+		}
+		if (typeString.startsWith("android.util.SparseArray")) {
+			return "extras_.getSparseParcelableArray(" + constant + ")";
+		}
+		String base = typeString.contains("<") ? typeString.substring(0, typeString.indexOf('<')) : typeString;
+		KSClassDeclaration declaration = resolveClassDeclaration(resolver, base);
+		boolean parcelable = declaration != null && implementsInterface(declaration, "android.os.Parcelable");
+		if (parcelable) {
+			return "extras_.getParcelable(" + constant + ")";
+		}
+		if (isParcelerType(resolver, typeString)) {
+			return "org.parceler.Parcels.unwrap(extras_.getParcelable(" + constant + "))";
+		}
+		model.activityResultUnchecked |= typeString.contains("<");
+		return "((" + displayType(model, typeString) + ") extras_.getSerializable(" + constant + "))";
 	}
 
 	/** Display form for generated text: java.lang.* and same-package types bare, other packages fully qualified (gate maps FQNs via imports). */

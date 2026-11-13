@@ -73,7 +73,9 @@ public final class MvpJavaGenerator {
 		}
 
 		out.append("\tprivate final org.androidannotations.api.view.OnViewChangedNotifier onViewChangedNotifier_ = new org.androidannotations.api.view.OnViewChangedNotifier();\n");
-		out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new java.util.HashMap<Class<?>, Object>();\n\n");
+out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new java.util.HashMap<Class<?>, Object>();\n");
+		appendActivityResultConstants(out, model);
+		out.append("\n");
 
 		out.append("\t@Override\n");
 		out.append("\tpublic void onCreate(android.os.Bundle savedInstanceState) {\n");
@@ -186,6 +188,7 @@ public final class MvpJavaGenerator {
 		}
 		appendOptionsMenuMethods(out, model);
 		appendInstanceStateMethods(out, model);
+		appendActivityResultMethods(out, model);
 		appendUiThreadMethods(out, model);
 		appendBackgroundMethods(out, model);
 		appendIntentBuilder(out, model);
@@ -214,7 +217,8 @@ public final class MvpJavaGenerator {
 			out.append("\tpublic final static String ").append(KspAnnotationUtils.fragmentArgKeyConstant(arg.propertyName))
 					.append(" = \"").append(key).append("\";\n");
 		}
-		if (!model.fragmentArgs.isEmpty()) {
+		appendActivityResultConstants(out, model);
+		if (!model.fragmentArgs.isEmpty() || !model.oarExtraConstants.isEmpty()) {
 			out.append("\n");
 		}
 
@@ -307,6 +311,7 @@ public final class MvpJavaGenerator {
 
 		appendFragmentArgsMethod(out, model);
 		appendInstanceStateMethods(out, model);
+		appendActivityResultMethods(out, model);
 		appendBackgroundMethods(out, model);
 		appendUiThreadMethods(out, model);
 		appendFragmentBuilder(out, model);
@@ -1020,6 +1025,49 @@ public final class MvpJavaGenerator {
 	}
 
 	/** APT InstanceStateHandler parity: onSaveInstanceState override + restoreSavedInstanceState_ helper. */
+/** APT ExtraParameterHandler parity: @OnActivityResult extra key constants (first declaration wins). */
+	private void appendActivityResultConstants(StringBuilder out, MvpModel model) {
+		for (MvpModel.ExtraConstant constant : model.oarExtraConstants) {
+			out.append("\tpublic final static String ").append(constant.constantName).append(" = \"").append(constant.key).append("\";\n");
+		}
+	}
+
+	/** APT OnActivityResultDelegate parity: generated onActivityResult override, one case per requestCode. */
+	private void appendActivityResultMethods(StringBuilder out, MvpModel model) {
+		if (model.activityResults.isEmpty()) {
+			return;
+		}
+		out.append("\t@Override\n");
+		if (model.activityResultUnchecked) {
+			out.append("\t@SuppressWarnings(\"unchecked\")\n");
+		}
+		out.append("\tpublic void onActivityResult(int requestCode, int resultCode, android.content.Intent data) {\n");
+		out.append("\t\tsuper.onActivityResult(requestCode, resultCode, data);\n");
+		out.append("\t\tswitch (requestCode) {\n");
+		for (MvpModel.ActivityResultGroup group : model.activityResults) {
+			out.append("\t\t\tcase  ").append(group.requestCode).append(" :\n");
+			out.append("\t\t\t{\n");
+			for (MvpModel.ActivityResultMethod method : group.methods) {
+				String invocation = model.generatedSimpleName() + ".this." + method.methodName + "(" + String.join(", ", method.argExprs) + ");";
+				if (method.extraDecls.isEmpty()) {
+					out.append("\t\t\t\t").append(invocation).append("\n");
+				} else {
+					out.append("\t\t\t\t{\n");
+					out.append("\t\t\t\t\tandroid.os.Bundle extras_ = (((data!= null)&&(data.getExtras()!= null))?data.getExtras():new android.os.Bundle());\n");
+					for (String decl : method.extraDecls) {
+						out.append("\t\t\t\t\t").append(decl).append("\n");
+					}
+					out.append("\t\t\t\t\t").append(invocation).append("\n");
+					out.append("\t\t\t\t}\n");
+				}
+			}
+			out.append("\t\t\t\tbreak;\n");
+			out.append("\t\t\t}\n");
+		}
+		out.append("\t\t}\n");
+		out.append("\t}\n\n");
+	}
+
 	private void appendInstanceStateMethods(StringBuilder out, MvpModel model) {
 		if (model.instanceStates.isEmpty()) {
 			return;

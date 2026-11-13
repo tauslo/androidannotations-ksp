@@ -62,7 +62,7 @@
 ## State / results / system
 
 - [x] `@InstanceState`（onSaveInstanceState / restore；BundleHelper 类型复用 Extra）
-- [ ] `@OnActivityResult` + 参数级 `@Extra`（对照内部 `ExtraHandler`）
+- [x] `@OnActivityResult` + 参数级 `@Extra`（对照内部 `ExtraHandler`）
 - [ ] `@SystemService`
 - [ ] 确认 `@AfterExtras` 在 P0a 已有；Fragment/Service 若需要则补齐调用点
 
