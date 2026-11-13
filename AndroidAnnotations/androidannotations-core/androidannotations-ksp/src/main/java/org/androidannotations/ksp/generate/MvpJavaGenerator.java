@@ -248,6 +248,14 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 		out.append("\t}\n\n");
 
 		out.append("\tprivate void init_(android.os.Bundle savedInstanceState) {\n");
+		boolean hasMenus = !model.optionsMenus.isEmpty() || !model.injectMenuInjections.isEmpty() || !model.optionsMenuItemInjections.isEmpty();
+		// APT parity: the three virtual blocks (before/injection/after) are created on first access; a direct append
+		// (setHasOptionsMenu) lands at the tail once any earlier handler has created them, otherwise it is first.
+		boolean hasPreMenuContent = hasViewSupport || !model.resFields.isEmpty() || !model.fragmentArgs.isEmpty()
+				|| !model.systemServices.isEmpty() || !model.beans.isEmpty();
+		if (hasMenus && !hasPreMenuContent) {
+			out.append("\t\tsetHasOptionsMenu(true);\n");
+		}
 		if (!model.resFields.isEmpty()) {
 			out.append("\t\tandroid.content.res.Resources resources_ = getActivity().getResources();\n");
 		}
@@ -257,15 +265,19 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 		for (MvpModel.ResField resField : model.resFields) {
 			appendResAssign(out, model.kind, resField);
 		}
-		appendSystemServiceInjections(out, model, "getActivity()");
 		if (!model.fragmentArgs.isEmpty()) {
 			out.append("\t\tinjectFragmentArguments_();\n");
 		}
-		if (!model.optionsMenus.isEmpty() || !model.injectMenuInjections.isEmpty() || !model.optionsMenuItemInjections.isEmpty()) {
-			out.append("\t\tsetHasOptionsMenu(true);\n");
-		}
+		appendSystemServiceInjections(out, model, "getActivity()");
+		appendBeanInjections(out, model);
 		if (!model.instanceStates.isEmpty()) {
 			out.append("\t\trestoreSavedInstanceState_(savedInstanceState);\n");
+		}
+		for (String method : model.afterInject) {
+			out.append("\t\t").append(method).append("();\n");
+		}
+		if (hasMenus && hasPreMenuContent) {
+			out.append("\t\tsetHasOptionsMenu(true);\n");
 		}
 		out.append("\t}\n\n");
 
@@ -314,8 +326,8 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 		appendFragmentArgsMethod(out, model);
 		appendInstanceStateMethods(out, model);
 		appendActivityResultMethods(out, model);
-		appendBackgroundMethods(out, model);
 		appendUiThreadMethods(out, model);
+		appendBackgroundMethods(out, model);
 		appendFragmentBuilder(out, model);
 
 		appendNestedClasses(out, model);
@@ -722,8 +734,8 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 			out.append("\t}\n\n");
 		}
 
-		appendBackgroundMethods(out, model);
 		appendUiThreadMethods(out, model);
+		appendBackgroundMethods(out, model);
 
 		appendNestedClasses(out, model);
 		out.append("}\n");
@@ -813,12 +825,12 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 		for (MvpModel.BeanInjection bean : model.beans) {
 			if (bean.form == MvpModel.BeanInjection.Form.FIELD) {
 				MvpModel.BeanTarget target = bean.targets.get(0);
-				appendBeanAssign(out, bean.name, bean.jvmField, getInstanceExpr(target));
+				appendBeanAssign(out, bean.name, bean.jvmField, getInstanceExpr(target, model.kind));
 			} else {
 				out.append("\t\t{\n");
 				for (MvpModel.BeanTarget target : bean.targets) {
-					out.append("\t\t\t").append(target.declaredType).append(' ').append(target.name)
-							.append(" = ").append(getInstanceExpr(target)).append(";\n");
+					out.append("\t\t\t").append(target.declaredType).append(' ').append(target.name).append(" = null;\n");
+					out.append("\t\t\t").append(target.name).append(" = ").append(getInstanceExpr(target, model.kind)).append(";\n");
 				}
 				out.append("\t\t\t").append(bean.name).append('(');
 				for (int i = 0; i < bean.targets.size(); i++) {
@@ -833,8 +845,10 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 		}
 	}
 
-	private static String getInstanceExpr(MvpModel.BeanTarget target) {
-		return target.beanGeneratedQualifiedName + ".getInstance_(this" + (target.withRootFragmentArg ? ", null" : "") + ")";
+	private static String getInstanceExpr(MvpModel.BeanTarget target, MvpModel.Kind kind) {
+		String contextRef = kind == MvpModel.Kind.FRAGMENT ? "getActivity()" : "this";
+		String rootFragmentRef = kind == MvpModel.Kind.FRAGMENT ? "this" : "null";
+		return target.beanGeneratedQualifiedName + ".getInstance_(" + contextRef + (target.withRootFragmentArg ? ", " + rootFragmentRef : "") + ")";
 	}
 
 	private void appendBeanAssign(StringBuilder out, String propertyName, boolean jvmField, String expression) {
@@ -1010,7 +1024,7 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 	/** APT requestInstanceFromBeanHolder: BeanHolder lookup with create/put/init, body indented two tabs. */
 	private void appendBeanHolderLookup(StringBuilder out, String generated, String holderRef, String newArgs) {
 		out.append("\t\tif (" + holderRef + " instanceof org.androidannotations.api.bean.BeanHolder) {\n");
-		out.append("\t\t\torg.androidannotations.api.bean.BeanHolder beanHolder = (org.androidannotations.api.bean.BeanHolder) " + holderRef + ";\n");
+		out.append("\t\t\torg.androidannotations.api.bean.BeanHolder beanHolder = ((org.androidannotations.api.bean.BeanHolder) " + holderRef + ");\n");
 		out.append("\t\t\t" + generated + " bean = beanHolder.getBean(" + generated + ".class);\n");
 		out.append("\t\t\tif (bean == null) {\n");
 		out.append("\t\t\t\tbean = new " + generated + "(" + newArgs + ");\n");

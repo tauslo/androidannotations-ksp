@@ -23,7 +23,7 @@
 - [x] **BLOCKER** `FragmentBuilder_` + `Xxx_.builder()` / `fragment(...)` fluent API（对照 APT Fragment builder）
 - [x] **BLOCKER** `@FragmentArg`：arguments Bundle restore + builder fluent put
 - [x] `@FragmentById` / `@FragmentByTag`（framework Fragment；若工程用 AndroidX 再加 support/AndroidX 路径）
-- [ ] Fragment 上 `@Bean` / `@AfterInject` / `@AfterViews` / `@ViewById` / 线程注解复用 Activity 路径
+- [x] Fragment 上 `@Bean` / `@AfterInject` / `@AfterViews` / `@ViewById` / 线程注解复用 Activity 路径
 - [x] Manifest / 组件注册：Fragment 一般不进 Manifest；确认 validator 不误伤
 - [ ] Demo：`examples/kotlin` 或 `examples/kotlin-parity` 含 Fragment + Arg + builder
 

@@ -833,3 +833,35 @@
 ### Next
 1. fragment @Bean remainder → Application/Service（@EApplication/@App/@EService + Manifest checks）→ IntentBuilder Fragment overloads → 遗留 @ViewById 方法注入形式
 2. P0b exit acceptance（demo coverage、kapt-vs-ksp public API spot-check、known-deviations 文档声明、EXECUTION_LOG 标 P0b done + Next=P1）→ P1
+## Session 2026-11-14 — P0b: fragment @Bean + @AfterInject APT parity
+
+- **Agent**: Codex
+- **Goal slice**: P0b — @Bean/@AfterInject（APT EBeanHandler/InjectHelper/BeanHolder parity）：field/method/param 三形态 + fragment getInstance_ 双重载
+- **Git**: branch=`ksp/main` HEAD=`2023d93c`（local only, not pushed）
+- **Status**: done（门禁通过；余 1 个既有 mismatch，见 Known limitations）
+
+### Done
+- **首次 fixture 验证**：@Bean/@AfterInject 此前从未被 fixture 覆盖；新增 BenchActivity112/BenchFragment112/BenchBean101/102 + layout ×2，覆盖 fragment @Bean field/method/param 三形态 + @AfterInject + `getInstance_(context)` / `getInstance_(context, rootFragment)` 双重载
+- MvpHandler：collectBeanMethod/collectBeanParams BeanTarget name = 参数名（`params.get(0).getName().asString()`）；resolveBeanTarget 返回值包 samePackageRef
+- MvpJavaGenerator：appendBeanHolderLookup cast 行改双括号含收尾；fragment 路径（L329-330）与 service/app 路径（L737-738）@UiThread/@Background 生成顺序交换为 UI→BG（activity 路径 L193-194 原本正确未动）
+- 新增静态 helper `samePackageRef(fullTypeName, model)`：组件自己包内的类剥包前缀用简单名，带段数校验防 `com` vs `com.foobar` 误剥；APT/jcodemodel parity（同包类无 import 直接引用）
+- 门禁：GT 221 / KSP live 221、missing/KSP-only 均空、**MISMATCHES=1（仅既有 BenchActivity102_）**；回归备份刷新至 `C:\temp\ksp-p0b-bean`（221 文件，hash 全匹配）
+- mvn install androidannotations-ksp BUILD SUCCESS
+
+### 构建退出码说明
+- KSP 侧 GRADLE_EXIT=1：仅 9 个既有 Kotlin 错误（BenchActivity107×8 + BenchFragment109×1，lateinit-on-primitive 故意构造）；KSP 任务本身成功，221 文件全生成；按输出文件判定
+
+### Bugs discovered & fixed（门禁 diff 定位）
+- method/param form 局部变量名：原用方法名 → GT 用参数名（APT InjectHelper L119/L159 实证）；BeanTarget name 改 `params.get(0).getName().asString()`
+- 同包 Bean 类引用：KSP 输出 FQN → GT 对同包类无 import、用简单名；加 samePackageRef 剥离（带段数校验）
+- BeanHolder cast：单括号 `(BeanHolder) x` → GT `((BeanHolder) context);` 双括号含收尾（EBeanHolder L187 + jcodemodel 3.0.1 实证产物 `C:\temp\jcmtest`）
+- fragment/service @UiThread 方法原在 @Background 之后生成 → APT CorePlugin L240-241 UiThreadHandler 注册在 BackgroundHandler 之前（全局 pipeline，所有组件 UI 先生成）；KSP fragment+service/app 路径交换修正；service/app 暂无 fixture，下一 slice 验证
+
+### Known limitations（未修复）
+- BenchActivity102_ 唯一 mismatch：既有已知限制（kapt stub 生成失败致 GT 文件不完整），KSP 输出与 pre-session 备份一致 = 非回归
+- GT 目录于 06:52 用当前 APT 4.9.0-SNAPSHOT 全量重新生成；旧快照 `C:\temp\gt_hash_before_kapt.txt`（06:51）为陈旧产物（文件全部不同），两侧现均为当前工具链产物，门禁结果有效
+- service/app 路径 UI→BG 顺序已修正但无 fixture 覆盖（下一 slice @EApplication/@EService 覆盖）
+
+### Next
+1. Application/Service（@EApplication/@App/@EService + Manifest checks，对照 APT EApplicationHandler/EServiceHandler/AppHandler；service/app UI→BG 顺序已提前修正）→ IntentBuilder Fragment overloads → 遗留 @ViewById 方法注入形式
+2. P0b exit acceptance（demo coverage、kapt-vs-ksp public API spot-check、known-deviations 文档声明、EXECUTION_LOG 标 P0b done + Next=P1）→ P1

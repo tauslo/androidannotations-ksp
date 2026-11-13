@@ -259,12 +259,14 @@ public final class MvpHandler {
 
 		KSAnnotation afterInject = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.AFTER_INJECT);
 		if (afterInject != null) {
-			if (model.kind != MvpModel.Kind.ACTIVITY) {
-				model.errors.add("@AfterInject is only supported in @EActivity components: method '" + name + "'");
+			if (model.kind != MvpModel.Kind.ACTIVITY && model.kind != MvpModel.Kind.FRAGMENT) {
+				model.errors.add("@AfterInject is only supported in @EActivity or @EFragment components: method '" + name + "'");
 			} else if (!function.getParameters().isEmpty()) {
 				model.errors.add("@AfterInject method '" + name + "' must have no parameters");
 			} else if (function.getModifiers().contains(Modifier.PRIVATE)) {
 				model.errors.add("@AfterInject method '" + name + "' must not be private");
+			} else if (!"void".equals(functionReturnType(function))) {
+				model.errors.add("@AfterInject can only be used on a method with a void return type");
 			} else {
 				model.afterInject.add(name);
 			}
@@ -707,8 +709,8 @@ public final class MvpHandler {
 
 	/** APT BeanHandler.processField parity: one assignment target in the init-body injection block. */
 	private void collectBeanField(Resolver resolver, KSPropertyDeclaration property, String name, boolean jvmField, MvpModel model) {
-		if (model.kind != MvpModel.Kind.ACTIVITY) {
-			model.errors.add("@Bean is only supported in @EActivity components: property '" + name + "'");
+		if (model.kind != MvpModel.Kind.ACTIVITY && model.kind != MvpModel.Kind.FRAGMENT) {
+			model.errors.add("@Bean is only supported in @EActivity or @EFragment components: property '" + name + "'");
 			return;
 		}
 		if (property.getModifiers().contains(Modifier.PRIVATE)) {
@@ -725,8 +727,8 @@ public final class MvpHandler {
 
 	/** APT BeanHandler.processMethod parity: @Bean on a method with exactly one parameter. */
 	private void collectBeanMethod(Resolver resolver, KSFunctionDeclaration function, String name, MvpModel model) {
-		if (model.kind != MvpModel.Kind.ACTIVITY) {
-			model.errors.add("@Bean is only supported in @EActivity components: method '" + name + "'");
+		if (model.kind != MvpModel.Kind.ACTIVITY && model.kind != MvpModel.Kind.FRAGMENT) {
+			model.errors.add("@Bean is only supported in @EActivity or @EFragment components: method '" + name + "'");
 			return;
 		}
 		if (function.getModifiers().contains(Modifier.PRIVATE)) {
@@ -741,9 +743,9 @@ public final class MvpHandler {
 		KSAnnotation bean = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.BEAN);
 		MvpModel.BeanTarget target = resolveBeanTarget(resolver, params.get(0).getType(), bean, name, model);
 		if (target != null) {
-			MvpModel.BeanTarget local = new MvpModel.BeanTarget(target.name,
-					KspAnnotationUtils.fullTypeNameWithArgs(params.get(0).getType()),
-					target.beanGeneratedQualifiedName, target.withRootFragmentArg);
+			String declaredType = samePackageRef(KspAnnotationUtils.fullTypeNameWithArgs(params.get(0).getType()), model);
+			MvpModel.BeanTarget local = new MvpModel.BeanTarget(params.get(0).getName().asString(),
+					declaredType, target.beanGeneratedQualifiedName, target.withRootFragmentArg);
 			model.beans.add(new MvpModel.BeanInjection(MvpModel.BeanInjection.Form.METHOD, name, false,
 					Collections.singletonList(local)));
 		}
@@ -751,8 +753,8 @@ public final class MvpHandler {
 
 	/** APT BeanHandler.processParam parity: one shared braced block per method; the call is emitted only when ALL parameters are annotated. */
 	private void collectBeanParams(Resolver resolver, KSFunctionDeclaration function, String name, MvpModel model) {
-		if (model.kind != MvpModel.Kind.ACTIVITY) {
-			model.errors.add("@Bean is only supported in @EActivity components: method '" + name + "'");
+		if (model.kind != MvpModel.Kind.ACTIVITY && model.kind != MvpModel.Kind.FRAGMENT) {
+			model.errors.add("@Bean is only supported in @EActivity or @EFragment components: method '" + name + "'");
 			return;
 		}
 		if (function.getModifiers().contains(Modifier.PRIVATE)) {
@@ -769,7 +771,8 @@ public final class MvpHandler {
 			if (target == null) {
 				return;
 			}
-			targets.add(new MvpModel.BeanTarget(target.name, KspAnnotationUtils.fullTypeNameWithArgs(param.getType()),
+			String declaredType = samePackageRef(KspAnnotationUtils.fullTypeNameWithArgs(param.getType()), model);
+			targets.add(new MvpModel.BeanTarget(param.getName().asString(), declaredType,
 					target.beanGeneratedQualifiedName, target.withRootFragmentArg));
 		}
 		model.beans.add(new MvpModel.BeanInjection(MvpModel.BeanInjection.Form.METHOD, name, false, targets));
@@ -1023,7 +1026,7 @@ public final class MvpHandler {
 		}
 		String scope = KspAnnotationUtils.enumArg(eBean, "scope", "Default");
 		boolean withRootFragmentArg = !"Singleton".equals(scope) && !"Activity".equals(scope);
-		return new MvpModel.BeanTarget(name, null, generatedBeanQualifiedName(beanQualifiedName), withRootFragmentArg);
+		return new MvpModel.BeanTarget(name, null, samePackageRef(generatedBeanQualifiedName(beanQualifiedName), model), withRootFragmentArg);
 	}
 
 	/** Mirrors APT AnnotationHelper.generatedClassQualifiedNameFromQualifiedName: the "_" suffix lands on every class segment; the package is untouched. */
@@ -1037,6 +1040,28 @@ public final class MvpHandler {
 			sb.append('.').append(segment).append('_');
 		}
 		return sb.toString();
+	}
+
+	/** APT/jcodemodel parity: classes in the component's own package are referenced unqualified; KSP emits no imports, other packages stay FQN. */
+	private static String samePackageRef(String fullTypeName, MvpModel model) {
+		String pkg = model.packageName == null ? "" : model.packageName;
+		if (pkg.isEmpty()) {
+			return fullTypeName;
+		}
+		int pkgSegments = pkg.split("\\.").length;
+		StringBuilder sb = new StringBuilder();
+		java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+			"(?<![A-Za-z0-9_$.])" + java.util.regex.Pattern.quote(pkg) + "(?:\\.[A-Za-z_$][A-Za-z0-9_$]*)*").matcher(fullTypeName);
+		int last = 0;
+		while (m.find()) {
+			String qn = m.group();
+			if (qn.split("\\.").length == pkgSegments + 1) {
+				sb.append(fullTypeName, last, m.start());
+				sb.append(qn, pkg.length() + 1, qn.length());
+				last = m.end();
+			}
+		}
+		return last == 0 ? fullTypeName : sb.append(fullTypeName.substring(last)).toString();
 	}
 
 	/** Write/read expression templates for one @Extra or @FragmentArg, mirroring APT IntentBuilder.getSuperPutExtraInvocation + BundleHelper. */
