@@ -238,7 +238,9 @@ public final class MvpJavaGenerator {
 		for (MvpModel.ResField resField : model.resFields) {
 			appendResAssign(out, model.kind, resField);
 		}
-		out.append("\t\tinjectFragmentArguments_();\n");
+		if (!model.fragmentArgs.isEmpty()) {
+			out.append("\t\tinjectFragmentArguments_();\n");
+		}
 		out.append("\t}\n\n");
 
 		out.append("\t@Override\n");
@@ -714,6 +716,9 @@ public final class MvpJavaGenerator {
 	}
 
 	private void appendFragmentArgsMethod(StringBuilder out, MvpModel model) {
+		if (model.fragmentArgs.isEmpty()) {
+			return;
+		}
 		boolean unchecked = false;
 		for (MvpModel.FieldInjection arg : model.fragmentArgs) {
 			unchecked |= arg.extraUnchecked;

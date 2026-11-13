@@ -677,3 +677,42 @@
 ### Next
 1. Fragment 监听器 fixture：为 fragment 场景补 @Click/@LongClick 覆盖（当前仅 Activity fixture 101）
 2. @OptionsMenu / @InstanceState / @OnActivityResult / @SystemService 等按原计划推进
+
+## Session 2026-11-13 — P0b: Fragment 监听器 fixture（fragment 场景 @Click/@LongClick GT 覆盖）
+
+- **Agent**: Codex
+- **Goal slice**: P0b — fragment 场景 @Click/@LongClick GT 对比覆盖（上 session Next 1）；顺带发现并修复 KSP 对无 @FragmentArg 的 fragment 无条件生成空 `injectFragmentArguments_()` 的 parity bug
+- **Git**: branch=`ksp/main` HEAD=`12927f5c` remote=`ksp/main` ahead（local only, not pushed）
+- **Status**: done
+
+### Done
+- 新 fixture `BenchFragment104`（纯监听器 fragment：无 @ViewById/@AfterViews/@FragmentArg），4 方法覆盖监听器形态全矩阵：显式值 `@Click(R.id.fragBtnA)` / 裸名推导 `@Click`（资源名=方法名）/ View 参数 `fragViewParam(View)` / long-press 布尔返回 `@LongClick … : Boolean`；layout `bench_fragment_104.xml` 含 4 个 Button
+- Parity 预检：KSP `generateFragment.hasViewSupport` 计入 click/longClick 监听器 ≡ APT demand-driven `EComponentWithViewSupportHolder.setOnViewChanged()`（任一 handler 请求注入块即加接口+方法+注册）；`findViewById(idRef)` = `hasViews.internalFindViewById(…)` 与 activity 形态一致
+- **Parity bug 修复**：GT 对比发现 KSP 对无 @FragmentArg 的 fragment 无条件输出 `injectFragmentArguments_()` 调用 + 空方法，而 APT `FragmentArgHandler` 仅在存在 @FragmentArg 时惰性创建该方法（GT 104 无此方法；001/002/003 有 @FragmentArg 两侧本就一致）。修复：`MvpJavaGenerator` init_ 调用处按 `!model.fragmentArgs.isEmpty()` 门控 + `appendFragmentArgsMethod` 无参时 early-return
+- mvn install api+ksp（-am，skip flags）BUILD SUCCESS；KSP 重建后生成目录 207 个类（206+1）
+
+### Changed paths
+- examples/kotlin-bench/src/main/kotlin/org/androidannotations/bench/BenchFragment104.kt（新增）
+- examples/kotlin-bench/src/main/res/layout/bench_fragment_104.xml（新增）
+- AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/generate/MvpJavaGenerator.java（fragmentArgs 门控 ×2）
+- docs/ksp-production-parity/EXECUTION_LOG.md
+
+### Verify
+- [x] mvn install ksp（+ api，-am，skip flags）BUILD SUCCESS
+- [x] examples/kotlin-bench `assembleDebug -Paa.processor=ksp` GRADLE_EXIT=0；生成目录 207 文件；`BenchFragment104_.java` implements OnViewChangedListener、init_ 含 registerOnViewChangedListener、onViewChanged 含 4 个局部变量 + if 块（匿名类调用 `BenchFragment104_.this.<method>`）、long-click 返回 boolean
+- [x] kapt GT 构建 GRADLE_EXIT=0（按协议临时移除 BenchActivity102.kt 后已 git restore）；GT `BenchFragment104_.java` 含全部 4 个监听器探针
+- [x] gt_cmp9：BenchFragment104_ EXACT MATCH after accepted HashMap->Map deviation（ksp 2721 字符 / gt 2717 字符；唯一剩余 diff region = 已知 beans_ 字段类型偏差）
+- [x] gt_cmp4 回归：fragment 001/002/003（@FragmentArg 路径）仍 FINAL ALL OK — 修复未影响有参路径
+- [x] 回归门禁 reg9：live 207 vs backup 206 → ADDED(1)=BenchFragment104_.java、REMOVED(0)、CHANGED(0) PASS；备份已刷新为 207（hash 全匹配）
+- [x] checklist 无勾选 — 本 slice 为 GT 覆盖工作；CHECKLIST_P0b.md「View listeners（高频）」节此前已全部勾选，无对应未勾项
+
+### Known limitations（未修复）
+- aapt2 文件型资源 R 名为 snake_case、jcodegen simple name vs KSP FQN 等前 session 已知偏差不变（gt_cmp4/9 归一化吸收）
+- Bean/Fragment 的 res 字段无 GT 覆盖（生成器支持三种 kind，fixture 仅 Activity）
+- kapt GT 构建每次须临时移除 BenchActivity102.kt（kapt stubs 使初始化 var 变 private → APT 拒绝其 res 注解），构建后 git restore
+
+### Blockers
+- none
+
+### Next
+1. @OptionsMenu / @InstanceState / @OnActivityResult / @SystemService 等按原计划推进
