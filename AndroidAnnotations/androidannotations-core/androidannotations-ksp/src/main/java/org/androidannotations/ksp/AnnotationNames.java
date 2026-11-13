@@ -27,6 +27,10 @@ public final class AnnotationNames {
 	public static final String VIEW_BY_ID = "org.androidannotations.annotations.ViewById";
 	public static final String CLICK = "org.androidannotations.annotations.Click";
 	public static final String LONG_CLICK = "org.androidannotations.annotations.LongClick";
+	public static final String OPTIONS_MENU = "org.androidannotations.annotations.OptionsMenu";
+	public static final String OPTIONS_ITEM = "org.androidannotations.annotations.OptionsItem";
+	public static final String OPTIONS_MENU_ITEM = "org.androidannotations.annotations.OptionsMenuItem";
+	public static final String INJECT_MENU = "org.androidannotations.annotations.InjectMenu";
 	public static final String STRING_RES = "org.androidannotations.annotations.res.StringRes";
 	public static final String COLOR_RES = "org.androidannotations.annotations.res.ColorRes";
 	public static final String DRAWABLE_RES = "org.androidannotations.annotations.res.DrawableRes";
@@ -57,7 +61,6 @@ public final class AnnotationNames {
 	/** AA annotations recognized by the KSP processor but not implemented yet; their use is reported with a warning. */
 	public static final String[] RECOGNIZED_NOT_IMPLEMENTED = {
 			"org.androidannotations.annotations.InstanceState", // P0b
-			"org.androidannotations.annotations.OptionsMenu", // P0b
 			"org.androidannotations.annotations.sharedpreferences.SharedPref" // P1
 	};
 

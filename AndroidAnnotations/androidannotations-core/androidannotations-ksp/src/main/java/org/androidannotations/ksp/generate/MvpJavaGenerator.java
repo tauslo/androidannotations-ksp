@@ -55,11 +55,13 @@ public final class MvpJavaGenerator {
 	private String generateActivity(MvpModel model) {
 		StringBuilder out = new StringBuilder();
 		appendHeader(out, model);
+		boolean hasViewSupport = !model.viewByIds.isEmpty() || !model.afterViews.isEmpty()
+				|| !model.clickListeners.isEmpty() || !model.longClickListeners.isEmpty();
 		out.append("public final class ").append(model.generatedSimpleName())
 				.append(" extends ").append(model.simpleName)
-				.append(" implements org.androidannotations.api.view.HasViews,\n")
-				.append("\t\torg.androidannotations.api.view.OnViewChangedListener,\n")
-				.append("\t\torg.androidannotations.api.bean.BeanHolder {\n\n");
+				.append(" implements org.androidannotations.api.bean.BeanHolder, org.androidannotations.api.view.HasViews")
+				.append(hasViewSupport ? ", org.androidannotations.api.view.OnViewChangedListener" : "")
+				.append(" {\n\n");
 
 		for (MvpModel.FieldInjection extra : model.extras) {
 			String key = extra.resName != null && !extra.resName.isEmpty() ? extra.resName : extra.propertyName;
@@ -82,9 +84,17 @@ public final class MvpJavaGenerator {
 		appendSetContentViewCall(out, model);
 		out.append("\t}\n\n");
 
+		out.append("\t@Override\n");
+		out.append("\tpublic <T extends android.view.View> T internalFindViewById(int id) {\n");
+		out.append("\t\treturn ((T) this.findViewById(id));\n");
+		out.append("\t}\n\n");
+
 		out.append("\tprivate void init_(android.os.Bundle savedInstanceState) {\n");
 		if (!model.stringRes.isEmpty() || !model.resFields.isEmpty()) {
-			out.append("\t\tandroid.content.res.Resources resources_ = getResources();\n");
+			out.append("\t\tandroid.content.res.Resources resources_ = this.getResources();\n");
+		}
+		if (hasViewSupport) {
+			out.append("\t\torg.androidannotations.api.view.OnViewChangedNotifier.registerOnViewChangedListener(this);\n");
 		}
 		for (MvpModel.FieldInjection injection : model.stringRes) {
 			String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "string", injection.propertyName, injection.resId, injection.resName, rClassIndex);
@@ -100,7 +110,6 @@ public final class MvpJavaGenerator {
 		for (String method : model.afterInject) {
 			out.append("\t\t").append(method).append("();\n");
 		}
-		out.append("\t\torg.androidannotations.api.view.OnViewChangedNotifier.registerOnViewChangedListener(this);\n");
 		out.append("\t}\n\n");
 
 		if (!model.extras.isEmpty() || !model.afterExtras.isEmpty()) {
@@ -153,27 +162,28 @@ public final class MvpJavaGenerator {
 		out.append("\t\tonViewChangedNotifier_.notifyViewChanged(this);\n");
 		out.append("\t}\n\n");
 
-		out.append("\t@Override\n");
-		out.append("\t@SuppressWarnings(\"unchecked\")\n");
-		out.append("\tpublic <T extends android.view.View> T internalFindViewById(int id) {\n");
-		out.append("\t\treturn (T) findViewById(id);\n");
-		out.append("\t}\n\n");
-
-		out.append("\t@Override\n");
-		out.append("\tpublic void onViewChanged(org.androidannotations.api.view.HasViews hasViews) {\n");
-		for (MvpModel.FieldInjection view : model.viewByIds) {
-			String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "id", view.propertyName, view.resId, view.resName, rClassIndex);
-			appendAssign(out, view, "(" + view.typeName + ") hasViews.internalFindViewById(" + resExpr + ")");
-		}
-		appendViewListeners(out, model);
-		for (String method : model.afterViews) {
-			out.append("\t\t").append(method).append("();\n");
-		}
-		out.append("\t}\n\n");
-
+		appendIntentStaticMethod(out, model);
 		appendBeanHolderMethods(out);
-		appendBackgroundMethods(out, model);
+		if (hasViewSupport) {
+			out.append("\t@Override\n");
+			out.append("\tpublic void onViewChanged(org.androidannotations.api.view.HasViews hasViews) {\n");
+			for (MvpModel.FieldInjection view : model.viewByIds) {
+				String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "id", view.propertyName, view.resId, view.resName, rClassIndex);
+				if (view.jvmField) {
+					out.append("\t\tthis.").append(view.propertyName).append(" = hasViews.internalFindViewById(").append(resExpr).append(");\n");
+				} else {
+					out.append("\t\t").append(setterName(view.propertyName)).append("(hasViews.internalFindViewById(").append(resExpr).append("));\n");
+				}
+			}
+			appendViewListeners(out, model);
+			for (String method : model.afterViews) {
+				out.append("\t\t").append(method).append("();\n");
+			}
+			out.append("\t}\n\n");
+		}
+		appendOptionsMenuMethods(out, model);
 		appendUiThreadMethods(out, model);
+		appendBackgroundMethods(out, model);
 		appendIntentBuilder(out, model);
 
 		appendNestedClasses(out, model);
@@ -187,7 +197,7 @@ public final class MvpJavaGenerator {
 		boolean hasViewSupport = !model.viewByIds.isEmpty() || !model.afterViews.isEmpty()
 			|| !model.clickListeners.isEmpty() || !model.longClickListeners.isEmpty();
 		out.append("public final class ").append(model.generatedSimpleName())
-				.append(" extends ").append(model.simpleName)
+				.append(" extends ").append(model.qualifiedName)
 				.append(" implements org.androidannotations.api.bean.BeanHolder, org.androidannotations.api.view.HasViews")
 				.append(hasViewSupport ? ", org.androidannotations.api.view.OnViewChangedListener" : "")
 				.append(" {\n\n");
@@ -241,6 +251,9 @@ public final class MvpJavaGenerator {
 		if (!model.fragmentArgs.isEmpty()) {
 			out.append("\t\tinjectFragmentArguments_();\n");
 		}
+		if (!model.optionsMenus.isEmpty() || !model.injectMenuInjections.isEmpty() || !model.optionsMenuItemInjections.isEmpty()) {
+			out.append("\t\tsetHasOptionsMenu(true);\n");
+		}
 		out.append("\t}\n\n");
 
 		out.append("\t@Override\n");
@@ -249,18 +262,24 @@ public final class MvpJavaGenerator {
 		out.append("\t\tonViewChangedNotifier_.notifyViewChanged(this);\n");
 		out.append("\t}\n\n");
 
-		out.append("\tpublic static FragmentBuilder_ builder() {\n");
-		out.append("\t\treturn new FragmentBuilder_();\n");
+		String generated = model.generatedSimpleName();
+		out.append("\tpublic static ").append(generated).append(".FragmentBuilder_ builder() {\n");
+		out.append("\t\treturn new ").append(generated).append(".FragmentBuilder_();\n");
 		out.append("\t}\n\n");
 
 		appendFragmentBeanHolderMethods(out);
+		appendOptionsMenuMethods(out, model);
 
 		if (hasViewSupport) {
 			out.append("\t@Override\n");
 			out.append("\tpublic void onViewChanged(org.androidannotations.api.view.HasViews hasViews) {\n");
 			for (MvpModel.FieldInjection view : model.viewByIds) {
 				String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "id", view.propertyName, view.resId, view.resName, rClassIndex);
-				out.append("\t\tthis.").append(view.propertyName).append(" = hasViews.internalFindViewById(").append(resExpr).append(");\n");
+				if (view.jvmField) {
+					out.append("\t\tthis.").append(view.propertyName).append(" = hasViews.internalFindViewById(").append(resExpr).append(");\n");
+				} else {
+					out.append("\t\t").append(setterName(view.propertyName)).append("(hasViews.internalFindViewById(").append(resExpr).append("));\n");
+				}
 			}
 			appendViewListeners(out, model);
 			for (MvpModel.FragmentInjection byTag : model.fragmentByTags) {
@@ -318,6 +337,143 @@ public final class MvpJavaGenerator {
 			}
 			out.append("\t\t}\n");
 		}
+	}
+
+/** APT EActivityHolder.setOnCreateOptionsMenu / setOnOptionsItemSelected and InjectHelper parity. */
+	private void appendOptionsMenuMethods(StringBuilder out, MvpModel model) {
+		boolean menuCreate = !model.optionsMenus.isEmpty() || !model.injectMenuInjections.isEmpty()
+				|| !model.optionsMenuItemInjections.isEmpty();
+		if (menuCreate) {
+			out.append("\t@Override\n");
+			if (model.kind == MvpModel.Kind.ACTIVITY) {
+				out.append("\tpublic boolean onCreateOptionsMenu(android.view.Menu menu) {\n");
+				out.append("\t\tandroid.view.MenuInflater menuInflater = getMenuInflater();\n");
+				for (MvpModel.OptionsMenuRef menu : model.optionsMenus) {
+					String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "menu", "", menu.resId, menu.resName, rClassIndex);
+					out.append("\t\tmenuInflater.inflate(").append(resExpr).append(", menu);\n");
+				}
+				appendMenuInjections(out, model);
+				out.append("\t\treturn super.onCreateOptionsMenu(menu);\n");
+			} else {
+				out.append("\tpublic void onCreateOptionsMenu(android.view.Menu menu, android.view.MenuInflater inflater) {\n");
+				for (MvpModel.OptionsMenuRef menu : model.optionsMenus) {
+					String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "menu", "", menu.resId, menu.resName, rClassIndex);
+					out.append("\t\tinflater.inflate(").append(resExpr).append(", menu);\n");
+				}
+				appendMenuInjections(out, model);
+				out.append("\t\tsuper.onCreateOptionsMenu(menu, inflater);\n");
+			}
+			out.append("\t}\n\n");
+		}
+
+		if (!model.optionsItems.isEmpty()) {
+			out.append("\t@Override\n");
+			out.append("\tpublic boolean onOptionsItemSelected(android.view.MenuItem item) {\n");
+			out.append("\t\tint itemId_ = item.getItemId();\n");
+			for (MvpModel.OptionsItem item : model.optionsItems) {
+				List<String> idCmps = new ArrayList<>();
+				for (Integer resId : item.valueIds) {
+					String rName = rClassIndex != null ? rClassIndex.fieldNameForValue("id", resId) : null;
+					if (rName == null) {
+						rName = Integer.toString(resId);
+					}
+					idCmps.add("itemId_ == " + KspAnnotationUtils.resExpression(resourcePackage, rClassName, "id", rName, resId, null, rClassIndex));
+				}
+				for (String resName : item.nameIds) {
+					String rName = rClassIndex != null ? rClassIndex.resolveFieldName("id", resName) : null;
+					if (rName == null) {
+						rName = resName;
+					}
+					idCmps.add("itemId_ == " + KspAnnotationUtils.resExpression(resourcePackage, rClassName, "id", rName, AnnotationNames.RES_DEFAULT, resName, rClassIndex));
+				}
+				String ifExpr;
+				if (idCmps.size() == 1) {
+					ifExpr = idCmps.get(0);
+				} else {
+					StringBuilder sb = new StringBuilder();
+					for (int i = 0; i < idCmps.size(); i++) {
+						if (i > 0) {
+							sb.append("||");
+						}
+						sb.append("(").append(idCmps.get(i)).append(")");
+					}
+					ifExpr = sb.toString();
+				}
+				out.append("\t\tif (").append(ifExpr).append(") {\n");
+				String call = item.methodName + (item.hasMenuItemParam ? "(item)" : "()");
+				if (item.returnsBoolean) {
+					out.append("\t\t\treturn ").append(call).append(";\n");
+				} else {
+					out.append("\t\t\t").append(call).append(";\n");
+					out.append("\t\t\treturn true;\n");
+				}
+				out.append("\t\t}\n");
+			}
+			out.append("\t\treturn super.onOptionsItemSelected(item);\n");
+			out.append("\t}\n\n");
+		}
+	}
+
+	private void appendMenuInjections(StringBuilder out, MvpModel model) {
+		for (MvpModel.MenuInjection injection : model.injectMenuInjections) {
+			if (injection.fieldForm) {
+				out.append("\t\tthis.").append(injection.name).append(" = menu;\n");
+			} else {
+				appendMenuMethodBlock(out, model, injection, false);
+			}
+		}
+		for (MvpModel.MenuInjection injection : model.optionsMenuItemInjections) {
+			if (injection.fieldForm) {
+				String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "id", injection.name,
+						injection.resId, injection.resName, rClassIndex);
+				out.append("\t\tthis.").append(injection.name).append(" = menu.findItem(").append(resExpr).append(");\n");
+			} else {
+				appendMenuMethodBlock(out, model, injection, true);
+			}
+		}
+	}
+
+	/** APT InjectHelper.processMethod/processParam parity: braced block with one statement per line (JCodeModel rendering). */
+	private void appendMenuMethodBlock(StringBuilder out, MvpModel model, MvpModel.MenuInjection injection, boolean findItem) {
+		out.append("\t\t{\n");
+		for (int i = 0; i < injection.params.size(); i++) {
+			MvpModel.Param param = injection.params.get(i);
+			out.append("\t\t\t").append(param.typeName).append(" ").append(param.name).append(" = null;\n");
+			if (findItem) {
+				List<Integer> valueIds = injection.valueIds.get(i);
+				List<String> nameIds = injection.nameIds.get(i);
+				String resExpr;
+				if (!valueIds.isEmpty()) {
+					Integer resId = valueIds.get(0);
+					String rName = rClassIndex != null ? rClassIndex.fieldNameForValue("id", resId) : null;
+					if (rName == null) {
+						rName = Integer.toString(resId);
+					}
+					resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "id", rName, resId, null, rClassIndex);
+				} else {
+					String resName = nameIds.isEmpty() ? param.name : nameIds.get(0);
+					String rName = rClassIndex != null ? rClassIndex.resolveFieldName("id", resName) : null;
+					if (rName == null) {
+						rName = resName;
+					}
+					resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "id", rName, AnnotationNames.RES_DEFAULT, resName, rClassIndex);
+				}
+				out.append("\t\t\t").append(param.name).append(" = menu.findItem(").append(resExpr).append(");\n");
+			} else {
+				out.append("\t\t\t").append(param.name).append(" = menu;\n");
+			}
+		}
+		if (injection.allParamsAnnotated) {
+			StringBuilder call = new StringBuilder(injection.name).append("(");
+			for (int i = 0; i < injection.params.size(); i++) {
+				if (i > 0) {
+					call.append(", ");
+				}
+				call.append(injection.params.get(i).name);
+			}
+			out.append("\t\t\t").append(call).append(");\n");
+		}
+		out.append("\t\t}\n");
 	}
 
 	private void appendListenerIds(MvpModel model, List<MvpModel.ViewListener> listeners, boolean longClick,
@@ -454,15 +610,15 @@ public final class MvpJavaGenerator {
 
 		// APT parity (EBeanHandler.process): constructors call init_() only for the Default scope.
 		out.append("\tprivate ").append(generated).append("(android.content.Context context) {\n");
-		out.append("\t\tthis.context_ = context;\n");
+		out.append("\t\tcontext_ = context;\n");
 		if (defaultScope) {
 			out.append("\t\tinit_();\n");
 		}
 		out.append("\t}\n\n");
 
 		out.append("\tprivate ").append(generated).append("(android.content.Context context, Object rootFragment) {\n");
-		out.append("\t\tthis.context_ = context;\n");
-		out.append("\t\tthis.rootFragment_ = rootFragment;\n");
+		out.append("\t\tcontext_ = context;\n");
+		out.append("\t\trootFragment_ = rootFragment;\n");
 		if (defaultScope) {
 			out.append("\t\tinit_();\n");
 		}
@@ -510,14 +666,6 @@ public final class MvpJavaGenerator {
 			break;
 		}
 
-		if (defaultScope) {
-			// APT parity: rebind() is only generated for the Default scope.
-			out.append("\tpublic void rebind(android.content.Context context) {\n");
-			out.append("\t\tthis.context_ = context;\n");
-			out.append("\t\tinit_();\n");
-			out.append("\t}\n\n");
-		}
-
 		out.append("\tprivate void init_() {\n");
 		if (!model.stringRes.isEmpty() || !model.resFields.isEmpty()) {
 			out.append("\t\tandroid.content.res.Resources resources_ = context_.getResources();\n");
@@ -534,12 +682,24 @@ public final class MvpJavaGenerator {
 		}
 		out.append("\t}\n\n");
 
+		if (defaultScope) {
+			// APT parity: rebind() is only generated for the Default scope.
+			out.append("\tpublic void rebind(android.content.Context context) {\n");
+			out.append("\t\tcontext_ = context;\n");
+			out.append("\t\tinit_();\n");
+			out.append("\t}\n\n");
+		}
+
 		if (hasViewSupport) {
 			out.append("\t@Override\n");
 			out.append("\tpublic void onViewChanged(org.androidannotations.api.view.HasViews hasViews) {\n");
 			for (MvpModel.FieldInjection view : model.viewByIds) {
 				String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "id", view.propertyName, view.resId, view.resName, rClassIndex);
-				appendAssign(out, view, "(" + view.typeName + ") hasViews.internalFindViewById(" + resExpr + ")");
+				if (view.jvmField) {
+					out.append("\t\tthis.").append(view.propertyName).append(" = hasViews.internalFindViewById(").append(resExpr).append(");\n");
+				} else {
+					out.append("\t\t").append(setterName(view.propertyName)).append("(hasViews.internalFindViewById(").append(resExpr).append("));\n");
+				}
 			}
 			for (String method : model.afterViews) {
 				out.append("\t\t").append(method).append("();\n");
@@ -615,10 +775,9 @@ public final class MvpJavaGenerator {
 
 	private void appendAssign(StringBuilder out, String propertyName, boolean jvmField, String expression, String indent) {
 		if (jvmField) {
-			out.append(indent).append(propertyName).append(" = ").append(expression).append(";\n");
-		}
-		else {
-			out.append(indent).append(KspAnnotationUtils.setterName(propertyName)).append("(").append(expression).append(");\n");
+			out.append(indent).append("this.").append(propertyName).append(" = ").append(expression).append(";\n");
+		} else {
+			out.append(indent).append(setterName(propertyName)).append("(").append(expression).append(");\n");
 		}
 	}
 
@@ -628,9 +787,9 @@ public final class MvpJavaGenerator {
 
 	private void appendAssign(StringBuilder out, MvpModel.FieldInjection injection, String expression, String indent) {
 		if (injection.jvmField) {
-			out.append(indent).append(injection.propertyName).append(" = ").append(expression).append(";\n");
+			out.append(indent).append("this.").append(injection.propertyName).append(" = ").append(expression).append(";\n");
 		} else {
-			out.append(indent).append(KspAnnotationUtils.setterName(injection.propertyName)).append("(").append(expression).append(");\n");
+			out.append(indent).append(setterName(injection.propertyName)).append("(").append(expression).append(");\n");
 		}
 	}
 
@@ -665,27 +824,34 @@ public final class MvpJavaGenerator {
 
 	private void appendBeanAssign(StringBuilder out, String propertyName, boolean jvmField, String expression) {
 		if (jvmField) {
-			out.append("\t\t").append(propertyName).append(" = ").append(expression).append(";\n");
+			out.append("\t\tthis.").append(propertyName).append(" = ").append(expression).append(";\n");
 		} else {
-			out.append("\t\t").append(KspAnnotationUtils.setterName(propertyName)).append('(').append(expression).append(");\n");
+			out.append("\t\t").append(setterName(propertyName)).append("(").append(expression).append(");\n");
 		}
+	}
+
+	private static String setterName(String propertyName) {
+		return "set" + Character.toUpperCase(propertyName.charAt(0)) + propertyName.substring(1);
+	}
+
+	private void appendIntentStaticMethod(StringBuilder out, MvpModel model) {
+		String generated = model.generatedSimpleName();
+		out.append("\tpublic static ").append(generated).append(".IntentBuilder_ intent(android.content.Context context) {\n");
+		out.append("\t\treturn new ").append(generated).append(".IntentBuilder_(context);\n");
+		out.append("\t}\n\n");
 	}
 
 	private void appendIntentBuilder(StringBuilder out, MvpModel model) {
 		String generated = model.generatedSimpleName();
-		out.append("\tpublic static IntentBuilder_ intent(android.content.Context context) {\n");
-		out.append("\t\treturn new IntentBuilder_(context);\n");
-		out.append("\t}\n\n");
-
-		out.append("\tpublic static class IntentBuilder_ extends org.androidannotations.api.builder.ActivityIntentBuilder<IntentBuilder_> {\n\n");
+		out.append("\tpublic static class IntentBuilder_ extends org.androidannotations.api.builder.ActivityIntentBuilder<").append(generated).append(".IntentBuilder_> {\n\n");
 		out.append("\t\tpublic IntentBuilder_(android.content.Context context) {\n");
 		out.append("\t\t\tsuper(context, ").append(generated).append(".class);\n");
 		out.append("\t\t}\n\n");
 
 		for (MvpModel.FieldInjection extra : model.extras) {
 			String constant = KspAnnotationUtils.extraKeyConstant(extra.propertyName);
-			String paramType = extra.extraFullType != null ? extra.extraFullType : extra.typeName;
-			out.append("\t\tpublic IntentBuilder_ ").append(extra.propertyName).append('(').append(paramType).append(" ")
+			String paramType = toSimpleName(extra.extraFullType != null ? extra.extraFullType : extra.typeName);
+			out.append("\t\tpublic ").append(generated).append(".IntentBuilder_ ").append(extra.propertyName).append('(').append(paramType).append(" ")
 					.append(extra.propertyName).append(") {\n");
 			out.append("\t\t\treturn super.extra(").append(constant).append(", ")
 					.append(extra.extraWriteExpr.replace("{arg}", extra.propertyName)).append(");\n");
@@ -695,7 +861,8 @@ public final class MvpJavaGenerator {
 		out.append("\t\t@Override\n");
 		out.append("\t\tpublic org.androidannotations.api.builder.PostActivityStarter startForResult(int requestCode) {\n");
 		out.append("\t\t\tif (context instanceof android.app.Activity) {\n");
-		out.append("\t\t\t\t((android.app.Activity) context).startActivityForResult(intent, requestCode);\n");
+		out.append("\t\t\t\tandroid.app.Activity activity = ((android.app.Activity) context);\n");
+		out.append("\t\t\t\tactivity.startActivityForResult(intent, requestCode);\n");
 		out.append("\t\t\t} else {\n");
 		out.append("\t\t\t\tcontext.startActivity(intent);\n");
 		out.append("\t\t\t}\n");
@@ -743,7 +910,7 @@ public final class MvpJavaGenerator {
 
 	private void appendFragmentBuilder(StringBuilder out, MvpModel model) {
 		String generated = model.generatedSimpleName();
-		out.append("\tpublic static class FragmentBuilder_ extends org.androidannotations.api.builder.FragmentBuilder<FragmentBuilder_, ").append(model.qualifiedName).append("> {\n\n");
+		out.append("\tpublic static class FragmentBuilder_ extends org.androidannotations.api.builder.FragmentBuilder<").append(generated).append(".FragmentBuilder_, ").append(model.qualifiedName).append("> {\n\n");
 		out.append("\t\t@Override\n");
 		out.append("\t\tpublic ").append(model.qualifiedName).append(" build() { ").append(generated).append(" fragment_ = new ").append(generated).append("(); fragment_.setArguments(args); return fragment_; }\n");
 		for (int i = 0; i < model.fragmentArgs.size(); i++) {
@@ -757,7 +924,7 @@ public final class MvpJavaGenerator {
 			out.append("\t\t * @return\n");
 			out.append("\t\t *     the FragmentBuilder to chain calls\n");
 			out.append("\t\t */\n");
-			out.append("\t\tpublic FragmentBuilder_ ").append(arg.propertyName).append('(').append(paramType).append(" ").append(arg.propertyName)
+			out.append("\t\tpublic ").append(generated).append(".FragmentBuilder_ ").append(arg.propertyName).append('(').append(toSimpleName(paramType)).append(" ").append(arg.propertyName)
 					.append(") { args.").append(fragmentArgPutMethod(arg)).append('(').append(constant).append(", ")
 					.append(arg.extraWriteExpr.replace("{arg}", arg.propertyName)).append("); return this; }\n");
 			if (i < model.fragmentArgs.size() - 1) {
@@ -811,9 +978,8 @@ public final class MvpJavaGenerator {
 
 	private void appendBeanHolderMethods(StringBuilder out) {
 		out.append("\t@Override\n");
-		out.append("\t@SuppressWarnings(\"unchecked\")\n");
 		out.append("\tpublic <T> T getBean(Class<T> key) {\n");
-		out.append("\t\treturn (T) beans_.get(key);\n");
+		out.append("\t\treturn ((T) beans_.get(key));\n");
 		out.append("\t}\n\n");
 		out.append("\t@Override\n");
 		out.append("\tpublic <T> void putBean(Class<T> key, T value) {\n");
@@ -825,7 +991,7 @@ public final class MvpJavaGenerator {
 		for (MvpModel.MethodInfo method : model.backgrounds) {
 			out.append("\t@Override\n");
 			out.append("\t").append(method.visibility).append(" void ").append(method.name).append("(");
-			appendParams(out, method.params, false);
+			appendParams(out, method.params, true);
 			out.append(") {\n");
 			out.append("\t\torg.androidannotations.api.BackgroundExecutor.execute(new org.androidannotations.api.BackgroundExecutor.Task(\"")
 					.append(escape(method.id)).append("\", ").append(method.delay).append("L, \"")
@@ -836,8 +1002,8 @@ public final class MvpJavaGenerator {
 			out.append("\t\t\t\t\t").append(model.generatedSimpleName()).append(".super.").append(method.name).append("(");
 			appendParamNames(out, method.params);
 			out.append(");\n");
-			out.append("\t\t\t\t} catch (Throwable e__) {\n");
-			out.append("\t\t\t\t\tThread.getDefaultUncaughtExceptionHandler().uncaughtException(Thread.currentThread(), e__);\n");
+			out.append("\t\t\t\t} catch (final Throwable e) {\n");
+			out.append("\t\t\t\t\tThread.getDefaultUncaughtExceptionHandler().uncaughtException(Thread.currentThread(), e);\n");
 			out.append("\t\t\t\t}\n");
 			out.append("\t\t\t}\n");
 			out.append("\t\t});\n");
@@ -859,10 +1025,7 @@ public final class MvpJavaGenerator {
 				out.append("\t\t\treturn;\n");
 				out.append("\t\t}\n");
 			}
-			for (MvpModel.Param param : method.params) {
-				out.append("\t\tfinal ").append(param.typeName).append(' ').append(param.name).append("_ = ")
-						.append(param.name).append(";\n");
-			}
+
 			out.append("\t\torg.androidannotations.api.UiThreadExecutor.runTask(\"").append(escape(method.id))
 					.append("\", new Runnable() {\n");
 			out.append("\t\t\t@Override\n");
@@ -872,7 +1035,7 @@ public final class MvpJavaGenerator {
 				if (i > 0) {
 					out.append(", ");
 				}
-				out.append(method.params.get(i).name).append("_");
+				out.append(method.params.get(i).name);
 			}
 			out.append(");\n");
 			out.append("\t\t\t}\n");
@@ -887,10 +1050,13 @@ public final class MvpJavaGenerator {
 				out.append(", ");
 			}
 			MvpModel.Param param = params.get(i);
+			if (param.nullAnnotation != null) {
+				out.append("@org.jetbrains.annotations.").append(param.nullAnnotation).append(' ');
+			}
 			if (makeFinal) {
 				out.append("final ");
 			}
-			out.append(param.typeName).append(' ').append(param.name);
+			out.append(toSimpleName(param.typeName)).append(' ').append(param.name);
 		}
 	}
 
@@ -906,5 +1072,52 @@ public final class MvpJavaGenerator {
 	private String escape(String value) {
 		return value == null ? "" : value.replace("\\", "\\\\").replace("\"", "\\\"");
 	}
-}
 
+
+	/** APT parity: generated builder/param types use simple names (kapt imports resolve them); generics and arrays preserved. */
+	private static String toSimpleName(String type) {
+		if (type == null || type.isEmpty()) { return type; }
+		String base = type;
+		StringBuilder suffix = new StringBuilder();
+		while (base.endsWith("[]")) { suffix.insert(0, "[]"); base = base.substring(0, base.length() - 2); }
+		int lt = topLevelAngle(base);
+		String head;
+		if (lt < 0) {
+			head = simpleHead(base);
+		} else {
+			StringBuilder args = new StringBuilder();
+			for (String arg : splitTopLevelArgs(base.substring(lt + 1, base.length() - 1))) {
+				if (args.length() > 0) { args.append(", "); }
+				args.append(toSimpleName(arg.trim()));
+			}
+			head = simpleHead(base.substring(0, lt)) + "<" + args + ">";
+		}
+		return head + suffix;
+	}
+
+	private static int topLevelAngle(String type) {
+		int depth = 0;
+		for (int i = 0; i < type.length(); i++) {
+			char c = type.charAt(i);
+			if (c == '<') { if (depth == 0) { return i; } depth++; } else if (c == '>') { depth--; }
+		}
+		return -1;
+	}
+
+	private static List<String> splitTopLevelArgs(String args) {
+		List<String> result = new ArrayList<>();
+		int depth = 0; int start = 0;
+		for (int i = 0; i < args.length(); i++) {
+			char c = args.charAt(i);
+			if (c == '<') { depth++; } else if (c == '>') { depth--; }
+			else if (c == ',' && depth == 0) { result.add(args.substring(start, i)); start = i + 1; }
+		}
+		result.add(args.substring(start));
+		return result;
+	}
+
+	private static String simpleHead(String type) {
+		int dot = type.lastIndexOf('.');
+		return dot < 0 ? type : type.substring(dot + 1);
+	}
+}

@@ -26,7 +26,9 @@ import java.util.regex.Pattern;
 
 import com.google.devtools.ksp.symbol.KSAnnotation;
 import com.google.devtools.ksp.symbol.KSClassDeclaration;
+import com.google.devtools.ksp.symbol.KSFile;
 import com.google.devtools.ksp.symbol.KSFunctionDeclaration;
+import com.google.devtools.ksp.symbol.KSNode;
 import com.google.devtools.ksp.symbol.KSPropertyDeclaration;
 import com.google.devtools.ksp.symbol.KSType;
 import com.google.devtools.ksp.symbol.KSTypeArgument;
@@ -336,11 +338,25 @@ public final class KspAnnotationUtils {
 	}
 
 	public static List<MvpModel.Param> methodParams(KSFunctionDeclaration function) {
+		boolean kotlinSource = isKotlinSource(function);
 		List<MvpModel.Param> params = new ArrayList<>();
 		for (KSValueParameter parameter : function.getParameters()) {
-			params.add(new MvpModel.Param(parameter.getName().asString(), typeName(parameter.getType())));
+			String nullAnnotation = null;
+			if (kotlinSource) {
+				nullAnnotation = parameter.getType().resolve().isMarkedNullable() ? "Nullable" : "NotNull";
+			}
+			params.add(new MvpModel.Param(parameter.getName().asString(), typeName(parameter.getType()), nullAnnotation));
 		}
 		return params;
+	}
+
+	/** APT kapt-stub parity: Kotlin nullability is exposed as @NotNull/@Nullable on Java stub parameters. */
+	private static boolean isKotlinSource(KSFunctionDeclaration function) {
+		KSNode parent = function.getParent();
+		while (parent != null && !(parent instanceof KSFile)) {
+			parent = parent.getParent();
+		}
+		return parent instanceof KSFile && ((KSFile) parent).getFileName().endsWith(".kt");
 	}
 
 	public static String setterName(String propertyName) {

@@ -26,12 +26,16 @@ public final class MvpModel {
 	}
 
 	public static final class Param {
+		/** @NotNull/@Nullable synthesized from Kotlin nullability for .kt sources; null otherwise. */
+		public final String nullAnnotation;
+
 		public final String name;
 		public final String typeName;
 
-		public Param(String name, String typeName) {
+		public Param(String name, String typeName, String nullAnnotation) {
 			this.name = name;
 			this.typeName = typeName;
+			this.nullAnnotation = nullAnnotation;
 		}
 	}
 
@@ -181,6 +185,59 @@ public final class MvpModel {
 		}
 	}
 
+/** APT OptionsMenuHandler parity: class-level @OptionsMenu menu resource refs. */
+	public static final class OptionsMenuRef {
+		public final int resId;
+		public final String resName;
+
+		public OptionsMenuRef(int resId, String resName) {
+			this.resId = resId;
+			this.resName = resName;
+		}
+	}
+
+	/** APT OptionsItemHandler parity: @OptionsItem method with its resolved ids. */
+	public static final class OptionsItem {
+		public final String methodName;
+		public final boolean returnsBoolean;
+		public final boolean hasMenuItemParam;
+		public final List<Integer> valueIds;
+		public final List<String> nameIds;
+
+		public OptionsItem(String methodName, boolean returnsBoolean, boolean hasMenuItemParam,
+				List<Integer> valueIds, List<String> nameIds) {
+			this.methodName = methodName;
+			this.returnsBoolean = returnsBoolean;
+			this.hasMenuItemParam = hasMenuItemParam;
+			this.valueIds = valueIds;
+			this.nameIds = nameIds;
+		}
+	}
+
+	/** APT InjectHelper parity: one @InjectMenu or @OptionsMenuItem injection (field, method or param form). */
+	public static final class MenuInjection {
+		public final boolean fieldForm;
+		public final String name;
+		public final int resId;
+		public final String resName;
+		public final List<Param> params;
+		public final List<List<Integer>> valueIds;
+		public final List<List<String>> nameIds;
+		public final boolean allParamsAnnotated;
+
+		public MenuInjection(boolean fieldForm, String name, int resId, String resName, List<Param> params,
+				List<List<Integer>> valueIds, List<List<String>> nameIds, boolean allParamsAnnotated) {
+			this.fieldForm = fieldForm;
+			this.name = name;
+			this.resId = resId;
+			this.resName = resName;
+			this.params = params;
+			this.valueIds = valueIds;
+			this.nameIds = nameIds;
+			this.allParamsAnnotated = allParamsAnnotated;
+		}
+	}
+
 	public final Kind kind;
 	public final String packageName;
 	public final String simpleName;
@@ -197,6 +254,10 @@ public final class MvpModel {
 	public final List<FragmentInjection> fragmentByIds = new ArrayList<>();
 	public final List<ViewListener> clickListeners = new ArrayList<>();
 	public final List<ViewListener> longClickListeners = new ArrayList<>();
+	public final List<OptionsMenuRef> optionsMenus = new ArrayList<>();
+	public final List<OptionsItem> optionsItems = new ArrayList<>();
+	public final List<MenuInjection> injectMenuInjections = new ArrayList<>();
+	public final List<MenuInjection> optionsMenuItemInjections = new ArrayList<>();
 	public final List<String> afterViews = new ArrayList<>();
 	public final List<String> afterExtras = new ArrayList<>();
 	public final List<BeanInjection> beans = new ArrayList<>();

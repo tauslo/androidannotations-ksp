@@ -716,3 +716,23 @@
 
 ### Next
 1. @OptionsMenu / @InstanceState / @OnActivityResult / @SystemService 等按原计划推进
+
+## Session 2026-11-13 — P0b: Menu 支持（@OptionsMenu/@OptionsItem/@OptionsMenuItem/@InjectMenu）+ activity 脚手架与注入 parity 修复
+
+- **Agent**: Codex
+- **Goal slice**: P0b — menu 注解族（APT OptionsMenuHandler/OptionsItemHandler/InjectMenuHandler parity）；同时修复 GT 对比暴露的 KSP activity 脚手架/注入路径系统性偏差；新增 fixture 扩展门禁覆盖
+- **Git**: branch=`ksp/main` HEAD=`7204bd71`（local only, not pushed）
+- **Status**: done
+
+### Done
+- **Menu 支持**（KSP handler + 生成器全量实现）：`@OptionsMenu(R.menu.x)`（activity/fragment）、`@OptionsItem`（裸名推导 / 显式 id / 多 id 数组 value / Boolean 返回）、`@OptionsMenuItem`（字段注入，裸名推导 / 显式 id；方法参数亦可标注）、`@InjectMenu`（Menu 字段注入）。生成：activity `onCreateOptionsMenu_`/`onOptionsItemSelected_` + init_ 内菜单字段注入；fragment 同名两方法 + `setHasOptionsMenu(true)`
+- 新 fixture：`BenchActivity105`（四注解全矩阵：@InjectMenu benchMenu、@OptionsMenuItem 字段 shareItem/searchItem、裸名 onShare(MenuItem)、显式 id onSettings():Boolean、多 id onMulti():Boolean、参数注入 singleInjection/multiInjection）、`BenchFragment105`（@OptionsMenu + @OptionsItem）、`BenchFragment106`（仅 @OptionsItem 无 @OptionsMenu）；资源 `bench_menu_105.xml`（8 item）+ layout ×3
+- **Activity 脚手架 parity 修复**（均以 kapt GT 为准）：implements 子句顺序、internalFindViewById 及其方法体无条件输出并移位、init_ 重构（this.getResources() + register 置于 resources 块之后且按 hasViewSupport 门控）、静态 intent() 拆分并移到 getBean 之前、onViewChanged 移到 getBean 之后并按 hasViewSupport 门控、getBean 双括号去 @SuppressWarnings、startForResult 改局部变量、uiThread 方法先于 background 输出
+- **系统性 parity 修复**：bean ctor/rebind 用裸 `context_`/`rootFragment_`；**字段式注入改为遵循 `@JvmField || lateinit`**（直接 `this.x = …` vs setter 调用 `setX(…)`——Kotlin backing field 仅 lateinit/@JvmField 时为 protected，否则 private 必须走 setter）；@NotNull/@Nullable 由 Kotlin nullability 合成（.kt parent-walk + isMarkedNullable）；background wrapper 参数 final；catch `final Throwable e`；bean init_ 先于 rebind；fragment extends 用 FQN + FragmentBuilder_ 限定引用 + builder 参数类型简名
+- **lateinit 检测**：本 KSP 版本（2.1.10-1.0.31）无 token API、KSPropertyDeclaration 无 isLateinit()，改用 `property.getModifiers().contains(Modifier.LATEINIT)`（Modifier 枚举含 LATEINIT）
+- **BenchActivity102 为 KSP-only**：kapt stub 生成对其失败（`build\tmp\kapt3\stubs\debug\error\NonExistentClass.java` 哨兵；210 源 vs 209 stub + 1 哨兵），无 GT 对应文件，门禁列出不比较。该 fixture 混合 lateinit + 已初始化属性，恰好验证 setter 回退路径（benchColor/benchBool/benchInt/benchDimen/benchPx/benchPxOffset → setXxx(…)，4 个 lateinit → 直接赋值），javac 编译通过
+- 门禁：`gt_cmp_all.py` 全量 209 个 kapt GT 文件规范化对比 **ALL_OK（0 mismatch）**，KSP live=210；回归备份刷新至 `C:\temp\ksp-p0b-after`（210 文件、hash 一致）。reg10.py 旧“3 added/0 changed”期望被 gt_cmp_all ALL_OK 取代
+- mvn install androidannotations-ksp BUILD SUCCESS；KSP gradle assembleDebug BUILD SUCCESS（javac 通过）
+
+### Next
+- @InstanceState → @OnActivityResult（+参数 @Extra）→ @SystemService，随后剩余 checklist 块（Fragment 其余、Application/Service、IntentBuilder Fragment overloads、Unimplemented 警告集——InstanceState 在其 slice 前保持 RECOGNIZED_NOT_IMPLEMENTED）、P0b exit acceptance

@@ -95,6 +95,11 @@ public final class MvpHandler {
 		MvpModel model = new MvpModel(kind, packageName, simpleName, qualifiedName, classSuffix, layoutId, layoutResName, nested, scope);
 		model.forceLayoutInjection = forceLayoutInjection;
 
+		KSAnnotation optionsMenu = KspAnnotationUtils.findAnnotation(classDeclaration.getAnnotations(), AnnotationNames.OPTIONS_MENU);
+		if (optionsMenu != null) {
+			collectOptionsMenu(optionsMenu, model);
+		}
+
 		collectMembers(resolver, classDeclaration.getDeclarations(), model);
 		for (KSClassDeclaration ancestor : superclasses(classDeclaration)) {
 			collectMembers(resolver, ancestor.getDeclarations(), model);
@@ -133,7 +138,9 @@ public final class MvpHandler {
 	private void collectProperty(Resolver resolver, KSPropertyDeclaration property, MvpModel model) {
 		String name = property.getSimpleName().asString();
 		String typeName = KspAnnotationUtils.propertyTypeName(property);
-		boolean jvmField = KspAnnotationUtils.hasJvmField(property);
+		// Kotlin exposes a directly accessible backing field only for lateinit or @JvmField properties;
+		// initialized non-lateinit vars get a private backing field, so generated code must call the setter.
+		boolean jvmField = KspAnnotationUtils.hasJvmField(property) || property.getModifiers().contains(Modifier.LATEINIT);
 
 		KSAnnotation viewById = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.VIEW_BY_ID);
 		if (viewById != null) {
@@ -220,6 +227,16 @@ public final class MvpHandler {
 		if (bean != null) {
 			collectBeanField(resolver, property, name, jvmField, model);
 		}
+
+		KSAnnotation injectMenu = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.INJECT_MENU);
+		if (injectMenu != null) {
+			collectMenuField(resolver, property, name, false, injectMenu, model);
+		}
+
+		KSAnnotation optionsMenuItem = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.OPTIONS_MENU_ITEM);
+		if (optionsMenuItem != null) {
+			collectMenuField(resolver, property, name, true, optionsMenuItem, model);
+		}
 	}
 
 	private void collectFunction(Resolver resolver, KSFunctionDeclaration function, MvpModel model) {
@@ -288,6 +305,25 @@ public final class MvpHandler {
 		if (longClick != null) {
 			collectViewListener(resolver, function, name, longClick, true, model);
 		}
+
+		KSAnnotation optionsItem = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.OPTIONS_ITEM);
+		if (optionsItem != null) {
+			collectOptionsItem(resolver, function, name, optionsItem, model);
+		}
+
+		KSAnnotation injectMenu = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.INJECT_MENU);
+		if (injectMenu != null) {
+			collectMenuMethod(resolver, function, name, false, injectMenu, model);
+		} else if (hasMenuParam(function, AnnotationNames.INJECT_MENU)) {
+			collectMenuParams(resolver, function, name, false, model);
+		}
+
+		KSAnnotation optionsMenuItem = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.OPTIONS_MENU_ITEM);
+		if (optionsMenuItem != null) {
+			collectMenuMethod(resolver, function, name, true, optionsMenuItem, model);
+		} else if (hasMenuParam(function, AnnotationNames.OPTIONS_MENU_ITEM)) {
+			collectMenuParams(resolver, function, name, true, model);
+		}
 	}
 
 	/** APT elementVisibilityModifierToJMod parity: generated @Background/@UiThread overrides keep the source method's visibility. */
@@ -355,9 +391,8 @@ public final class MvpHandler {
 		} else {
 			nameIds = KspAnnotationUtils.stringArrayArg(annotation, "resName");
 			if (nameIds.isEmpty() || nameIds.size() == 1 && "".equals(nameIds.get(0))) {
-				String suffix = longClick ? "LongClicked" : "Clicked";
-				int suffixIndex = name.lastIndexOf(suffix);
-				nameIds = Collections.singletonList(suffixIndex == -1 ? name : name.substring(0, suffixIndex));
+				// APT USE_ELEMENT_NAME parity: the default id is the raw method name (no suffix stripping).
+				nameIds = Collections.singletonList(name);
 			}
 		}
 		List<MvpModel.ViewListener> target = longClick ? model.longClickListeners : model.clickListeners;
@@ -368,6 +403,262 @@ public final class MvpHandler {
 			}
 		}
 		target.add(new MvpModel.ViewListener(longClick, name, params, returnsBoolean, valueIds, nameIds));
+	}
+
+/** APT OptionsMenuHandler parity: class-level @OptionsMenu menu resource refs (NEED_RES_ID, no element-name fallback). */
+	private void collectOptionsMenu(KSAnnotation annotation, MvpModel model) {
+		if (model.kind != MvpModel.Kind.ACTIVITY && model.kind != MvpModel.Kind.FRAGMENT) {
+			model.errors.add("@OptionsMenu is only supported in @EActivity or @EFragment components");
+			return;
+		}
+		List<Integer> ids = KspAnnotationUtils.intArrayArg(annotation, "value");
+		if (ids.size() == 1 && ids.get(0) == AnnotationNames.RES_DEFAULT) {
+			String resName = KspAnnotationUtils.stringArg(annotation, "resName", "");
+			if (resName.isEmpty()) {
+				model.errors.add("@OptionsMenu requires a menu resource id");
+				return;
+			}
+			model.optionsMenus.add(new MvpModel.OptionsMenuRef(AnnotationNames.RES_DEFAULT, resName));
+			return;
+		}
+		for (Integer id : ids) {
+			if (id != AnnotationNames.RES_DEFAULT) {
+				model.optionsMenus.add(new MvpModel.OptionsMenuRef(id, ""));
+			}
+		}
+	}
+
+	/** APT InjectHelper.processField parity: @InjectMenu/@OptionsMenuItem on a field. */
+	private void collectMenuField(Resolver resolver, KSPropertyDeclaration property, String name, boolean menuItem,
+			KSAnnotation annotation, MvpModel model) {
+		String label = menuItem ? "@OptionsMenuItem" : "@InjectMenu";
+		if (model.kind != MvpModel.Kind.ACTIVITY && model.kind != MvpModel.Kind.FRAGMENT) {
+			model.errors.add(label + " is only supported in @EActivity or @EFragment components: property '" + name + "'");
+			return;
+		}
+		if (!property.isMutable()) {
+			model.errors.add(label + " cannot be used on a final element: property '" + name + "'");
+			return;
+		}
+		if (property.getModifiers().contains(Modifier.PRIVATE)) {
+			model.errors.add(label + " property '" + name + "' must not be private");
+			return;
+		}
+		String javaType = KspAnnotationUtils.fullJavaTypeName(property.getType());
+		KSClassDeclaration typeDecl = resolveClassDeclaration(resolver, javaType);
+		String targetName = menuItem ? "android.view.MenuItem" : "android.view.Menu";
+		if (!targetName.equals(javaType) && (typeDecl == null || !implementsInterface(typeDecl, targetName))) {
+			model.errors.add(label + " property '" + name + "' must be a " + (menuItem ? "MenuItem" : "Menu") + " subtype");
+			return;
+		}
+		int resId = AnnotationNames.RES_DEFAULT;
+		String resName = "";
+		if (menuItem) {
+			List<Integer> valueIds = KspAnnotationUtils.intArrayArg(annotation, "value");
+			if (!(valueIds.size() == 1 && valueIds.get(0) == AnnotationNames.RES_DEFAULT)) {
+				resId = valueIds.get(0); // APT extractOneAnnotationFieldRef: first id only
+			} else {
+				List<String> nameIds = KspAnnotationUtils.stringArrayArg(annotation, "resName");
+				if (!nameIds.isEmpty() && !"".equals(nameIds.get(0))) {
+					resName = nameIds.get(0);
+				}
+			}
+			if (resId == AnnotationNames.RES_DEFAULT && resName.isEmpty()) {
+				resName = name; // APT USE_ELEMENT_NAME: raw property name
+			}
+		}
+		List<MvpModel.MenuInjection> target = menuItem ? model.optionsMenuItemInjections : model.injectMenuInjections;
+		target.add(new MvpModel.MenuInjection(true, name, resId, resName, null, null, null, true));
+	}
+
+	/** APT OptionsItemHandler parity: @OptionsItem method validation and id collection. */
+	private void collectOptionsItem(Resolver resolver, KSFunctionDeclaration function, String name,
+			KSAnnotation annotation, MvpModel model) {
+		if (model.kind != MvpModel.Kind.ACTIVITY && model.kind != MvpModel.Kind.FRAGMENT) {
+			model.errors.add("@OptionsItem is only supported in @EActivity or @EFragment components: method '" + name + "'");
+			return;
+		}
+		if (function.getModifiers().contains(Modifier.PRIVATE)) {
+			model.errors.add("@OptionsItem method '" + name + "' must not be private");
+			return;
+		}
+		List<MvpModel.Param> params = KspAnnotationUtils.methodParams(function);
+		if (params.size() > 1) {
+			model.errors.add("@OptionsItem method '" + name + "' must have at most one parameter");
+			return;
+		}
+		if (!params.isEmpty() && !isMenuItemSubtype(resolver, params.get(0).typeName)) {
+			model.errors.add("@OptionsItem method '" + name + "' parameter must be a MenuItem subtype");
+			return;
+		}
+		String returnType = functionReturnType(function);
+		boolean returnsBoolean = false;
+		if (!"void".equals(returnType) && !"boolean".equals(returnType) && !"Boolean".equals(returnType)
+				&& !"java.lang.Boolean".equals(returnType)) {
+			model.errors.add("@OptionsItem method '" + name + "' must return void or boolean");
+			return;
+		}
+		returnsBoolean = !"void".equals(returnType);
+		List<Integer> valueIds = KspAnnotationUtils.intArrayArg(annotation, "value");
+		if (valueIds.size() == 1 && valueIds.get(0) == AnnotationNames.RES_DEFAULT) {
+			valueIds = new ArrayList<>();
+		}
+		List<String> nameIds;
+		if (!valueIds.isEmpty()) {
+			nameIds = new ArrayList<>();
+		} else {
+			nameIds = KspAnnotationUtils.stringArrayArg(annotation, "resName");
+			if (nameIds.isEmpty() || nameIds.size() == 1 && "".equals(nameIds.get(0))) {
+				// APT USE_ELEMENT_NAME parity: the default id is the raw method name.
+				nameIds = Collections.singletonList(name);
+			}
+		}
+		for (MvpModel.OptionsItem other : model.optionsItems) {
+			if ((!valueIds.isEmpty() && other.valueIds.equals(valueIds)) || (!nameIds.isEmpty() && other.nameIds.equals(nameIds))) {
+				model.errors.add("@OptionsItem on method '" + name + "' has duplicate resource ids");
+				return;
+			}
+		}
+		model.optionsItems.add(new MvpModel.OptionsItem(name, returnsBoolean, !params.isEmpty(), valueIds, nameIds));
+	}
+
+	private boolean isMenuItemSubtype(Resolver resolver, String typeName) {
+		if ("android.view.MenuItem".equals(typeName) || "MenuItem".equals(typeName)) {
+			return true;
+		}
+		KSClassDeclaration declaration = resolveClassDeclaration(resolver, typeName);
+		return declaration != null && implementsInterface(declaration, "android.view.MenuItem");
+	}
+
+	/** APT InjectHelper.processMethod parity: @InjectMenu/@OptionsMenuItem on a method with exactly one parameter. */
+	private void collectMenuMethod(Resolver resolver, KSFunctionDeclaration function, String name, boolean menuItem,
+			KSAnnotation annotation, MvpModel model) {
+		String label = menuItem ? "@OptionsMenuItem" : "@InjectMenu";
+		if (model.kind != MvpModel.Kind.ACTIVITY && model.kind != MvpModel.Kind.FRAGMENT) {
+			model.errors.add(label + " is only supported in @EActivity or @EFragment components: method '" + name + "'");
+			return;
+		}
+		if (function.getModifiers().contains(Modifier.PRIVATE)) {
+			model.errors.add(label + " method '" + name + "' must not be private");
+			return;
+		}
+		List<KSValueParameter> params = function.getParameters();
+		if (params.size() != 1) {
+			model.errors.add(label + " method '" + name + "' must have exactly one parameter");
+			return;
+		}
+		String javaType = KspAnnotationUtils.fullJavaTypeName(params.get(0).getType());
+		KSClassDeclaration typeDecl = resolveClassDeclaration(resolver, javaType);
+		String targetName = menuItem ? "android.view.MenuItem" : "android.view.Menu";
+		if (!targetName.equals(javaType) && (typeDecl == null || !implementsInterface(typeDecl, targetName))) {
+			model.errors.add(label + " method '" + name + "' parameter must be a " + (menuItem ? "MenuItem" : "Menu") + " subtype");
+			return;
+		}
+		List<Integer> valueIds = new ArrayList<>();
+		List<String> nameIds = new ArrayList<>();
+		if (menuItem) {
+			valueIds = KspAnnotationUtils.intArrayArg(annotation, "value");
+			if (valueIds.size() == 1 && valueIds.get(0) == AnnotationNames.RES_DEFAULT) {
+				valueIds = new ArrayList<>();
+			} else {
+				valueIds = Collections.singletonList(valueIds.get(0)); // APT extractOneAnnotationFieldRef: first id only
+			}
+			if (valueIds.isEmpty()) {
+				nameIds = KspAnnotationUtils.stringArrayArg(annotation, "resName");
+				if (nameIds.isEmpty() || nameIds.size() == 1 && "".equals(nameIds.get(0))) {
+					nameIds = Collections.singletonList(name); // APT USE_ELEMENT_NAME: raw method name
+				} else {
+					nameIds = Collections.singletonList(nameIds.get(0));
+				}
+			}
+		}
+		List<MvpModel.MenuInjection> target = menuItem ? model.optionsMenuItemInjections : model.injectMenuInjections;
+		target.add(new MvpModel.MenuInjection(false, name, AnnotationNames.RES_DEFAULT, "", KspAnnotationUtils.methodParams(function),
+				Collections.singletonList(valueIds), Collections.singletonList(nameIds), true));
+	}
+
+	/** APT InjectHelper.processParam parity: one shared braced block per method; the call is emitted only when ALL parameters are annotated. */
+	private void collectMenuParams(Resolver resolver, KSFunctionDeclaration function, String name, boolean menuItem, MvpModel model) {
+		String label = menuItem ? "@OptionsMenuItem" : "@InjectMenu";
+		if (model.kind != MvpModel.Kind.ACTIVITY && model.kind != MvpModel.Kind.FRAGMENT) {
+			model.errors.add(label + " is only supported in @EActivity or @EFragment components: method '" + name + "'");
+			return;
+		}
+		if (function.getModifiers().contains(Modifier.PRIVATE)) {
+			model.errors.add(label + " method '" + name + "' must not be private");
+			return;
+		}
+		String annotationName = menuItem ? AnnotationNames.OPTIONS_MENU_ITEM : AnnotationNames.INJECT_MENU;
+		List<KSValueParameter> params = function.getParameters();
+		List<MvpModel.Param> paramModels = KspAnnotationUtils.methodParams(function);
+		List<List<Integer>> valueIdsList = new ArrayList<>();
+		List<List<String>> nameIdsList = new ArrayList<>();
+		boolean allAnnotated = true;
+		boolean anyAnnotated = false;
+		for (KSValueParameter param : params) {
+			KSAnnotation menuAnn = findParamMenu(param, annotationName);
+			if (menuAnn == null) {
+				allAnnotated = false;
+				valueIdsList.add(new ArrayList<Integer>());
+				nameIdsList.add(new ArrayList<String>());
+				continue;
+			}
+			anyAnnotated = true;
+			String javaType = KspAnnotationUtils.fullJavaTypeName(param.getType());
+			KSClassDeclaration typeDecl = resolveClassDeclaration(resolver, javaType);
+			String targetName = menuItem ? "android.view.MenuItem" : "android.view.Menu";
+			if (!targetName.equals(javaType) && (typeDecl == null || !implementsInterface(typeDecl, targetName))) {
+				model.errors.add(label + " on parameter '" + param.getName().asString() + "' of method '" + name
+						+ "' must be a " + (menuItem ? "MenuItem" : "Menu") + " subtype");
+				valueIdsList.add(new ArrayList<Integer>());
+				nameIdsList.add(new ArrayList<String>());
+				continue;
+			}
+			List<Integer> valueIds = new ArrayList<>();
+			List<String> nameIds = new ArrayList<>();
+			if (menuItem) {
+				valueIds = KspAnnotationUtils.intArrayArg(menuAnn, "value");
+				if (valueIds.size() == 1 && valueIds.get(0) == AnnotationNames.RES_DEFAULT) {
+					valueIds = new ArrayList<>();
+				} else {
+					valueIds = Collections.singletonList(valueIds.get(0)); // first id only
+				}
+				if (valueIds.isEmpty()) {
+					nameIds = KspAnnotationUtils.stringArrayArg(menuAnn, "resName");
+					if (nameIds.isEmpty() || nameIds.size() == 1 && "".equals(nameIds.get(0))) {
+						nameIds = Collections.singletonList(param.getName().asString()); // APT USE_ELEMENT_NAME: param name
+					} else {
+						nameIds = Collections.singletonList(nameIds.get(0));
+					}
+				}
+			}
+			valueIdsList.add(valueIds);
+			nameIdsList.add(nameIds);
+		}
+		if (anyAnnotated) {
+			// partially annotated: APT leaves dead locals (decl+assign, no invocation) and no error
+			List<MvpModel.MenuInjection> target = menuItem ? model.optionsMenuItemInjections : model.injectMenuInjections;
+			target.add(new MvpModel.MenuInjection(false, name, AnnotationNames.RES_DEFAULT, "", paramModels,
+					valueIdsList, nameIdsList, allAnnotated));
+		}
+	}
+
+	private static KSAnnotation findParamMenu(KSValueParameter param, String qualifiedName) {
+		for (KSAnnotation annotation : SequencesKt.toList(param.getAnnotations())) {
+			if (qualifiedName.equals(KspAnnotationUtils.safeQualifiedName(annotation))) {
+				return annotation;
+			}
+		}
+		return null;
+	}
+
+	private static boolean hasMenuParam(KSFunctionDeclaration function, String qualifiedName) {
+		for (KSValueParameter param : function.getParameters()) {
+			if (findParamMenu(param, qualifiedName) != null) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private String functionReturnType(KSFunctionDeclaration function) {

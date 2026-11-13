@@ -236,6 +236,37 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 		for (MvpModel.FragmentInjection byId : model.fragmentByIds) {
 			errors.addAll(validateFragmentById(canCheckValues, index, byId));
 		}
+		for (MvpModel.OptionsMenuRef menu : model.optionsMenus) {
+			errors.addAll(validateInjection(canCheckValues, index, "menu", "", menu.resId, menu.resName));
+		}
+		for (MvpModel.OptionsItem item : model.optionsItems) {
+			for (Integer resId : item.valueIds) {
+				if (canCheckValues && !index.containsIdValue("id", resId)) {
+					errors.add("Resource id value not found in R.id: " + resId);
+				}
+			}
+			for (String resName : item.nameIds) {
+				if (!index.containsField("id", resName)) {
+					errors.add("Resource name not found in R.id: " + resName);
+				}
+			}
+		}
+		for (MvpModel.MenuInjection injection : model.optionsMenuItemInjections) {
+			if (injection.fieldForm) {
+				errors.addAll(validateInjection(canCheckValues, index, "id", injection.name, injection.resId, injection.resName));
+			} else {
+				for (int i = 0; i < injection.params.size(); i++) {
+					List<Integer> ids = injection.valueIds.get(i);
+					if (!ids.isEmpty()) {
+						if (canCheckValues && !index.containsIdValue("id", ids.get(0))) {
+							errors.add("Resource id value not found in R.id: " + ids.get(0));
+						}
+					} else if (!injection.nameIds.get(i).isEmpty() && !index.containsField("id", injection.nameIds.get(i).get(0))) {
+						errors.add("Resource name not found in R.id: " + injection.nameIds.get(i).get(0));
+					}
+				}
+			}
+		}
 		return errors;
 	}
 
