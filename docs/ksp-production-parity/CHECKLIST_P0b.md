@@ -93,11 +93,11 @@
 
 ## Acceptance for P0b exit
 
-- [ ] `examples/kotlin` 或新建 `examples/kotlin-parity`：Activity + Fragment + Click + 常用 Res + Menu 或 InstanceState 至少覆盖一条主路径
-- [ ] 同 fixture：`kapt` vs `ksp` 生成公开 API spot-check（DECL/SIG 对齐；记录可接受 body 偏差）
-- [ ] 文档声明：典型界面可卸 kapt 的前提与已知偏差
-- [ ] `EXECUTION_LOG` 标记 P0b done，`Next` = P1 首项
-- [ ] Push `ksp/main`（若用户要求远程同步）
+- [x] `examples/kotlin` 或新建 `examples/kotlin-parity`：Activity + Fragment + Click + 常用 Res + Menu 或 InstanceState 至少覆盖一条主路径（由 `examples/kotlin-bench` 满足：228 fixtures，Activity+Fragment+Click/LongClick+Res+Menu+InstanceState×3 全覆盖，见 EXECUTION_LOG 2026-11-14 exit 条目）
+- [x] 同 fixture：`kapt` vs `ksp` 生成公开 API spot-check（DECL/SIG 对齐；记录可接受 body 偏差）（顶层类声明 224/224 + 方法签名 2113/2113 对齐，脚本 C:/temp/decl_sig_check.py；body 偏差见 KNOWN_DEVIATIONS.md）
+- [x] 文档声明：典型界面可卸 kapt 的前提与已知偏差（`KNOWN_DEVIATIONS.md`）
+- [x] `EXECUTION_LOG` 标记 P0b done，`Next` = P1 首项
+- [x] Push `ksp/main`（若用户要求远程同步）（N/A：用户未要求远程同步；按 standing instruction 仅本地 commit，不 push）
 
 ## Out of scope for P0b
 

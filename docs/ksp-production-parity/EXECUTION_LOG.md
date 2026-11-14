@@ -963,3 +963,23 @@
 
 ### Next
 1. P0b exit acceptance（demo coverage、kapt-vs-ksp public API spot-check、known-deviations 文档声明、EXECUTION_LOG 标 P0b done + Next=P1）→ P1
+## Session 2026-11-14 — P0b: exit acceptance (L96–L100) done → P1
+
+- **Agent**: Codex
+- **Goal slice**: P0b exit acceptance（CHECKLIST_P0b L96-100）
+- **Git**: branch=`ksp/main` HEAD=`3d43537d`（P0b: @ViewById method-injection APT parity），local only, not push
+
+### Acceptance items
+- [x] L96 demo coverage：`examples/kotlin-bench`（228 fixtures）覆盖 Activity(EActivity×109) + Fragment(EFragment×10) + Click/LongClick + 常用 Res(String/Text/Color/Drawable/Layout/Dimension*/Boolean/Integer/Html/CSL/StringArray/Animation) + Menu(InjectMenu/OptionsItems/OptionMenuItem) + InstanceState×3——超出「至少一条主路径」要求
+- [x] L97 kapt vs ksp 公开 API spot-check（DECL/SIG）：独立脚本 C:\temp\decl_sig_check.py——顶层类声明 224/224 对齐 + 方法签名 2113/2113 对齐（METH 多重集相等，含 visibility/modifiers/返回类型/名/参数类型/throws；参数注解剥离）；嵌套 builder 类由全量 body gate 覆盖。结果 DECLSIG_OK
+- [x] L98 文档声明：新增 `docs/ksp-production-parity/KNOWN_DEVIATIONS.md`（典型界面可卸 kapt 前提 + 7 项已知偏差 + 流程约束）
+- [x] L99 本条目标记 P0b done，Next = P1 首项
+- [x] L100 Push `ksp/main`：N/A——用户未要求远程同步；按 standing instruction 仅本地 commit，不 push
+
+### Evidence / state
+- 全量门禁（C:\temp\gt_cmp_all.py）：GT 224 / KSP live 224，missing/KSP-only 均空，MISMATCHES=1（仅 `BenchActivity102_` = GT 侧 @JvmField 临时变体陈旧产物，见 KNOWN_DEVIATIONS #1）
+- DECL/SIG：types 224/224 + methods 2113/2113 = 0 mismatch
+- 顺带修复：本 log 上一条目误引入的裸 LF 行尾（31 处）已全部归一为 CRLF
+
+### Next
+1. P1 首项（CHECKLIST_P1）：SharedPreferences BLOCKER——`@SharedPref` helper 生成（scope ACTIVITY / ACTIVITY_DEFAULT / APPLICATION_DEFAULT / UNIQUE），APT oracle = SharedPrefHandler + PrefHandler
