@@ -24,6 +24,7 @@ import java.util.Map;
 import org.androidannotations.ksp.AnnotationNames;
 import org.androidannotations.ksp.KspAnnotationUtils;
 import org.androidannotations.ksp.MvpModel;
+import org.androidannotations.ksp.IntentBuilderCompat;
 import org.androidannotations.ksp.ResCompat;
 import org.androidannotations.ksp.env.RClassIndex;
 
@@ -35,7 +36,10 @@ public final class MvpJavaGenerator {
 
 	private final Map<String, ResCompat.Mode> resCompatModes;
 
-	public MvpJavaGenerator(String resourcePackage, String rClassName, RClassIndex rClassIndex, Map<String, ResCompat.Mode> resCompatModes) {
+	private final IntentBuilderCompat intentBuilderCompat;
+
+	public MvpJavaGenerator(IntentBuilderCompat intentBuilderCompat, String resourcePackage, String rClassName, RClassIndex rClassIndex, Map<String, ResCompat.Mode> resCompatModes) {
+		this.intentBuilderCompat = intentBuilderCompat;
 		this.resourcePackage = resourcePackage;
 		this.rClassName = rClassName;
 		this.rClassIndex = rClassIndex;
@@ -176,6 +180,7 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 		out.append("\t}\n\n");
 
 		appendIntentStaticMethod(out, model);
+		appendFragmentIntentOverloads(out, model);
 		appendBeanHolderMethods(out);
 		if (hasViewSupport) {
 			out.append("\t@Override\n");
@@ -1037,12 +1042,143 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 		out.append("\t}\n\n");
 	}
 
+	/** APT ActivityIntentBuilder.createAdditionalIntentMethods: static intent overloads for the fragment classpath. */
+	private void appendFragmentIntentOverloads(StringBuilder out, MvpModel model) {
+		String generated = model.generatedSimpleName();
+		if (intentBuilderCompat.fragment) {
+			out.append("\tpublic static ").append(generated).append(".IntentBuilder_ intent(android.app.Fragment fragment) {\n");
+			out.append("\t\treturn new ").append(generated).append(".IntentBuilder_(fragment);\n");
+			out.append("\t}\n\n");
+		}
+		if (intentBuilderCompat.androidxFragment) {
+			appendStaticFragmentIntent(out, generated, "androidx.fragment.app.Fragment");
+		} else if (intentBuilderCompat.supportFragment) {
+			appendStaticFragmentIntent(out, generated, "android.support.v4.app.Fragment");
+		}
+	}
+
+	private void appendStaticFragmentIntent(StringBuilder out, String generated, String fragmentType) {
+		out.append("\tpublic static ").append(generated).append(".IntentBuilder_ intent(").append(fragmentType).append(" supportFragment) {\n");
+		out.append("\t\treturn new ").append(generated).append(".IntentBuilder_(supportFragment);\n");
+		out.append("\t}\n\n");
+	}
+
+	/** APT ActivityIntentBuilder.createAdditionalConstructor: private field plus fragment constructor. */
+	private void appendFragmentField(StringBuilder out, String fragmentType, String fieldName) {
+		out.append("\t\tprivate ").append(fragmentType).append(" ").append(fieldName).append(";\n\n");
+	}
+
+	private void appendFragmentConstructor(StringBuilder out, String generated, String fragmentType, String fieldName) {
+		out.append("\t\tpublic IntentBuilder_(").append(fragmentType).append(" fragment) {\n");
+		out.append("\t\t\tsuper(fragment.getActivity(), ").append(generated).append(".class);\n");
+		out.append("\t\t\t").append(fieldName).append(" = fragment;\n");
+		out.append("\t\t}\n\n");
+	}
+
+	private String supportFragmentType() {
+		return intentBuilderCompat.androidxFragment ? "androidx.fragment.app.Fragment" : "android.support.v4.app.Fragment";
+	}
+
+	/** APT ActivityIntentBuilder.overrideStartForResultMethod: fragment branches, then the compat/activity/context starter. */
+	private void appendStartForResult(StringBuilder out) {
+		boolean hasSupport = intentBuilderCompat.androidxFragment || intentBuilderCompat.supportFragment;
+		boolean hasFragment = intentBuilderCompat.fragment;
+		boolean options = intentBuilderCompat.activityOptionsInFragment;
+		boolean guard = intentBuilderCompat.guardActivityOptions;
+
+		out.append("\t\t@Override\n");
+		out.append("\t\tpublic org.androidannotations.api.builder.PostActivityStarter startForResult(int requestCode) {\n");
+		String s1 = "\t\t\t";
+		boolean inElse = false;
+		if (hasSupport) {
+			out.append(s1).append("if (fragmentSupport_!= null) {\n");
+			out.append(s1 + "\t").append("fragmentSupport_.startActivityForResult(intent, requestCode);\n");
+			inElse = true;
+		}
+		if (hasFragment) {
+			if (inElse) {
+				out.append(s1).append("} else if (fragment_!= null) {\n");
+			} else {
+				out.append(s1).append("if (fragment_!= null) {\n");
+			}
+			if (options && guard) {
+				out.append(s1 + "\t").append("if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN) {\n");
+				out.append(s1 + "\t\t").append("fragment_.startActivityForResult(intent, requestCode, lastOptions);\n");
+				out.append(s1 + "\t").append("} else {\n");
+				out.append(s1 + "\t\t").append("fragment_.startActivityForResult(intent, requestCode);\n");
+				out.append(s1 + "\t").append("}\n");
+			} else if (options) {
+				out.append(s1 + "\t").append("fragment_.startActivityForResult(intent, requestCode, lastOptions);\n");
+			} else {
+				out.append(s1 + "\t").append("fragment_.startActivityForResult(intent, requestCode);\n");
+			}
+			inElse = true;
+		}
+		String s2 = inElse ? s1 + "\t" : s1;
+		if (inElse) {
+			out.append(s1).append("} else {\n");
+		}
+
+		out.append(s2).append("if (context instanceof android.app.Activity) {\n");
+		String aLevel = s2 + "\t";
+		out.append(aLevel).append("android.app.Activity activity = ((android.app.Activity) context);\n");
+		if (intentBuilderCompat.activityCompat != null) {
+			out.append(aLevel).append(intentBuilderCompat.activityCompat).append(".startActivityForResult(activity, intent, requestCode, lastOptions);\n");
+		} else if (options && guard) {
+			out.append(aLevel).append("if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN) {\n");
+			out.append(aLevel + "\t").append("activity.startActivityForResult(intent, requestCode, lastOptions);\n");
+			out.append(aLevel).append("} else {\n");
+			out.append(aLevel + "\t").append("activity.startActivityForResult(intent, requestCode);\n");
+			out.append(aLevel).append("}\n");
+		} else if (options) {
+			out.append(aLevel).append("activity.startActivityForResult(intent, requestCode, lastOptions);\n");
+		} else {
+			out.append(aLevel).append("activity.startActivityForResult(intent, requestCode);\n");
+		}
+		out.append(s2).append("} else {\n");
+		String cLevel = s2 + "\t";
+		if (options && guard) {
+			out.append(cLevel).append("if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN) {\n");
+			out.append(cLevel + "\t").append("context.startActivity(intent, lastOptions);\n");
+			out.append(cLevel).append("} else {\n");
+			out.append(cLevel + "\t").append("context.startActivity(intent);\n");
+			out.append(cLevel).append("}\n");
+		} else if (options) {
+			out.append(cLevel).append("context.startActivity(intent, lastOptions);\n");
+		} else {
+			out.append(cLevel).append("context.startActivity(intent);\n");
+		}
+		out.append(s2).append("}\n");
+		if (inElse) {
+			out.append(s1).append("}\n");
+		}
+		out.append("\t\t\treturn new org.androidannotations.api.builder.PostActivityStarter(context);\n");
+		out.append("\t\t}\n");
+	}
+
 	private void appendIntentBuilder(StringBuilder out, MvpModel model) {
 		String generated = model.generatedSimpleName();
 		out.append("\tpublic static class IntentBuilder_ extends org.androidannotations.api.builder.ActivityIntentBuilder<").append(generated).append(".IntentBuilder_> {\n\n");
+
+		if (intentBuilderCompat.fragment) {
+			appendFragmentField(out, "android.app.Fragment", "fragment_");
+		}
+		if (intentBuilderCompat.androidxFragment || intentBuilderCompat.supportFragment) {
+			appendFragmentField(out, supportFragmentType(), "fragmentSupport_");
+		}
+
 		out.append("\t\tpublic IntentBuilder_(android.content.Context context) {\n");
 		out.append("\t\t\tsuper(context, ").append(generated).append(".class);\n");
 		out.append("\t\t}\n\n");
+
+		if (intentBuilderCompat.fragment) {
+			appendFragmentConstructor(out, generated, "android.app.Fragment", "fragment_");
+		}
+		if (intentBuilderCompat.androidxFragment || intentBuilderCompat.supportFragment) {
+			appendFragmentConstructor(out, generated, supportFragmentType(), "fragmentSupport_");
+		}
+
+		appendStartForResult(out);
 
 		for (MvpModel.FieldInjection extra : model.extras) {
 			String constant = KspAnnotationUtils.extraKeyConstant(extra.propertyName);
@@ -1054,16 +1190,6 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 			out.append("\t\t}\n\n");
 		}
 
-		out.append("\t\t@Override\n");
-		out.append("\t\tpublic org.androidannotations.api.builder.PostActivityStarter startForResult(int requestCode) {\n");
-		out.append("\t\t\tif (context instanceof android.app.Activity) {\n");
-		out.append("\t\t\t\tandroid.app.Activity activity = ((android.app.Activity) context);\n");
-		out.append("\t\t\t\tactivity.startActivityForResult(intent, requestCode);\n");
-		out.append("\t\t\t} else {\n");
-		out.append("\t\t\t\tcontext.startActivity(intent);\n");
-		out.append("\t\t\t}\n");
-		out.append("\t\t\treturn new org.androidannotations.api.builder.PostActivityStarter(context);\n");
-		out.append("\t\t}\n");
 		out.append("\t}\n");
 	}
 

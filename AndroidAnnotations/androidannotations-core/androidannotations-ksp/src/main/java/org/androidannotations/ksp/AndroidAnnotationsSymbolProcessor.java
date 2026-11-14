@@ -88,7 +88,8 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 				resCompatModes.put(type.method, ResCompat.modeFor(resolver, minSdkVersion, type));
 			}
 		}
-		MvpJavaGenerator generator = new MvpJavaGenerator(resourcePackage, environment.getRClassName(), environment.getRClassIndex(), resCompatModes);
+		IntentBuilderCompat intentBuilderCompat = IntentBuilderCompat.detect(resolver, minSdkVersion);
+		MvpJavaGenerator generator = new MvpJavaGenerator(intentBuilderCompat, resourcePackage, environment.getRClassName(), environment.getRClassIndex(), resCompatModes);
 
 		MvpHandler handler = new MvpHandler();
 

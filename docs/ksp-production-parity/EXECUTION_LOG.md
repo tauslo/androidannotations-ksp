@@ -899,3 +899,36 @@
 ### Next
 1. IntentBuilder Fragment overloads → 遗留 @ViewById 方法注入形式
 2. P0b exit acceptance（demo coverage、kapt-vs-ksp public API spot-check、known-deviations 文档声明、EXECUTION_LOG 标 P0b done + Next=P1）→ P1
+
+## Session 2026-11-14 — P0b: IntentBuilder Fragment overloads + options APT parity
+
+- **Agent**: Codex
+- **Goal slice**: P0b — IntentBuilder fragment overloads + startForResult 分支矩阵（APT oracle = ActivityIntentBuilder/IntentBuilder）
+- **Git**: branch=`ksp/main` HEAD=`fe73fb57`（local only, not pushed）
+- **Status**: done（门禁通过；余 1 个既有 mismatch，见 Known limitations）
+
+### Done
+- **fixture 触发条件**：kotlin-bench Manifest 加 `<uses-sdk android:minSdkVersion="21" />` → IntentBuilder 分支 fragment=true(minSdk≥11)、options=true(≥16)、guard=false；无此配置两侧同生成无 fragment 输出，分支矩阵无法被验证
+- **新增 IntentBuilderCompat.java**（classpath 探测，镜像 APT ClasspathUtil/IntentBuilderHelper）：detect(resolver, minSdkVersion) → fragment(android.app.Fragment 在 classpath 且 minSdk≥11)/androidxFragment/supportFragment/activityOptionsInFragment(Fragment.startActivityForResult 是否带 Bundle 参数——KSP 签名 position 1 探测)/activityCompat(androidx.core.app.ActivityCompat 或 android.support.v4.app.ActivityCompat FQN，androidx 优先，null=plain Activity/Context 调用)/guardActivityOptions(minSdk<16 → options 调用包 SDK_INT≥JELLY_BEAN guard)
+- **generator 接线**：processor 调 IntentBuilderCompat.detect(resolver, minSdkVersion) 作为 MvpJavaGenerator 构造器首参传入
+- **生成逻辑**（MvpJavaGenerator appendIntentBuilder 重写）：成员序 = jcodemodel fields 先于 constructors：fragment_ field(/fragmentSupport_) → Context ctor → fragment ctor(s) → startForResult override → extras 循环；有 fragment 时整个 activity/context if-else 嵌套在 fragment else 内（inElse，s2 缩进 +1 级）；support 分支恒 2 参 fragmentSupport_.startActivityForResult(intent, requestCode)，经 elseif 链成 `} else if (fragment_!= null)`
+- **startForResult 分支矩阵**（对照 APT oracle）：fragment 分支 options+guard→guarded 3/2 参；options→3 参含 lastOptions；否则 2 参。activity 分支：compat 静态 4 参无条件 / options+guard guarded / options 3 参 / 2 参。context 分支：options+guard guarded context.startActivity(intent,lastOptions)/(intent) / options 2 参 / 1 参
+- **静态重载**：appendFragmentIntentOverloads —— 生成类上紧跟 intent(Context)：`public static X.IntentBuilder_ intent(Fragment fragment) { return new X.IntentBuilder_(fragment); }`（参数名 fragment/supportFragment，与 APT 一致）
+- 门禁：GT 224 / KSP live 224、missing/KSP-only 均空、**MISMATCHES=1（仅既有 BenchActivity102_）**；回归备份刷新至 `C:\temp\ksp-p0b-fragintent`（224 文件，hash 全匹配）
+- mvn install androidannotations-ksp BUILD SUCCESS
+
+### 构建退出码说明
+- KSP 侧 GRADLE_EXIT=1：仅 9 个既有 Kotlin 错误（BenchActivity107×8 + BenchFragment109×1，lateinit-on-primitive 故意构造）；KSP 任务本身成功，224 文件全生成；按输出文件判定
+- kapt 侧 GT 目录：刷新 224 文件时 kapt stub 在 BenchActivity102 生成失败（既有已知问题），GT 该文件为不完整产物
+
+### Bugs discovered & fixed（门禁 diff 定位）
+- **KSP Java API 风格错**：IntentBuilderCompat 原用 Kotlin 风格属性访问（parameter.type.resolve()、type.declutable）→ 编译不过；改 getter 风格 parameter.getType().resolve().getDeclaration().getQualifiedName()（参照 KspAnnotationUtils L454/L61 既有模式）+ import KSTypeReference
+- **缺闭合大括号**：appendStartForResult 的 context 分支三选一（guard/options/plain）后缺 `out.append(s2).append("}\n")` 闭合 activityCondition 的 else 块 → return 落进外层 fragment else，109 个 activity 文件全部单 token diff；公共出口补一行（覆盖三个子分支，guard 子分支内部自带 if/else 闭合）
+
+### Known limitations（未修复）
+- BenchActivity102_ 唯一 mismatch：既有已知限制（kapt stub 生成失败致 GT 文件不完整），KSP 侧相对 pre-session 备份 `C:\temp\ksp-p0b-appsvc` 的 diff 仅为本 slice 预期改动（minSdk=21 → drawable 无 LOLLIPOP guard；intent(Fragment) 重载 + fragment_ field/ctor + startForResult fragment 分支），非回归
+- AppWidgetManager minSdk<21 特殊路径未实现（@SystemService slice 遗留）
+
+### Next
+1. 遗留 @ViewById 方法注入形式
+2. P0b exit acceptance（demo coverage、kapt-vs-ksp public API spot-check、known-deviations 文档声明、EXECUTION_LOG 标 P0b done + Next=P1）→ P1

@@ -79,8 +79,8 @@
 
 ## IntentBuilder Fragment overloads（P0a 曾 defer）
 
-- [ ] `intent(Fragment)` / AndroidX Fragment 重载（classpath 探测，对照 APT）
-- [ ] Activity options / `withOptions`（若 APT 有且业务需要）
+[x] ] `intent(Fragment)` / AndroidX Fragment 重载（classpath 探测，对照 APT）
+[x] ] Activity options / `withOptions`（若 APT 有且业务需要）
 
 ---
 
