@@ -58,4 +58,22 @@
         android:layout_height="wrap_content"
         android:text="Long boolean" />
 
+
+    <Button
+        android:id="@+id/methodTarget"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:text="Method target" />
+
+    <Button
+        android:id="@+id/onMethodFirst"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:text="Method first" />
+
+    <Button
+        android:id="@+id/secondTarget"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:text="Second target" />
 </LinearLayout>

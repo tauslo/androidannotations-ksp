@@ -932,3 +932,34 @@
 ### Next
 1. 遗留 @ViewById 方法注入形式
 2. P0b exit acceptance（demo coverage、kapt-vs-ksp public API spot-check、known-deviations 文档声明、EXECUTION_LOG 标 P0b done + Next=P1）→ P1
+
+## Session 2026-11-14 — P0b: @ViewById method/param injection APT parity
+
+- **Agent**: Codex
+- **Goal slice**: P0b 切片 @ViewById 方法注入形式（method form + param form，APT oracle = ViewByIdHandler/InjectHelper/EComponentWithViewSupportHolder）
+- **Git**: branch=`ksp/main` HEAD=`4b7a96c8`，local only, not pushed
+- **Status**: done；门禁通过（224/224，仅 1 个既有 mismatch = Known limitations）
+
+### Done
+- **fixture 扩充**：bench_activity_101.xml 新增 3 Button（methodTarget/onMethodFirst/secondTarget）；bench_fragment_112.xml 新增 2 Button（a/b）；BenchActivity101.kt 新增 5 成员——(A) FIELD+METHOD 同 id（View vs Button ⇒ 块内 cast）、(B) 裸 @ViewById method form（回退=方法名 ⇒ R.id.onMethodFirst）、(C) METHOD 在 FIELD 前同 id；BenchFragment112.kt 新增 onParams(@ViewById a: Button, @ViewById b: Button)（裸注解回退=参数名）
+- **KSP generator**：MvpJavaGenerator 新增 ViewInjectionPlan（pass1/pass3/foundRefs/foundTypes）+ planViewInjections：FIELD form pass1 `this.x = internalFindViewById(...)`、cache ref=this.x；METHOD/PARAM form pass1 `<Type> view_<rName>` local（parameterized 类型加 @SuppressWarnings("unchecked")，路径保留未测）；pass3 块=每参数 decl(`<Type> <paramName> = null;`)+assign+按 argumentOrder invoke；castRef=APT FoundHolder.getOrCastRef parity（cached==req 或 req==android.view.View ⇒ 原 ref，否则 `((T) ref)` jcodemodel 双括号）
+- **kapt stub 顺序语义（本 session 实证）**：kapt 将 Kotlin 属性 backing field 全部置于 stub 类体顶部（方法之前），APT 按 stub 成员序迭代 ⇒ FIELD form 先于 METHOD/PARAM form 处理；KSP planViewInjections 按 form 稳定分区（FIELD 先行，组内保持声明序）
+- **processor**：AndroidAnnotationsSymbolProcessor L204 `viewByIds`→`viewInjections`；validateResources 循环按 FIELD/param 分支校验 id
+- **MvpModel/MvpHandler**：ViewInjection(Form.FIELD|METHOD_PARAM)+ViewMethodParam 模型；collectViewByIdMethod（method form，idKey=方法名）/collectViewByIdParams（param form，一 method 一 ViewInjection、params 声明序）；collectFunction 两形式独立判断
+- 门禁：GT 224 / KSP live 224、missing/KSP-only 均空、**MISMATCHES=1（仅既有 BenchActivity102_）**；回归备份刷新至 `C:\temp\ksp-p0b-viewmethod`（224 文件，hash 全匹配）
+- mvn install androidannotations-ksp BUILD SUCCESS
+
+### 构建顺序说明
+- KSP 侧 GRADLE_EXIT=1：9 个既有 Kotlin 错误（BenchActivity107×8 + BenchFragment109×1，lateinit-on-primitive fixture 结构），KSP 生成成功（224 文件全部生成）
+- kapt 侧 GT 目录刷新至 224；kapt stub 在 BenchActivity102 生成失败（既有已知问题），GT 该文件为不完整产物
+
+### Bugs discovered & fixed（门禁 diff 定位）
+- **FIELD/METHOD 处理顺序**：KSP 初版按源码声明序迭代 ⇒ (C) 场景（METHOD 在 FIELD 前同 id）产出 view_secondTarget local+无 cast，GT 为 field 先行 `this.secondView` + 方法块 cast；kapt stub 实证字段位于类体顶部 ⇒ planViewInjections 改按 form 稳定分区
+- **cast 双括号**：castRef 单括号 `(T) ref` vs jcodemodel GT `((T) ref)`（两开两闭）；首修只加前导括号漏末尾闭合，门禁仍差 1 字符 ⇒ 补全为 `"((" + T + ") " + ref + ")"`
+
+### Known limitations（未修复）
+- BenchActivity102_ 唯一 mismatch：既有已知限制（kapt stub 生成失败致 GT 文件不完整），KSP 输出与 pre-session 备份 `C:\temp\ksp-p0b-fragintent` SHA256 逐字节一致 = 非回归
+- parameterized view 类型 @SuppressWarnings("unchecked") 路径保留未测（GT 无先例）
+
+### Next
+1. P0b exit acceptance（demo coverage、kapt-vs-ksp public API spot-check、known-deviations 文档声明、EXECUTION_LOG 标 P0b done + Next=P1）→ P1

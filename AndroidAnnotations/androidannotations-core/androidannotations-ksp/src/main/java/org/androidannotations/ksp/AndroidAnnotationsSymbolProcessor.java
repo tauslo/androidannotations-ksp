@@ -201,7 +201,7 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 	}
 
 	private boolean needsResourcePackage(MvpModel model) {
-		return !model.stringRes.isEmpty() || !model.viewByIds.isEmpty() || model.layoutId != AnnotationNames.RES_DEFAULT
+		return !model.stringRes.isEmpty() || !model.viewInjections.isEmpty() || model.layoutId != AnnotationNames.RES_DEFAULT
 				|| (model.layoutResName != null && !model.layoutResName.isEmpty()) || !model.fragmentByIds.isEmpty()
 				|| !model.clickListeners.isEmpty() || !model.longClickListeners.isEmpty() || !model.resFields.isEmpty();
 	}
@@ -227,8 +227,14 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 				errors.add("Resource name not found in R.layout: " + model.layoutResName);
 			}
 		}
-		for (MvpModel.FieldInjection view : model.viewByIds) {
-			errors.addAll(validateInjection(canCheckValues, index, "id", view));
+		for (MvpModel.ViewInjection injection : model.viewInjections) {
+			if (injection.form == MvpModel.ViewInjection.Form.FIELD) {
+				errors.addAll(validateInjection(canCheckValues, index, "id", injection.field));
+			} else {
+				for (MvpModel.ViewMethodParam param : injection.params) {
+					errors.addAll(validateInjection(canCheckValues, index, "id", param.idKey, param.resId, param.resName));
+				}
+			}
 		}
 		validateViewListeners(canCheckValues, index, model.clickListeners, errors);
 		validateViewListeners(canCheckValues, index, model.longClickListeners, errors);

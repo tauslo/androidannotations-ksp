@@ -65,7 +65,7 @@ public final class MvpJavaGenerator {
 	private String generateActivity(MvpModel model) {
 		StringBuilder out = new StringBuilder();
 		appendHeader(out, model);
-		boolean hasViewSupport = !model.viewByIds.isEmpty() || !model.afterViews.isEmpty()
+		boolean hasViewSupport = !model.viewInjections.isEmpty() || !model.afterViews.isEmpty()
 				|| !model.clickListeners.isEmpty() || !model.longClickListeners.isEmpty();
 		out.append("public final class ").append(model.generatedSimpleName())
 				.append(" extends ").append(model.simpleName)
@@ -185,15 +185,10 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 		if (hasViewSupport) {
 			out.append("\t@Override\n");
 			out.append("\tpublic void onViewChanged(org.androidannotations.api.view.HasViews hasViews) {\n");
-			for (MvpModel.FieldInjection view : model.viewByIds) {
-				String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "id", view.propertyName, view.resId, view.resName, rClassIndex);
-				if (view.jvmField) {
-					out.append("\t\tthis.").append(view.propertyName).append(" = hasViews.internalFindViewById(").append(resExpr).append(");\n");
-				} else {
-					out.append("\t\t").append(setterName(view.propertyName)).append("(hasViews.internalFindViewById(").append(resExpr).append("));\n");
-				}
-			}
-			appendViewListeners(out, model);
+			ViewInjectionPlan plan = planViewInjections(model);
+			out.append(plan.pass1);
+			appendViewListeners(out, model, plan);
+			out.append(plan.pass3);
 			for (String method : model.afterViews) {
 				out.append("\t\t").append(method).append("();\n");
 			}
@@ -214,7 +209,7 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 	private String generateFragment(MvpModel model) {
 		StringBuilder out = new StringBuilder();
 		appendHeader(out, model);
-		boolean hasViewSupport = !model.viewByIds.isEmpty() || !model.afterViews.isEmpty()
+		boolean hasViewSupport = !model.viewInjections.isEmpty() || !model.afterViews.isEmpty()
 			|| !model.clickListeners.isEmpty() || !model.longClickListeners.isEmpty();
 		out.append("public final class ").append(model.generatedSimpleName())
 				.append(" extends ").append(model.qualifiedName)
@@ -254,8 +249,10 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 		out.append("\tpublic void onDestroyView() {\n");
 		out.append("\t\tsuper.onDestroyView();\n");
 		out.append("\t\tcontentView_ = null;\n");
-		for (MvpModel.FieldInjection view : model.viewByIds) {
-			out.append("\t\t").append(view.propertyName).append(" = null;\n");
+		for (MvpModel.ViewInjection injection : model.viewInjections) {
+			if (injection.form == MvpModel.ViewInjection.Form.FIELD) {
+				out.append("\t\t").append(injection.field.propertyName).append(" = null;\n");
+			}
 		}
 		out.append("\t}\n\n");
 
@@ -310,15 +307,10 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 		if (hasViewSupport) {
 			out.append("\t@Override\n");
 			out.append("\tpublic void onViewChanged(org.androidannotations.api.view.HasViews hasViews) {\n");
-			for (MvpModel.FieldInjection view : model.viewByIds) {
-				String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "id", view.propertyName, view.resId, view.resName, rClassIndex);
-				if (view.jvmField) {
-					out.append("\t\tthis.").append(view.propertyName).append(" = hasViews.internalFindViewById(").append(resExpr).append(");\n");
-				} else {
-					out.append("\t\t").append(setterName(view.propertyName)).append("(hasViews.internalFindViewById(").append(resExpr).append("));\n");
-				}
-			}
-			appendViewListeners(out, model);
+			ViewInjectionPlan plan = planViewInjections(model);
+			out.append(plan.pass1);
+			appendViewListeners(out, model, plan);
+			out.append(plan.pass3);
 			for (MvpModel.FragmentInjection byTag : model.fragmentByTags) {
 				String tag = byTag.resName != null && !byTag.resName.isEmpty() ? byTag.resName : byTag.propertyName;
 				String manager = byTag.childFragment ? "getChildFragmentManager()" : "getFragmentManager()";
@@ -347,22 +339,11 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 		return out.toString();
 	}
 
-	private void appendViewListeners(StringBuilder out, MvpModel model) {
+	private void appendViewListeners(StringBuilder out, MvpModel model, ViewInjectionPlan plan) {
 		LinkedHashMap<String, String> refs = new LinkedHashMap<>();
 		LinkedHashMap<String, String> locals = new LinkedHashMap<>();
 		LinkedHashMap<String, List<String>> setters = new LinkedHashMap<>();
-		for (MvpModel.FieldInjection view : model.viewByIds) {
-			String rName = null;
-			if (view.resId != AnnotationNames.RES_DEFAULT) {
-				rName = rClassIndex != null ? rClassIndex.fieldNameForValue("id", view.resId) : null;
-			}
-			if (rName == null && rClassIndex != null) {
-				rName = rClassIndex.resolveFieldName("id", view.propertyName);
-			}
-			if (rName != null) {
-				refs.put(rName, view.propertyName);
-			}
-		}
+		refs.putAll(plan.foundRefs);
 		appendListenerIds(model, model.clickListeners, false, refs, locals, setters);
 		appendListenerIds(model, model.longClickListeners, true, refs, locals, setters);
 		for (Map.Entry<String, String> e : locals.entrySet()) {
@@ -376,6 +357,115 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 			}
 			out.append("\t\t}\n");
 		}
+	}
+
+	/** APT ViewByIdHandler parity: planned pass1 (before-injection) / pass3 (injection) code plus the found-view cache. */
+	private static final class ViewInjectionPlan {
+		final StringBuilder pass1 = new StringBuilder();
+		final StringBuilder pass3 = new StringBuilder();
+		final LinkedHashMap<String, String> foundRefs = new LinkedHashMap<>();
+		final LinkedHashMap<String, String> foundTypes = new LinkedHashMap<>();
+	}
+
+	/**
+	 * APT parity: walks {@code model.viewInjections} in source order. The first occurrence of an id declares the view
+	 * in pass1 (field assign or {@code view_<name>} local); repeats reassign from the cache in pass3; method-injection
+	 * forms append a braced block with per-parameter decl/assign and the invocation.
+	 */
+	private ViewInjectionPlan planViewInjections(MvpModel model) {
+		ViewInjectionPlan plan = new ViewInjectionPlan();
+		// kapt stub semantics: Kotlin properties are emitted as fields before methods, so FIELD forms
+		// are processed first; within each group the source declaration order is preserved.
+		List<MvpModel.ViewInjection> orderedInjections = new ArrayList<>(model.viewInjections.size());
+		for (MvpModel.ViewInjection injection : model.viewInjections) {
+			if (injection.form == MvpModel.ViewInjection.Form.FIELD) {
+				orderedInjections.add(injection);
+			}
+		}
+		for (MvpModel.ViewInjection injection : model.viewInjections) {
+			if (injection.form != MvpModel.ViewInjection.Form.FIELD) {
+				orderedInjections.add(injection);
+			}
+		}
+		for (MvpModel.ViewInjection injection : orderedInjections) {
+			if (injection.form == MvpModel.ViewInjection.Form.FIELD) {
+				MvpModel.FieldInjection field = injection.field;
+				String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "id", field.propertyName, field.resId, field.resName, rClassIndex);
+				String assign = field.jvmField ? "this." + field.propertyName : setterName(field.propertyName);
+				String rName = null;
+				if (field.resId != AnnotationNames.RES_DEFAULT) {
+					rName = rClassIndex != null ? rClassIndex.fieldNameForValue("id", field.resId) : null;
+				}
+				if (rName == null && rClassIndex != null) {
+					rName = rClassIndex.resolveFieldName("id", field.propertyName);
+				}
+				if (rName != null && plan.foundRefs.containsKey(rName)) {
+					plan.pass3.append("\t\t").append(assign).append(" = ").append(castRef(plan.foundTypes.get(rName), field.typeName, plan.foundRefs.get(rName))).append(";\n");
+				} else {
+					plan.pass1.append("\t\t").append(assign).append(" = hasViews.internalFindViewById(").append(resExpr).append(");\n");
+					if (rName != null) {
+						plan.foundRefs.put(rName, "this." + field.propertyName);
+						plan.foundTypes.put(rName, field.typeName);
+					}
+				}
+			} else {
+				for (MvpModel.ViewMethodParam param : injection.params) {
+					String rName = viewIdFieldName(param.idKey, param.resId, param.resName);
+					if (!plan.foundRefs.containsKey(rName)) {
+						String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "id", param.idKey, param.resId, param.resName, rClassIndex);
+						if (param.typeName.contains("<")) {
+							plan.pass1.append("\t\t@SuppressWarnings(\"unchecked\")\n");
+						}
+						plan.pass1.append("\t\t").append(param.typeName).append(" view_").append(rName)
+								.append(" = hasViews.internalFindViewById(").append(resExpr).append(");\n");
+						plan.foundRefs.put(rName, "view_" + rName);
+						plan.foundTypes.put(rName, param.typeName);
+					}
+				}
+				plan.pass3.append("\t\t{\n");
+				for (MvpModel.ViewMethodParam param : injection.params) {
+					String rName = viewIdFieldName(param.idKey, param.resId, param.resName);
+					plan.pass3.append("\t\t\t").append(param.typeName).append(' ').append(param.paramName).append(" = null;\n");
+					plan.pass3.append("\t\t\t").append(param.paramName).append(" = ").append(castRef(plan.foundTypes.get(rName), param.typeName, plan.foundRefs.get(rName))).append(";\n");
+				}
+				plan.pass3.append("\t\t\t").append(injection.methodName).append('(');
+				for (int i = 0; i < injection.params.size(); i++) {
+					if (i > 0) {
+						plan.pass3.append(", ");
+					}
+					plan.pass3.append(injection.params.get(i).paramName);
+				}
+				plan.pass3.append(");\n");
+				plan.pass3.append("\t\t}\n");
+			}
+		}
+		return plan;
+	}
+
+	/** APT USE_ELEMENT_NAME parity: value ref, then resName, then the element (id) key as R.id field name. */
+	private String viewIdFieldName(String idKey, int resId, String resName) {
+		if (resId != AnnotationNames.RES_DEFAULT && rClassIndex != null) {
+			String name = rClassIndex.fieldNameForValue("id", resId);
+			if (name != null) {
+				return name;
+			}
+		}
+		String name = resName != null && !resName.isEmpty() ? resName : idKey;
+		if (rClassIndex != null) {
+			String resolved = rClassIndex.resolveFieldName("id", name);
+			if (resolved != null) {
+				return resolved;
+			}
+		}
+		return name;
+	}
+
+	/** APT FoundHolder.getOrCastRef parity: reuse the cached ref when types match or the request is the base View type. */
+	private static String castRef(String cachedType, String reqType, String ref) {
+		if ((cachedType != null && cachedType.equals(reqType)) || "android.view.View".equals(reqType)) {
+			return ref;
+		}
+		return "((" + reqType + ") " + ref + ")";
 	}
 
 /** APT EActivityHolder.setOnCreateOptionsMenu / setOnOptionsItemSelected and InjectHelper parity. */
@@ -728,7 +818,7 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 		// APT parity (EComponentWithViewSupportHolder.setOnViewChanged): the OnViewChangedListener interface and notifier
 		// registration are added only when view support is used (@ViewById/@AfterViews). A bean without view support
 		// implements no extra interface.
-		boolean hasViewSupport = !model.viewByIds.isEmpty() || !model.afterViews.isEmpty();
+		boolean hasViewSupport = !model.viewInjections.isEmpty() || !model.afterViews.isEmpty();
 		String implementsClause = hasViewSupport ? " implements org.androidannotations.api.view.OnViewChangedListener" : "";
 		if (nested) {
 			out.append("public static final class ").append(model.generatedSimpleName())
@@ -837,14 +927,9 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 		if (hasViewSupport) {
 			out.append("\t@Override\n");
 			out.append("\tpublic void onViewChanged(org.androidannotations.api.view.HasViews hasViews) {\n");
-			for (MvpModel.FieldInjection view : model.viewByIds) {
-				String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "id", view.propertyName, view.resId, view.resName, rClassIndex);
-				if (view.jvmField) {
-					out.append("\t\tthis.").append(view.propertyName).append(" = hasViews.internalFindViewById(").append(resExpr).append(");\n");
-				} else {
-					out.append("\t\t").append(setterName(view.propertyName)).append("(hasViews.internalFindViewById(").append(resExpr).append("));\n");
-				}
-			}
+			ViewInjectionPlan plan = planViewInjections(model);
+			out.append(plan.pass1);
+			out.append(plan.pass3);
 			for (String method : model.afterViews) {
 				out.append("\t\t").append(method).append("();\n");
 			}

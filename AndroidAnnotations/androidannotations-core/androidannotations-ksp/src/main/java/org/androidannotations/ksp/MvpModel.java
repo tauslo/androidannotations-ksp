@@ -153,6 +153,56 @@ public final class MvpModel {
 		}
 	}
 
+	/** APT ViewByIdHandler parity (method-injection form): one injected parameter of a @ViewById method. */
+	public static final class ViewMethodParam {
+		/** Local variable name in the generated braced block; also the call argument. */
+		public final String paramName;
+		/** Declared type of the parameter, same-package refs resolved (full Java name incl. generics). */
+		public final String typeName;
+		public final int resId;
+		public final String resName;
+		/** R.id fallback key: METHOD form = method name, PARAM form = parameter name. */
+		public final String idKey;
+
+		public ViewMethodParam(String paramName, String typeName, int resId, String resName, String idKey) {
+			this.paramName = paramName;
+			this.typeName = typeName;
+			this.resId = resId;
+			this.resName = resName;
+			this.idKey = idKey;
+		}
+	}
+
+	/** APT ViewByIdHandler parity: field form or method-injection form of @ViewById. */
+	public static final class ViewInjection {
+		public enum Form {
+			FIELD, METHOD
+		}
+
+		public final Form form;
+		/** FIELD form only. */
+		public final FieldInjection field;
+		/** METHOD form only: method name to invoke. */
+		public final String methodName;
+		/** METHOD form only: injected parameters (method form = 1, param form = N). */
+		public final List<ViewMethodParam> params;
+
+		private ViewInjection(Form form, FieldInjection field, String methodName, List<ViewMethodParam> params) {
+			this.form = form;
+			this.field = field;
+			this.methodName = methodName;
+			this.params = params;
+		}
+
+		public static ViewInjection field(FieldInjection field) {
+			return new ViewInjection(Form.FIELD, field, null, null);
+		}
+
+		public static ViewInjection method(String methodName, List<ViewMethodParam> params) {
+			return new ViewInjection(Form.METHOD, null, methodName, params);
+		}
+	}
+
 	/** APT AppHandler parity: one @App injection target (no value param; type must be @EApplication). */
 	public static final class AppTarget {
 		public final String name;
@@ -368,7 +418,7 @@ public final class MvpModel {
 	public final String classSuffix;
 	public final int layoutId;
 	public final String layoutResName;
-	public final List<FieldInjection> viewByIds = new ArrayList<>();
+	public final List<ViewInjection> viewInjections = new ArrayList<>();
 	public final List<FieldInjection> stringRes = new ArrayList<>();
 	public final List<ResField> resFields = new ArrayList<>();
 	public final List<FieldInjection> extras = new ArrayList<>();

@@ -10,4 +10,16 @@
         android:layout_height="wrap_content"
         android:text="Bench Fragment 112" />
 
+
+    <Button
+        android:id="@+id/a"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:text="Param A" />
+
+    <Button
+        android:id="@+id/b"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:text="Param B" />
 </LinearLayout>

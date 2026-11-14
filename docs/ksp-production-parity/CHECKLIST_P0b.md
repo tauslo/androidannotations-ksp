@@ -10,7 +10,7 @@
 
 ## Carry-over from P0a（可选，建议穿插）
 
-- [ ] `@ViewById` **method-injection** form（单参数方法；对照 `ViewByIdHandler` + `MethodInjectionHandler`）
+- [x] `@ViewById` **method-injection** form（单参数方法；对照 `ViewByIdHandler` + `MethodInjectionHandler`）
 - [ ] Document / enforce `@Background` / `@UiThread` ordering relative to future `@Trace` / `@IgnoreWhen` / `@WakeLock`（对照 `CorePlugin` 注册顺序）
 - [x] Kotlin property → Java field/setter mapping review（含 primitive / `@JvmField`）；bench 里 kapt stub 直接写字段 vs KSP setter 的已知偏差是否可接受或需对齐
 - [x] Optional：emit `@NotNull`（或等价）on generated override params if APT does（CLASS retention；非公开 API 阻塞项）

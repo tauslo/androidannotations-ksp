@@ -36,6 +36,11 @@ class BenchFragment112 : Fragment() {
         println(b8)
     }
 
+    protected fun onParams(@ViewById a: Button, @ViewById b: Button) {
+        println(a)
+        println(b)
+    }
+
     @AfterInject
     protected fun afterInject() {
         println("after inject")

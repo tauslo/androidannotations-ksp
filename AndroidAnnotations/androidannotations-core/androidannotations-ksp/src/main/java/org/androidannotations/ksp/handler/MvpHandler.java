@@ -19,8 +19,10 @@ package org.androidannotations.ksp.handler;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import com.google.devtools.ksp.processing.Resolver;
 import com.google.devtools.ksp.symbol.ClassKind;
@@ -152,9 +154,9 @@ public final class MvpHandler {
 
 		KSAnnotation viewById = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.VIEW_BY_ID);
 		if (viewById != null) {
-			model.viewByIds.add(new MvpModel.FieldInjection(name, typeName, jvmField,
+			model.viewInjections.add(MvpModel.ViewInjection.field(new MvpModel.FieldInjection(name, typeName, jvmField,
 					KspAnnotationUtils.intArg(viewById, "value", AnnotationNames.RES_DEFAULT),
-					KspAnnotationUtils.stringArg(viewById, "resName", "")));
+					KspAnnotationUtils.stringArg(viewById, "resName", ""))));
 		}
 
 		KSAnnotation stringRes = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.STRING_RES);
@@ -367,6 +369,15 @@ public final class MvpHandler {
 		KSAnnotation onActivityResult = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.ON_ACTIVITY_RESULT);
 		if (onActivityResult != null) {
 			collectActivityResult(resolver, function, name, onActivityResult, model);
+		}
+
+		KSAnnotation viewByIdMethod = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.VIEW_BY_ID);
+		if (viewByIdMethod != null) {
+			collectViewByIdMethod(resolver, function, name, viewByIdMethod, model);
+		}
+		// APT parity: the method form and the parameter form are validated independently per element.
+		if (hasViewByIdParam(function)) {
+			collectViewByIdParams(resolver, function, name, model);
 		}
 	}
 
@@ -812,6 +823,136 @@ public final class MvpHandler {
 			}
 		}
 		return false;
+	}
+
+	/** APT CorePlugin parity: annotation types whose handlers target methods/parameters; @ViewById placement checks reject any of them on the wrong element. */
+	private static final Set<String> SUPPORTED_INJECTION_ANNOTATIONS = new HashSet<>(java.util.Arrays.asList(
+			AnnotationNames.E_APPLICATION, AnnotationNames.E_ACTIVITY, AnnotationNames.E_BEAN, AnnotationNames.E_FRAGMENT,
+			AnnotationNames.E_SERVICE, AnnotationNames.FRAGMENT_ARG, AnnotationNames.FRAGMENT_BY_ID, AnnotationNames.FRAGMENT_BY_TAG,
+			AnnotationNames.VIEW_BY_ID, AnnotationNames.CLICK, AnnotationNames.LONG_CLICK, AnnotationNames.OPTIONS_MENU,
+			AnnotationNames.OPTIONS_ITEM, AnnotationNames.OPTIONS_MENU_ITEM, AnnotationNames.INJECT_MENU, AnnotationNames.STRING_RES,
+			AnnotationNames.COLOR_RES, AnnotationNames.DRAWABLE_RES, AnnotationNames.COLOR_STATE_LIST_RES, AnnotationNames.BOOLEAN_RES,
+			AnnotationNames.INTEGER_RES, AnnotationNames.STRING_ARRAY_RES, AnnotationNames.TEXT_RES, AnnotationNames.TEXT_ARRAY_RES,
+			AnnotationNames.DIMENSION_RES, AnnotationNames.DIMENSION_PIXEL_SIZE_RES, AnnotationNames.DIMENSION_PIXEL_OFFSET_RES,
+			AnnotationNames.ANIMATION_RES, AnnotationNames.HTML_RES, AnnotationNames.LAYOUT_RES, AnnotationNames.ON_ACTIVITY_RESULT,
+			AnnotationNames.ON_ACTIVITY_RESULT_EXTRA, AnnotationNames.EXTRA, AnnotationNames.INSTANCE_STATE, AnnotationNames.AFTER_VIEWS,
+			AnnotationNames.BACKGROUND, AnnotationNames.UI_THREAD, AnnotationNames.AFTER_EXTRAS, AnnotationNames.SYSTEM_SERVICE,
+			AnnotationNames.APP, AnnotationNames.BEAN, AnnotationNames.AFTER_INJECT));
+
+	private static boolean hasSupportedAnnotation(Sequence<KSAnnotation> annotations) {
+		for (KSAnnotation annotation : SequencesKt.toList(annotations)) {
+			if (SUPPORTED_INJECTION_ANNOTATIONS.contains(KspAnnotationUtils.safeQualifiedName(annotation))) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static boolean isPrimitiveOrArray(String fullTypeName) {
+		if (fullTypeName.endsWith("[]")) {
+			return true;
+		}
+		switch (fullTypeName) {
+		case "int": case "long": case "boolean": case "float": case "double": case "short": case "byte": case "char":
+			return true;
+		default:
+			return false;
+		}
+	}
+
+	private static KSAnnotation findParamViewById(KSValueParameter param) {
+		for (KSAnnotation annotation : SequencesKt.toList(param.getAnnotations())) {
+			if (AnnotationNames.VIEW_BY_ID.equals(KspAnnotationUtils.safeQualifiedName(annotation))) {
+				return annotation;
+			}
+		}
+		return null;
+	}
+
+	private static boolean hasViewByIdParam(KSFunctionDeclaration function) {
+		for (KSValueParameter param : function.getParameters()) {
+			if (findParamViewById(param) != null) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** APT ViewByIdHandler + InjectHelper parity: @ViewById on a method with exactly one parameter. */
+	private void collectViewByIdMethod(Resolver resolver, KSFunctionDeclaration function, String name, KSAnnotation viewById, MvpModel model) {
+		List<KSValueParameter> params = function.getParameters();
+		boolean invalid = false;
+		if (params.size() != 1) {
+			model.errors.add("method annotated with ViewById can only have the following parameter: [ any type ]");
+			invalid = true;
+		}
+		for (KSValueParameter param : params) {
+			if (hasSupportedAnnotation(param.getAnnotations())) {
+				model.errors.add("method injection does only allow the annotation to be placed on the method OR on each parameter.");
+				invalid = true;
+			}
+		}
+		if (invalid) {
+			return;
+		}
+		KSValueParameter param = params.get(0);
+		String fullType = KspAnnotationUtils.fullTypeNameWithArgs(param.getType());
+		if (isPrimitiveOrArray(fullType)) {
+			model.errors.add("ViewById can only be used on a field which is a declared type");
+		}
+		if (!isViewSubtype(resolver, fullType)) {
+			model.errors.add("ViewById can only be used on an element that extends android.view.View");
+		}
+		if (function.getModifiers().contains(Modifier.PRIVATE)) {
+			model.errors.add("ViewById cannot be used on a private element");
+		}
+		model.viewInjections.add(MvpModel.ViewInjection.method(name, Collections.singletonList(
+				new MvpModel.ViewMethodParam(param.getName().asString(), samePackageRef(fullType, model),
+						KspAnnotationUtils.intArg(viewById, "value", AnnotationNames.RES_DEFAULT),
+						KspAnnotationUtils.stringArg(viewById, "resName", ""), name))));
+	}
+
+	/** APT ViewByIdHandler + InjectHelper parity: @ViewById on every parameter of a method; one validation call per annotated parameter. */
+	private void collectViewByIdParams(Resolver resolver, KSFunctionDeclaration function, String name, MvpModel model) {
+		List<KSValueParameter> params = function.getParameters();
+		boolean allAnnotated = true;
+		int annotatedCount = 0;
+		for (KSValueParameter param : params) {
+			if (findParamViewById(param) == null) {
+				allAnnotated = false;
+			} else {
+				annotatedCount++;
+			}
+		}
+		boolean methodHasSupported = hasSupportedAnnotation(function.getAnnotations());
+		if (!allAnnotated || methodHasSupported) {
+			for (int i = 0; i < annotatedCount; i++) {
+				if (!allAnnotated) {
+					model.errors.add("method annotated with ViewById can only have the following parameter: [ annotated with ViewById (multiple) ]");
+				}
+				if (methodHasSupported) {
+					model.errors.add("method injection does only allow the annotation to be placed on the method OR on each parameter.");
+				}
+			}
+			return;
+		}
+		for (KSValueParameter param : params) {
+			String fullType = KspAnnotationUtils.fullTypeNameWithArgs(param.getType());
+			if (isPrimitiveOrArray(fullType)) {
+				model.errors.add("ViewById can only be used on a field which is a declared type");
+			}
+			if (!isViewSubtype(resolver, fullType)) {
+				model.errors.add("ViewById can only be used on an element that extends android.view.View");
+			}
+		}
+		List<MvpModel.ViewMethodParam> targets = new ArrayList<>();
+		for (KSValueParameter param : params) {
+			KSAnnotation viewById = findParamViewById(param);
+			targets.add(new MvpModel.ViewMethodParam(param.getName().asString(), samePackageRef(KspAnnotationUtils.fullTypeNameWithArgs(param.getType()), model),
+					KspAnnotationUtils.intArg(viewById, "value", AnnotationNames.RES_DEFAULT),
+					KspAnnotationUtils.stringArg(viewById, "resName", ""), param.getName().asString()));
+		}
+		model.viewInjections.add(MvpModel.ViewInjection.method(name, targets));
 	}
 
 	/** APT AppHandler.processField parity: one assignment target in the init-body injection block. */
