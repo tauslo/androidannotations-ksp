@@ -865,3 +865,37 @@
 ### Next
 1. Application/Service（@EApplication/@App/@EService + Manifest checks，对照 APT EApplicationHandler/EServiceHandler/AppHandler；service/app UI→BG 顺序已提前修正）→ IntentBuilder Fragment overloads → 遗留 @ViewById 方法注入形式
 2. P0b exit acceptance（demo coverage、kapt-vs-ksp public API spot-check、known-deviations 文档声明、EXECUTION_LOG 标 P0b done + Next=P1）→ P1
+
+## Session 2026-11-14 — P0b: @EApplication/@EService/@App APT parity
+
+- **Agent**: Codex
+- **Goal slice**: P0b — @EApplication/@EService/@App（APT EApplicationHandler/EServiceHandler/AppHandler + CoreValidatorHelper.applicationRegistered parity）
+- **Git**: branch=`ksp/main` HEAD=`6ad018fe`（local only, not pushed）
+- **Status**: done（门禁通过；余 1 个既有 mismatch，见 Known limitations）
+
+### Done
+- **首次 fixture 覆盖**：@EApplication/@EService/@App 此前从未被 fixture 覆盖；新增 BenchApp（@EApplication）、BenchService（@EService，成员序=GT 注入序：@App field → @App method → @Bean field103 → @AfterInject → @UiThread → @Background）、BenchBean103（裸 @EBean）；Manifest application name=FQN + `<service android:name=".bench.BenchService_"/>`
+- **收集**（MvpHandler）：eApplication/eService 查找 + kind 链在 eFragment 后、eBean 前插 APPLICATION/SERVICE；collectAppField / collectAppMethod（恰一参数）/ collectAppParams（参数级，部分标注整块静默跳过，@Bean precedent）；findParamApp / hasAppParam；resolveAppTarget 查 @EApplication，缺失报 `"@App on 'x': <qn> must be annotated with @EApplication"`；生成名 = samePackageRef(generatedBeanQualifiedName(qn), model) 复用 bean helper
+- **gate 扩展**：@AfterInject + collectBeanField/Method/Params 四处 gate 改为仅 `kind == BEAN` 报错（消息文本保留原样，UI-only/@SystemService gate 未动）；BEAN 缺口保留
+- **校验**（ComponentValidator）：applicationRegistered 镜像 APT CoreValidatorHelper L95-121 —— isLibrary/manifest==null/qn==null → return；appClass!=null 且 !ABSTRACT 且 ≠生成 FQN → appClass==原始 FQN ? ERROR(FQN) : WARNING(FQN)；appClass==null → ERROR `"No application class registered in the AndroidManifest.xml"`（注意 APT 该消息用 FQN，与 componentRegistered 的 simple-name 消息不同）
+- **分发**（processor）：classes 收集加 E_APPLICATION/E_SERVICE；验证分发 ACTIVITY||SERVICE → componentRegistered / APPLICATION → applicationRegistered
+- **生成**（MvpJavaGenerator）：generateApplication —— 无 implements；`private static <Orig> INSTANCE_;`（字段类型=原始类，jcodemodel quirk）→ getInstance() → javadoc `Visible for testing purposes` + setForTesting(<Orig>) → onCreate{INSTANCE_=this; init_(); super.onCreate();} → init_ 体：resources_(条件)→stringRes→resFields(kind=APPLICATION, contextRef=this)→SystemService→AppInjections→BeanInjections→afterInject→UiThread/Background→nested classes
+- **generateService**：无 implements；先 appendIntentStaticMethod（intent(Context) 静态方法位于 init_ 之前，CorePlugin 注册序实证）→ init_ 体同上（SERVICE）→ onCreate{init_(); super.onCreate();} → UiThread/Background → 嵌套 `public static class IntentBuilder_ extends ServiceIntentBuilder<<Gen>.IntentBuilder_>`（构造 super(context, <Gen>.class)，无 extra、无 startForResult）→ appendNestedClasses；onDestroy 惰性不生成
+- **appendAppInjections**：FIELD form 复用 appendBeanAssign，表达式=无参静态 `<Gen>.getInstance()`；METHOD form 花括号块局部变量 null 声明+赋值+调用（仿 appendBeanInjections——APT 实证 BeanHandler/AppHandler 同走 injectHelper.process）；activity init_ 中插于 appendSystemServiceInjections 后、injectExtras_() 前（APT handler 序：App(179) 在 SystemService(176) 后、Extra(189) 前）
+- 门禁：GT 224 / KSP live 224、missing/KSP-only 均空、**MISMATCHES=1（仅既有 BenchActivity102_）**；回归备份刷新至 `C:\temp\ksp-p0b-appsvc`（224 文件，hash 全匹配）
+- mvn install androidannotations-ksp BUILD SUCCESS
+
+### 构建退出码说明
+- KSP 侧 GRADLE_EXIT=1：仅 9 个既有 Kotlin 错误（BenchActivity107×8 + BenchFragment109×1，lateinit-on-primitive 故意构造）；KSP 任务本身成功，224 文件全生成；按输出文件判定
+- kapt 侧 GT 目录刷新至 224（新增 BenchApp_/BenchService_/BenchBean103_）；activity-not-registered 警告为既有
+
+### Bugs discovered & fixed
+- BenchService.kt 缺 onBind：Service.onBind 抽象方法，KSP 与 kapt 两侧 kotlinc 均编译失败；补 `override fun onBind(intent: Intent?): IBinder? { return null }` + imports（Intent/IBinder）——fixture 侧修复，非生成器问题
+
+### Known limitations（未修复）
+- BenchActivity102_ 唯一 mismatch：既有已知限制（kapt stub 生成失败致 GT 文件不完整），KSP 输出与 pre-session 备份 `C:\temp\ksp-p0b-bean` SHA256 逐字节一致 = 非回归
+- AppWidgetManager minSdk<21 特殊路径未实现（@SystemService slice 遗留）
+
+### Next
+1. IntentBuilder Fragment overloads → 遗留 @ViewById 方法注入形式
+2. P0b exit acceptance（demo coverage、kapt-vs-ksp public API spot-check、known-deviations 文档声明、EXECUTION_LOG 标 P0b done + Next=P1）→ P1

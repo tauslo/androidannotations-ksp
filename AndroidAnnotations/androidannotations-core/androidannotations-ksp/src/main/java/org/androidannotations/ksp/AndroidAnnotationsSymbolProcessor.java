@@ -71,6 +71,8 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 		classes.addAll(toClassList(resolver.getSymbolsWithAnnotation(AnnotationNames.E_ACTIVITY, false)));
 		classes.addAll(toClassList(resolver.getSymbolsWithAnnotation(AnnotationNames.E_BEAN, false)));
 		classes.addAll(toClassList(resolver.getSymbolsWithAnnotation(AnnotationNames.E_FRAGMENT, false)));
+		classes.addAll(toClassList(resolver.getSymbolsWithAnnotation(AnnotationNames.E_APPLICATION, false)));
+		classes.addAll(toClassList(resolver.getSymbolsWithAnnotation(AnnotationNames.E_SERVICE, false)));
 
 		environment.prepare(resolver, containingFiles(classes));
 		if (!environment.isValid()) {
@@ -163,8 +165,10 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 			if (!written.add(fqcn)) {
 				continue;
 			}
-			if (model.kind == MvpModel.Kind.ACTIVITY) {
+			if (model.kind == MvpModel.Kind.ACTIVITY || model.kind == MvpModel.Kind.SERVICE) {
 				ComponentValidator.componentRegistered(classDeclaration, environment);
+			} else if (model.kind == MvpModel.Kind.APPLICATION) {
+				ComponentValidator.applicationRegistered(classDeclaration, environment);
 			}
 			if (resourcePackage == null && needsResourcePackage(model)) {
 				logger.error("AndroidAnnotations KSP: could not determine the resource package name for " + model.qualifiedName

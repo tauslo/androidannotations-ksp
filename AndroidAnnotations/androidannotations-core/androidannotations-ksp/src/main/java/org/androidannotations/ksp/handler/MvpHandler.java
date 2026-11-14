@@ -72,6 +72,8 @@ public final class MvpHandler {
 		KSAnnotation eActivity = KspAnnotationUtils.findAnnotation(classDeclaration.getAnnotations(), AnnotationNames.E_ACTIVITY);
 		KSAnnotation eBean = KspAnnotationUtils.findAnnotation(classDeclaration.getAnnotations(), AnnotationNames.E_BEAN);
 		KSAnnotation eFragment = KspAnnotationUtils.findAnnotation(classDeclaration.getAnnotations(), AnnotationNames.E_FRAGMENT);
+		KSAnnotation eApplication = KspAnnotationUtils.findAnnotation(classDeclaration.getAnnotations(), AnnotationNames.E_APPLICATION);
+		KSAnnotation eService = KspAnnotationUtils.findAnnotation(classDeclaration.getAnnotations(), AnnotationNames.E_SERVICE);
 
 		MvpModel.Kind kind;
 		int layoutId = AnnotationNames.RES_DEFAULT;
@@ -87,6 +89,10 @@ public final class MvpHandler {
 			layoutId = KspAnnotationUtils.intArg(eFragment, "value", AnnotationNames.RES_DEFAULT);
 			layoutResName = KspAnnotationUtils.stringArg(eFragment, "resName", "");
 			forceLayoutInjection = KspAnnotationUtils.booleanArg(eFragment, "forceLayoutInjection", false);
+		} else if (eApplication != null) {
+			kind = MvpModel.Kind.APPLICATION;
+		} else if (eService != null) {
+			kind = MvpModel.Kind.SERVICE;
 		} else if (eBean != null) {
 			kind = MvpModel.Kind.BEAN;
 			scope = KspAnnotationUtils.enumArg(eBean, "scope", "Default");
@@ -235,6 +241,11 @@ public final class MvpHandler {
 			collectBeanField(resolver, property, name, jvmField, model);
 		}
 
+		KSAnnotation app = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.APP);
+		if (app != null) {
+			collectAppField(resolver, property, name, jvmField, model);
+		}
+
 		KSAnnotation systemService = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.SYSTEM_SERVICE);
 		if (systemService != null) {
 			collectSystemServiceField(resolver, property, name, jvmField, model);
@@ -259,7 +270,7 @@ public final class MvpHandler {
 
 		KSAnnotation afterInject = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.AFTER_INJECT);
 		if (afterInject != null) {
-			if (model.kind != MvpModel.Kind.ACTIVITY && model.kind != MvpModel.Kind.FRAGMENT) {
+			if (model.kind == MvpModel.Kind.BEAN) {
 				model.errors.add("@AfterInject is only supported in @EActivity or @EFragment components: method '" + name + "'");
 			} else if (!function.getParameters().isEmpty()) {
 				model.errors.add("@AfterInject method '" + name + "' must have no parameters");
@@ -308,6 +319,13 @@ public final class MvpHandler {
 			collectBeanMethod(resolver, function, name, model);
 		} else if (hasBeanParam(function)) {
 			collectBeanParams(resolver, function, name, model);
+		}
+
+		KSAnnotation app = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.APP);
+		if (app != null) {
+			collectAppMethod(resolver, function, name, model);
+		} else if (hasAppParam(function)) {
+			collectAppParams(resolver, function, name, model);
 		}
 
 		KSAnnotation systemService = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.SYSTEM_SERVICE);
@@ -709,7 +727,7 @@ public final class MvpHandler {
 
 	/** APT BeanHandler.processField parity: one assignment target in the init-body injection block. */
 	private void collectBeanField(Resolver resolver, KSPropertyDeclaration property, String name, boolean jvmField, MvpModel model) {
-		if (model.kind != MvpModel.Kind.ACTIVITY && model.kind != MvpModel.Kind.FRAGMENT) {
+		if (model.kind == MvpModel.Kind.BEAN) {
 			model.errors.add("@Bean is only supported in @EActivity or @EFragment components: property '" + name + "'");
 			return;
 		}
@@ -727,7 +745,7 @@ public final class MvpHandler {
 
 	/** APT BeanHandler.processMethod parity: @Bean on a method with exactly one parameter. */
 	private void collectBeanMethod(Resolver resolver, KSFunctionDeclaration function, String name, MvpModel model) {
-		if (model.kind != MvpModel.Kind.ACTIVITY && model.kind != MvpModel.Kind.FRAGMENT) {
+		if (model.kind == MvpModel.Kind.BEAN) {
 			model.errors.add("@Bean is only supported in @EActivity or @EFragment components: method '" + name + "'");
 			return;
 		}
@@ -753,7 +771,7 @@ public final class MvpHandler {
 
 	/** APT BeanHandler.processParam parity: one shared braced block per method; the call is emitted only when ALL parameters are annotated. */
 	private void collectBeanParams(Resolver resolver, KSFunctionDeclaration function, String name, MvpModel model) {
-		if (model.kind != MvpModel.Kind.ACTIVITY && model.kind != MvpModel.Kind.FRAGMENT) {
+		if (model.kind == MvpModel.Kind.BEAN) {
 			model.errors.add("@Bean is only supported in @EActivity or @EFragment components: method '" + name + "'");
 			return;
 		}
@@ -794,6 +812,108 @@ public final class MvpHandler {
 			}
 		}
 		return false;
+	}
+
+	/** APT AppHandler.processField parity: one assignment target in the init-body injection block. */
+	private void collectAppField(Resolver resolver, KSPropertyDeclaration property, String name, boolean jvmField, MvpModel model) {
+		if (model.kind == MvpModel.Kind.BEAN) {
+			model.errors.add("@App is only supported in @EActivity or @EFragment components: property '" + name + "'");
+			return;
+		}
+		if (property.getModifiers().contains(Modifier.PRIVATE)) {
+			model.errors.add("@App property '" + name + "' must not be private");
+			return;
+		}
+		MvpModel.AppTarget target = resolveAppTarget(resolver, property.getType(), name, model);
+		if (target != null) {
+			model.apps.add(new MvpModel.AppInjection(MvpModel.AppInjection.Form.FIELD, name, jvmField,
+				Collections.singletonList(target)));
+		}
+	}
+
+	/** APT AppHandler.processMethod parity: @App on a method with exactly one parameter. */
+	private void collectAppMethod(Resolver resolver, KSFunctionDeclaration function, String name, MvpModel model) {
+		if (model.kind == MvpModel.Kind.BEAN) {
+			model.errors.add("@App is only supported in @EActivity or @EFragment components: method '" + name + "'");
+			return;
+		}
+		if (function.getModifiers().contains(Modifier.PRIVATE)) {
+			model.errors.add("@App method '" + name + "' must not be private");
+			return;
+		}
+		List<KSValueParameter> params = function.getParameters();
+		if (params.size() != 1) {
+			model.errors.add("@App method '" + name + "' must have exactly one parameter");
+			return;
+		}
+		MvpModel.AppTarget target = resolveAppTarget(resolver, params.get(0).getType(), name, model);
+		if (target != null) {
+			String declaredType = samePackageRef(KspAnnotationUtils.fullTypeNameWithArgs(params.get(0).getType()), model);
+			MvpModel.AppTarget local = new MvpModel.AppTarget(params.get(0).getName().asString(),
+				declaredType, target.appGeneratedQualifiedName);
+			model.apps.add(new MvpModel.AppInjection(MvpModel.AppInjection.Form.METHOD, name, false,
+				Collections.singletonList(local)));
+		}
+	}
+
+	/** APT AppHandler.processParam parity: one shared braced block per method; the call is emitted only when ALL parameters are annotated. */
+	private void collectAppParams(Resolver resolver, KSFunctionDeclaration function, String name, MvpModel model) {
+		if (model.kind == MvpModel.Kind.BEAN) {
+			model.errors.add("@App is only supported in @EActivity or @EFragment components: method '" + name + "'");
+			return;
+		}
+		if (function.getModifiers().contains(Modifier.PRIVATE)) {
+			model.errors.add("@App method '" + name + "' must not be private");
+			return;
+		}
+		List<MvpModel.AppTarget> targets = new ArrayList<>();
+		for (KSValueParameter param : function.getParameters()) {
+			KSAnnotation app = findParamApp(param);
+			if (app == null) {
+				return; // partially annotated: APT leaves dead locals, KSP skips the whole block without error
+			}
+			MvpModel.AppTarget target = resolveAppTarget(resolver, param.getType(), name, model);
+			if (target == null) {
+				return;
+			}
+			String declaredType = samePackageRef(KspAnnotationUtils.fullTypeNameWithArgs(param.getType()), model);
+			targets.add(new MvpModel.AppTarget(param.getName().asString(), declaredType, target.appGeneratedQualifiedName));
+		}
+		model.apps.add(new MvpModel.AppInjection(MvpModel.AppInjection.Form.METHOD, name, false, targets));
+	}
+
+	private static KSAnnotation findParamApp(KSValueParameter param) {
+		for (KSAnnotation annotation : SequencesKt.toList(param.getAnnotations())) {
+			if (AnnotationNames.APP.equals(KspAnnotationUtils.safeQualifiedName(annotation))) {
+				return annotation;
+			}
+		}
+		return null;
+	}
+
+	private static boolean hasAppParam(KSFunctionDeclaration function) {
+		for (KSValueParameter param : function.getParameters()) {
+			if (findParamApp(param) != null) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** APT AppHandler.assignValue parity: the injected application is the erasure of the element type; it must carry @EApplication. */
+	private MvpModel.AppTarget resolveAppTarget(Resolver resolver, KSTypeReference elementType, String name, MvpModel model) {
+		KSClassDeclaration appDecl = resolveClassDeclaration(resolver, KspAnnotationUtils.typeName(elementType));
+		if (appDecl == null || appDecl.getQualifiedName() == null) {
+			model.errors.add("@App on '" + name + "': could not resolve the injected application type");
+			return null;
+		}
+		String appQualifiedName = appDecl.getQualifiedName().asString();
+		KSAnnotation eApplication = KspAnnotationUtils.findAnnotation(appDecl.getAnnotations(), AnnotationNames.E_APPLICATION);
+		if (eApplication == null) {
+			model.errors.add("@App on '" + name + "': " + appQualifiedName + " must be annotated with @EApplication");
+			return null;
+		}
+		return new MvpModel.AppTarget(name, null, samePackageRef(generatedBeanQualifiedName(appQualifiedName), model));
 	}
 
 	/** APT AndroidSystemServices parity: full Java type name -> android.content.Context.* constant, in alphabetical order. */

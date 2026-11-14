@@ -70,4 +70,40 @@ public final class ComponentValidator {
 			}
 		}
 	}
+
+
+	/**
+	 * Mirrors APT {@code CoreValidatorHelper.applicationRegistered}: for an {@code @EApplication} component the manifest's
+	 * application class must be the generated one. Unlike {@link #componentRegistered} the messages use fully qualified
+	 * names, and a missing application class is an error rather than a warning.
+	 */
+	public static void applicationRegistered(KSClassDeclaration element, KspEnvironment environment) {
+		if (environment.isLibrary()) {
+			return;
+		}
+		AndroidManifest manifest = environment.getAndroidManifest();
+		if (manifest == null) {
+			return;
+		}
+
+		String qualifiedName = element.getQualifiedName() != null ? element.getQualifiedName().asString() : null;
+		if (qualifiedName == null) {
+			return;
+		}
+		String generatedQualifiedName = qualifiedName + environment.getClassSuffix();
+
+		String applicationClassName = manifest.getApplicationClassName();
+		if (applicationClassName != null) {
+			if (!element.getModifiers().contains(Modifier.ABSTRACT) && !applicationClassName.equals(generatedQualifiedName)) {
+				if (applicationClassName.equals(qualifiedName)) {
+					environment.getLogger().error("The AndroidManifest.xml file contains the original component, and not the AndroidAnnotations generated component." + " Please register "
+						+ generatedQualifiedName + " instead of " + qualifiedName, element);
+				} else {
+					environment.getLogger().warn("The component " + generatedQualifiedName + " is not registered in the AndroidManifest.xml file.", element);
+				}
+			}
+		} else {
+			environment.getLogger().error("No application class registered in the AndroidManifest.xml", element);
+		}
+	}
 }

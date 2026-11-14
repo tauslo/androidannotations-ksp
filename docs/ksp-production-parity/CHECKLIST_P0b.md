@@ -70,10 +70,10 @@
 
 ## Application / Service
 
-- [ ] `@EApplication` 生成类 + Manifest application 名校验
-- [ ] `@App` 注入
-- [ ] `@EService` 生成类 + Service `IntentBuilder_`
-- [ ] Service 组件 Manifest 注册校验（复用 `ComponentValidator`）
+- [x] `@EApplication` 生成类 + Manifest application 名校验
+- [x] `@App` 注入
+- [x] `@EService` 生成类 + Service `IntentBuilder_`
+- [x] Service 组件 Manifest 注册校验（复用 `ComponentValidator`）
 
 ---
 

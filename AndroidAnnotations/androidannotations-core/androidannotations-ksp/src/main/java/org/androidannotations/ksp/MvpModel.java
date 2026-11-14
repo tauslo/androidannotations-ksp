@@ -22,7 +22,7 @@ import java.util.List;
 public final class MvpModel {
 
 	public enum Kind {
-		ACTIVITY, BEAN, FRAGMENT
+		ACTIVITY, APPLICATION, BEAN, FRAGMENT, SERVICE
 	}
 
 	public static final class Param {
@@ -146,6 +146,39 @@ public final class MvpModel {
 		public final List<BeanTarget> targets;
 
 		public BeanInjection(Form form, String name, boolean jvmField, List<BeanTarget> targets) {
+			this.form = form;
+			this.name = name;
+			this.jvmField = jvmField;
+			this.targets = targets;
+		}
+	}
+
+	/** APT AppHandler parity: one @App injection target (no value param; type must be @EApplication). */
+	public static final class AppTarget {
+		public final String name;
+		/** METHOD form only: local declaration type of the injected parameter (full Java name incl. generics). */
+		public final String declaredType;
+		public final String appGeneratedQualifiedName;
+
+		public AppTarget(String name, String declaredType, String appGeneratedQualifiedName) {
+			this.name = name;
+			this.declaredType = declaredType;
+			this.appGeneratedQualifiedName = appGeneratedQualifiedName;
+		}
+	}
+
+	public static final class AppInjection {
+		public enum Form {
+			FIELD, METHOD
+		}
+
+		public final Form form;
+		public final String name;
+		/** FIELD form only: @JvmField means direct assignment instead of a setter call. */
+		public final boolean jvmField;
+		public final List<AppTarget> targets;
+
+		public AppInjection(Form form, String name, boolean jvmField, List<AppTarget> targets) {
 			this.form = form;
 			this.name = name;
 			this.jvmField = jvmField;
@@ -356,6 +389,7 @@ public final class MvpModel {
 	public final List<String> afterViews = new ArrayList<>();
 	public final List<String> afterExtras = new ArrayList<>();
 	public final List<BeanInjection> beans = new ArrayList<>();
+	public final List<AppInjection> apps = new ArrayList<>();
 	public final List<SystemServiceInjection> systemServices = new ArrayList<>();
 	public final List<String> afterInject = new ArrayList<>();
 	/** Validation failures recorded by the handler (it has no logger); the processor logs each and skips generation. */

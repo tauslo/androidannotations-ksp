@@ -18,9 +18,11 @@ package org.androidannotations.ksp;
 
 public final class AnnotationNames {
 
+	public static final String E_APPLICATION = "org.androidannotations.annotations.EApplication";
 	public static final String E_ACTIVITY = "org.androidannotations.annotations.EActivity";
 	public static final String E_BEAN = "org.androidannotations.annotations.EBean";
 	public static final String E_FRAGMENT = "org.androidannotations.annotations.EFragment";
+	public static final String E_SERVICE = "org.androidannotations.annotations.EService";
 	public static final String FRAGMENT_ARG = "org.androidannotations.annotations.FragmentArg";
 	public static final String FRAGMENT_BY_ID = "org.androidannotations.annotations.FragmentById";
 	public static final String FRAGMENT_BY_TAG = "org.androidannotations.annotations.FragmentByTag";
@@ -55,6 +57,7 @@ public final class AnnotationNames {
 	public static final String UI_THREAD = "org.androidannotations.annotations.UiThread";
 	public static final String AFTER_EXTRAS = "org.androidannotations.annotations.AfterExtras";
 	public static final String SYSTEM_SERVICE = "org.androidannotations.annotations.SystemService";
+	public static final String APP = "org.androidannotations.annotations.App";
 	public static final String BEAN = "org.androidannotations.annotations.Bean";
 	public static final String AFTER_INJECT = "org.androidannotations.annotations.AfterInject";
 	public static final String PARCEL_ANNOTATION = "org.parceler.Parcel";

@@ -49,6 +49,12 @@ public final class MvpJavaGenerator {
 		if (model.kind == MvpModel.Kind.FRAGMENT) {
 			return generateFragment(model);
 		}
+		if (model.kind == MvpModel.Kind.APPLICATION) {
+			return generateApplication(model);
+		}
+		if (model.kind == MvpModel.Kind.SERVICE) {
+			return generateService(model);
+		}
 		return generateBean(model);
 	}
 
@@ -106,6 +112,7 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 			appendResAssign(out, model.kind, resField);
 		}
 		appendSystemServiceInjections(out, model, "this");
+		appendAppInjections(out, model);
 		if (!model.extras.isEmpty() || !model.afterExtras.isEmpty()) {
 			out.append("\t\tinjectExtras_();\n");
 		}
@@ -593,6 +600,111 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 		out.append("\t}\n\n");
 	}
 
+	/** APT EApplicationHolder parity: singleton INSTANCE_ field, getInstance/setForTesting, onCreate assigns the instance. */
+	private String generateApplication(MvpModel model) {
+		StringBuilder out = new StringBuilder();
+		appendHeader(out, model);
+		out.append("public final class ").append(model.generatedSimpleName())
+			.append(" extends ").append(model.simpleName)
+			.append(" {\n\n");
+
+		out.append("\tprivate static ").append(model.simpleName).append(" INSTANCE_;\n\n");
+
+		out.append("\tpublic static ").append(model.simpleName).append(" getInstance() {\n");
+		out.append("\t\treturn INSTANCE_;\n");
+		out.append("\t}\n\n");
+
+		out.append("\t/**\n");
+		out.append("\t * Visible for testing purposes\n");
+		out.append("\t */\n");
+		out.append("\tpublic static void setForTesting(").append(model.simpleName).append(" application) {\n");
+		out.append("\t\tINSTANCE_ = application;\n");
+		out.append("\t}\n\n");
+
+		out.append("\t@Override\n");
+		out.append("\tpublic void onCreate() {\n");
+		out.append("\t\tINSTANCE_ = this;\n");
+		out.append("\t\tinit_();\n");
+		out.append("\t\tsuper.onCreate();\n");
+		out.append("\t}\n\n");
+
+		out.append("\tprivate void init_() {\n");
+		if (!model.stringRes.isEmpty() || !model.resFields.isEmpty()) {
+			out.append("\t\tandroid.content.res.Resources resources_ = this.getResources();\n");
+		}
+		for (MvpModel.FieldInjection injection : model.stringRes) {
+			String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "string", injection.propertyName, injection.resId, injection.resName, rClassIndex);
+			appendAssign(out, injection, "resources_.getString(" + resExpr + ")");
+		}
+		for (MvpModel.ResField resField : model.resFields) {
+			appendResAssign(out, MvpModel.Kind.APPLICATION, resField);
+		}
+		appendSystemServiceInjections(out, model, "this");
+		appendAppInjections(out, model);
+		appendBeanInjections(out, model);
+		for (String method : model.afterInject) {
+			out.append("\t\t").append(method).append("();\n");
+		}
+		out.append("\t}\n\n");
+
+		appendUiThreadMethods(out, model);
+		appendBackgroundMethods(out, model);
+
+		appendNestedClasses(out, model);
+		out.append("}\n");
+		return out.toString();
+	}
+
+	/** APT EServiceHolder parity: intent() static factory before init_, onCreate calls init_ then super; nested ServiceIntentBuilder. */
+	private String generateService(MvpModel model) {
+		StringBuilder out = new StringBuilder();
+		appendHeader(out, model);
+		out.append("public final class ").append(model.generatedSimpleName())
+			.append(" extends ").append(model.simpleName)
+			.append(" {\n\n");
+
+		appendIntentStaticMethod(out, model);
+
+		out.append("\tprivate void init_() {\n");
+		if (!model.stringRes.isEmpty() || !model.resFields.isEmpty()) {
+			out.append("\t\tandroid.content.res.Resources resources_ = this.getResources();\n");
+		}
+		for (MvpModel.FieldInjection injection : model.stringRes) {
+			String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "string", injection.propertyName, injection.resId, injection.resName, rClassIndex);
+			appendAssign(out, injection, "resources_.getString(" + resExpr + ")");
+		}
+		for (MvpModel.ResField resField : model.resFields) {
+			appendResAssign(out, MvpModel.Kind.SERVICE, resField);
+		}
+		appendSystemServiceInjections(out, model, "this");
+		appendAppInjections(out, model);
+		appendBeanInjections(out, model);
+		for (String method : model.afterInject) {
+			out.append("\t\t").append(method).append("();\n");
+		}
+		out.append("\t}\n\n");
+
+		out.append("\t@Override\n");
+		out.append("\tpublic void onCreate() {\n");
+		out.append("\t\tinit_();\n");
+		out.append("\t\tsuper.onCreate();\n");
+		out.append("\t}\n\n");
+
+		appendUiThreadMethods(out, model);
+		appendBackgroundMethods(out, model);
+
+		String generated = model.generatedSimpleName();
+		out.append("\tpublic static class IntentBuilder_ extends org.androidannotations.api.builder.ServiceIntentBuilder<").append(generated).append(".IntentBuilder_> {\n\n");
+		out.append("\t\tpublic IntentBuilder_(android.content.Context context) {\n");
+		out.append("\t\t\tsuper(context, ").append(generated).append(".class);\n");
+		out.append("\t\t}\n\n");
+		out.append("\t}\n\n");
+
+		appendNestedClasses(out, model);
+		out.append("}\n");
+		return out.toString();
+	}
+
 	private String generateBean(MvpModel model) {
 		StringBuilder out = new StringBuilder();
 		appendHeader(out, model);
@@ -856,6 +968,31 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 			out.append("\t\tthis.").append(propertyName).append(" = ").append(expression).append(";\n");
 		} else {
 			out.append("\t\t").append(setterName(propertyName)).append("(").append(expression).append(");\n");
+		}
+	}
+
+	/** APT AppHandler parity: field assigns / braced method blocks inside the init-body injection block (no-arg static getInstance()). */
+	private void appendAppInjections(StringBuilder out, MvpModel model) {
+		for (MvpModel.AppInjection app : model.apps) {
+			if (app.form == MvpModel.AppInjection.Form.FIELD) {
+				MvpModel.AppTarget target = app.targets.get(0);
+				appendBeanAssign(out, app.name, app.jvmField, target.appGeneratedQualifiedName + ".getInstance()");
+			} else {
+				out.append("\t\t{\n");
+				for (MvpModel.AppTarget target : app.targets) {
+					out.append("\t\t\t").append(target.declaredType).append(' ').append(target.name).append(" = null;\n");
+					out.append("\t\t\t").append(target.name).append(" = ").append(target.appGeneratedQualifiedName).append(".getInstance();\n");
+				}
+				out.append("\t\t\t").append(app.name).append('(');
+				for (int i = 0; i < app.targets.size(); i++) {
+					if (i > 0) {
+						out.append(", ");
+					}
+					out.append(app.targets.get(i).name);
+				}
+				out.append(");\n");
+				out.append("\t\t}\n");
+			}
 		}
 	}
 
