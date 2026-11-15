@@ -54,4 +54,55 @@ Command: `examples/kotlin-bench` → `.\gradlew.bat kspDebugKotlin "-Paa.process
 
 Processor time for one changed file was about 12× lower than the 249-class round (3074 ms → 252 ms). Gradle wall for `:kspDebugKotlin` was 11 s → 5 s. The empty second round (`generated 0 class(es)`) is still there.
 
-`Dependencies` in `AndroidAnnotationsSymbolProcessor.writeJavaSource` is non-aggregating and lists only the annotated type's source file. A same-file edit invalidates that generated class, which matches the one-file spot. A superclass in another file, or an `@Bean` / `@App` / `@Pref` target, is not an originating file, so those edits do not invalidate the generated subclass. That negative case is still open.
+The spot above used a processor that listed only the annotated type's own source file. The next section replaces that dependency behavior and records repeated timings.
+
+## Incremental KSP (2026-11-16, after originating-file fix)
+
+Same machine and toolchain as the cold table. JDK confirmed this run: OpenJDK 17.0.21 (Corretto 17.0.21.0.10). Working tree also had the pre-existing uncommitted `BenchActivity113.java` and a local edit to `BenchActivity102.kt`, so the processor reports **251** classes, matching the previous session's note. Those bench files are not part of this change.
+
+`writeJavaSource` stays non-aggregating. Each generated file now also lists, when a `KSFile` is already in hand:
+
+- the annotated type's own source
+- a superclass source that currently declares AndroidAnnotations member or parameter annotations
+- `@Bean` / `@App` / `@Pref` target sources resolved from symbols this compilation already holds
+- nested `@EBean` / `@SharedPref` sources inlined into that output (same-file nests dedupe)
+
+Not listed: `R` and `AndroidManifest.xml` (read outside the symbol model), classpath / other-module types with no `KSFile`, and a superclass that currently has no AndroidAnnotations member annotations. Adding the first such annotation on a clean superclass does not invalidate subclasses until a later round sees it.
+
+Commands, from `examples/kotlin-bench`:
+
+```
+.\gradlew.bat --stop
+Remove-Item -Recurse -Force .\build
+.\gradlew.bat kspDebugKotlin --no-build-cache --refresh-dependencies "-Paa.processor=ksp"
+.\gradlew.bat kspDebugKotlin --rerun-tasks --no-build-cache "-Paa.processor=ksp"
+.\gradlew.bat kspDebugKotlin --no-build-cache "-Paa.processor=ksp"
+```
+
+| Scenario | Runs | Median | Processor log |
+|----------|------|--------|----------------|
+| Cold `:kspDebugKotlin` (daemon stopped, `build/` deleted, 1 run) | wall 110.9 s | n/a (single) | 251 classes in 11703 ms, empty round 362 ms |
+| Warm full `:kspDebugKotlin --rerun-tasks` (1 run) | wall 20.48 s | n/a (single) | 251 classes in 6319 ms, empty round 210 ms |
+| Touch `BenchActivity001.kt` only, 3× | 8.36, 8.14, 6.93 s | **8.14 s** | 756, 470, 366 ms; median **470 ms**. Empty round 292, 189, 74 ms; median 189 ms. Each run `generated 1` |
+
+The cold assemble median in the table above was not re-run. This cold `:kspDebugKotlin` is one task timing, not a new assemble baseline.
+
+Touching `BenchActivity001.kt` rewrote `BenchActivity001_.java` and left `BenchActivity002_.java` untouched. Wall time versus the warm full task was about 2.5× lower (20.48 s → 8.14 s). Processor time was about 13× lower (6319 ms → 470 ms). The empty second round is still there.
+
+### Manual dependency checks
+
+Touch only `BenchBean001.kt` (injected by `BenchActivity112`). `:kspDebugKotlin` logged `generated 7` in 384 ms (wall 6.41 s). Rewritten outputs:
+
+- `BenchBean001_` (its own file)
+- `BenchActivity112_` (the injector)
+- `BenchBean002_`, `BenchBean003_`, `BenchBean004_`, `BenchBean101_` (the other `@Bean` targets of that same activity)
+- `BenchProvider_` (it injects `BenchBean101`)
+
+KSP reprocesses every originating file of an invalidated output. Those sibling beans are then dirty too, so a provider that injects one of them is regenerated. Unrelated activities were not in the changed set.
+
+Superclass check used two temporary files, not committed, so the bench corpus stayed the same:
+
+- `BenchInheritBase.kt`: abstract `Activity` with `@Extra inheritedExtra`
+- `BenchInheritChild.kt`: `@EActivity` subclass
+
+The child output contained `inheritedExtra` on `IntentBuilder_`. Touching only the base then logged `generated 1` in 417 ms (wall 6.67 s) and rewrote only `BenchInheritChild_.java`.

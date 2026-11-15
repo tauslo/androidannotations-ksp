@@ -19,6 +19,8 @@ package org.androidannotations.ksp;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.google.devtools.ksp.symbol.KSFile;
+
 public final class MvpModel {
 
 	public enum Kind {
@@ -986,6 +988,12 @@ public final class MvpModel {
 	public final boolean nested;
 	/** Directly nested annotated models, inlined into this model's generated source (set by the processor). */
 	public final List<MvpModel> nestedModels = new ArrayList<>();
+	/**
+	 * Source files other than this type's own file that were read into the model: a superclass that declares
+	 * AndroidAnnotations member or parameter annotations, and a {@code @Bean} / {@code @App} / {@code @Pref} target
+	 * whose declaration was already resolved to a source file. Null classpath files are not stored.
+	 */
+	public final List<KSFile> extraOriginatingFiles = new ArrayList<>();
 	/** @EBean scope name: Default / Activity / Fragment / Singleton ("Default" when unspecified). */
 	public final String scope;
 	/** True when @EFragment(forceLayoutInjection=true): onCreateView inflates even if the host already created a view. */
@@ -1109,6 +1117,20 @@ public final class MvpModel {
 
 	public String preferenceClickListener() {
 		return preferenceBaseClass() + ".OnPreferenceClickListener";
+	}
+
+	/** Records a source file this model read. Classpath declarations have a null file and are ignored. */
+	public void addOriginatingFile(KSFile file) {
+		if (file == null) {
+			return;
+		}
+		String path = file.getFilePath();
+		for (KSFile existing : extraOriginatingFiles) {
+			if (path.equals(existing.getFilePath())) {
+				return;
+			}
+		}
+		extraOriginatingFiles.add(file);
 	}
 
 	public String generatedSimpleName() {

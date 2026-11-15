@@ -8,11 +8,11 @@
 
 ## Measurement hygiene
 
-- [x] 固定工具链：Kotlin 2.1.10 / KSP 2.1.10-1.0.31 / AGP 8.7.3 / Gradle 8.11.1 / JDK 17（与 `BENCHMARK.md` / PLAYBOOK 一致，本轮未改版本）
-- [ ] 场景至少三条：冷全量、热全量、`改 1 个源文件` 增量。冷全量 assemble 已有 3 次中位数。热全量未测。改 1 文件只有单次 spot（见 `BENCHMARK.md`），未做 3 次中位数
-- [ ] 每场景 ≥3 次取中位数；`--no-build-cache`；daemon stop + 删 `build/`（冷）。仅冷 assemble 满足；增量 spot 是单次、daemon 未停
-- [ ] 分别记录：总 `assembleDebug`、`:kspDebugKotlin` / `:kaptDebugKotlin`、处理器自打日志耗时。冷 assemble 有总数；处理器耗时有单次日志。三条场景的拆分计时仍缺
-- [x] 更新 `BENCHMARK.md`（冷全量结论保留，并写入 2026-11-16 的单次增量 spot）
+- [x] 固定工具链：Kotlin 2.1.10 / KSP 2.1.10-1.0.31 / AGP 8.7.3 / Gradle 8.11.1 / JDK 17（本轮 `java -version` 为 Corretto 17.0.21，未改版本）
+- [ ] 场景至少三条：冷全量、热全量、`改 1 个源文件` 增量。冷全量 assemble 仍是既有 3 次中位数，本轮没有重跑。另有 1 次冷 `:kspDebugKotlin`（墙钟 110.9 s）和 1 次热全量 `--rerun-tasks`（墙钟 20.48 s）。改 1 个 Activity 已有 3 次中位数（墙钟 8.14 s），见 `BENCHMARK.md`
+- [ ] 每场景 ≥3 次取中位数；`--no-build-cache`；daemon stop + 删 `build/`（冷）。冷 assemble 仍满足。本轮增量 3 次用了 `--no-build-cache`，但 daemon 保持运行（增量需要它）。冷 `:kspDebugKotlin` 与热全量都只跑了 1 次
+- [ ] 分别记录：总 `assembleDebug`、`:kspDebugKotlin` / `:kaptDebugKotlin`、处理器自打日志耗时。冷 assemble 有总数。本轮记下了冷/热/增量的 `:kspDebugKotlin` 墙钟和 `generated N` 日志。没有新的 assemble 拆分，也没有 kapt 对照
+- [x] 更新 `BENCHMARK.md`（冷全量结论保留，并写入 2026-11-16 的 3 次增量中位数、1 次热全量和 1 次冷 `:kspDebugKotlin`）
 
 ---
 
@@ -27,11 +27,11 @@
 
 ## Incremental KSP
 
-- [ ] `Dependencies` 正确声明 originating files（含父类注解、嵌套 bean、@Bean 依赖的生成类）。2026-11-16 复核：`writeJavaSource` 仍是 `new Dependencies(false, containingFile)`，只挂注解类自己的源文件。同文件嵌套类因此会一起失效；另一个文件里的父类、`@Bean` / `@App` / `@Pref` 目标、R / Manifest 都没有声明。负例仍开放，代码处有注释
-- [ ] 跨模块 `@Bean`：依赖已编译的 `*_` 字节码时的增量失效策略
-- [ ] 改 1 个 Activity：只重生相关 `*_`，不触碰无关类
-- [ ] 负例：改父类注解成员 → 子类生成类失效并重生
-- [ ] 负例：改 `@EBean` → 注入方 Activity 生成类失效
+- [x] `Dependencies` 声明本轮能廉价拿到的 originating files。非聚合。包含：注解类自己的源文件；当前带有 AndroidAnnotations 成员/参数注解的父类源文件（有 `KSFile` 时）；本编译里已经解析到的 `@Bean` / `@App` / `@Pref` 目标源文件；写进外层生成类的嵌套 `@EBean` / `@SharedPref` 源文件（同文件会去重）。仍不包含：`R` / `AndroidManifest.xml`、没有 `KSFile` 的跨模块字节码、当前没有 AA 成员注解的父类。见 `KNOWN_DEVIATIONS.md` 与 `BENCHMARK.md`
+- [ ] 跨模块 `@Bean`：依赖已编译的 `*_` 字节码时的增量失效策略。classpath 类型 `getContainingFile()` 为 null，本轮故意不登记
+- [x] 改 1 个 Activity：只重生相关 `*_`，不触碰无关类。3 次改 `BenchActivity001.kt` 都是 `generated 1`，`BenchActivity001_` 更新，`BenchActivity002_` 不变
+- [x] 负例：改父类注解成员 → 子类生成类失效并重生。临时两个文件（未入库）：`BenchInheritBase` 的 `@Extra` 被子类 `BenchInheritChild` 收进 `IntentBuilder_`；只改父类后 `generated 1`，只重写 `BenchInheritChild_`
+- [x] 负例：改 `@EBean` → 注入方 Activity 生成类失效。只改 `BenchBean001.kt` 后 `BenchActivity112_` 重写（`generated 7`）。同一次还重写了该 Activity 的其他 `@Bean` 目标（002/003/004/101）以及注入 `BenchBean101` 的 `BenchProvider_`。KSP 会把失效输出的全部 originating files 再处理一遍，所以会连带这些类；无关 Activity 不在变更列表里
 
 ---
 
@@ -45,6 +45,6 @@
 
 ## Acceptance
 
-- [ ] 增量「改 1 文件」相对当前全量 KSP 有稳定数量级改善（预期常见 **2–5×+** 体感；以实测为准）
-- [ ] 冷全量不显著回退（允许小波动）
-- [ ] `EXECUTION_LOG` 记录数字与复现命令
+- [x] 增量「改 1 文件」相对当前全量 KSP 有稳定数量级改善（预期常见 **2–5×+** 体感；以实测为准）。对比同一次热全量 `:kspDebugKotlin`：墙钟 20.48 s → 中位数 8.14 s（约 2.5×），处理器 6319 ms → 中位数 470 ms（约 13×）。3 次增量都是 `generated 1`
+- [ ] 冷全量不显著回退（允许小波动）。本轮没有重跑 3 次冷 `assembleDebug`。1 次冷 `:kspDebugKotlin` 不能代替那条基线
+- [x] `EXECUTION_LOG` 记录数字与复现命令

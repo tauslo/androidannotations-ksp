@@ -84,7 +84,7 @@ org.androidannotations.ksp/
 - `examples/kotlin` / `kotlin-bench`；冷全量 vs kapt 约 −22.6%（`BENCHMARK.md`）
 - Bench APT vs KSP 公开 API spot-check：DECL/SIG 0 mismatch（body 允许等价改写）
 
-**下一步：** core 注解除过时的 `@HierarchyViewerSupport` 外都已生成。`@MovieRes` 在当前 AGP 上没有 `R.movie`，不能当可编译能力。PERF 的「改 1 文件」只有单次 spot（见 `BENCHMARK.md`），3 次中位数和 `Dependencies` 父类 / `@Bean` 失效仍开放。ORMLite / REST-Spring 保持默认跳过，直到业务确认仍依赖对应 artifact。P0b 已完成，见 [`CHECKLIST_P0b.md`](CHECKLIST_P0b.md)。
+**功能核心已完成。** core 注解除过时的 `@HierarchyViewerSupport` 外都已生成。`@MovieRes` 在当前 AGP 上没有 `R.movie`，不能当可编译能力。PERF 增量只做了一部分：originating files 已覆盖能拿到 `KSFile` 的父类注解、`@Bean` / `@App` / `@Pref` 和嵌套类型；「改 1 个 Activity」有 3 次中位数（见 `BENCHMARK.md`）。热全量只有 1 次，冷 assemble 没有重跑，处理器空第二轮、跨模块字节码、`R` / Manifest 仍开放。ORMLite / REST-Spring 保持默认跳过，直到业务确认仍依赖对应 artifact。P0b 已完成，见 [`CHECKLIST_P0b.md`](CHECKLIST_P0b.md)。
 
 关键源码：
 

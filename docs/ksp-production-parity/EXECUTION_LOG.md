@@ -1257,3 +1257,48 @@
 2. ORMLite / REST-Spring 仅在业务确认依赖后另开一期。RoboGuice / Otto 不再排期
 3. `@HierarchyViewerSupport` 保持不做
 
+## Session 2026-11-16 — PERF originating files and incremental timings
+
+- **Agent**: Cursor Grok
+- **Goal slice**: PERF — 补 KSP `Dependencies` 能廉价拿到的 originating files，并给「改 1 个 Activity」做 3 次中位数。不 push
+- **Git**: branch=`ksp/main`，local only, not push
+- **Status**: done for this slice（增量只完成一部分）
+
+### Done
+- `writeJavaSource` 仍是非聚合。生成类现在还会登记：当前带有 AndroidAnnotations 成员/参数注解的父类源文件；本编译里已经解析到的 `@Bean` / `@App` / `@Pref` 目标源文件；内联进外层输出的嵌套 `@EBean` / `@SharedPref` 源文件。同文件去重。没有 `KSFile` 的不登记
+- 功能核心保持完成。本轮不改生成文本，只改失效依赖
+- 测量写进根目录 `BENCHMARK.md`。冷 assemble 的 3 次中位数没有重跑
+
+### PERF 数字
+命令都在 `examples/kotlin-bench`，`-Paa.processor=ksp`，`--no-build-cache`。JDK Corretto 17.0.21。工作区里原有未提交的 `BenchActivity113.java` 和 `BenchActivity102.kt` 改动，所以日志是 **251** 个类，不是干净树的更小数字。这两个 bench 文件不进本次提交。
+
+- 冷 `:kspDebugKotlin`（`--stop`，删 `build/`，`--refresh-dependencies`，1 次）：墙钟 110.9 s；`generated 251` / 11703 ms，空轮 362 ms
+- 热全量 `:kspDebugKotlin --rerun-tasks`（1 次）：墙钟 20.48 s；`generated 251` / 6319 ms，空轮 210 ms
+- 只改 `BenchActivity001.kt`，3 次：墙钟 8.36 / 8.14 / 6.93 s，中位数 **8.14 s**。处理器 756 / 470 / 366 ms，中位数 **470 ms**。每次 `generated 1`。`BenchActivity001_` 更新，`BenchActivity002_` 不变
+- 相对热全量：墙钟约 2.5×，处理器约 13×。空的第二轮还在
+- 只改 `BenchBean001.kt`：`generated 7` / 384 ms（墙钟 6.41 s）。重写 `BenchBean001_`、注入方 `BenchActivity112_`，以及该 Activity 的其他 bean 目标 `BenchBean002_` / `003_` / `004_` / `101_` 和注入 `BenchBean101` 的 `BenchProvider_`。这是 KSP 把失效输出的全部 originating files 再处理一遍，不是全量 251
+- 父类负例用了两个临时文件（已删，未入库）：`BenchInheritBase` 的 `@Extra` 进入 `BenchInheritChild_.IntentBuilder_`。只改父类后 `generated 1` / 417 ms，只重写 `BenchInheritChild_`
+
+### 仍开放
+- `R` / Manifest、跨模块字节码（无 `KSFile`）、当前没有 AA 成员注解的父类
+- 热全量与冷 `:kspDebugKotlin` 都只有 1 次；冷 assemble 未重跑，不能宣称冷全量没有回退
+- 处理器效率：空第二轮、`written` 去重、R/Manifest 缓存、默认日志级别
+- kotlin-bench corpus 勾选（没有生成脚本）
+
+### Changed paths
+- `androidannotations-ksp`：`AndroidAnnotationsSymbolProcessor`、`MvpModel`、`handler/MvpHandler`
+- docs：`CHECKLIST_PERF`、`KNOWN_DEVIATIONS`、`PLAYBOOK`、`EXECUTION_LOG`；根 `BENCHMARK.md`
+
+### Verify
+- [x] `mvnw -pl androidannotations-core/androidannotations-ksp -am install -DskipTests -Dmaven.javadoc.skip=true` BUILD SUCCESS
+- [x] `examples/kotlin-bench` `:kspDebugKotlin -Paa.processor=ksp`：冷启动 `generated 251`；增量行为见上
+- [x] `:compileDebugKotlin` EXIT=1，只有既有 `lateinit` 原始类型错误（`BenchActivity107` 与 `BenchFragment109`），无新增 Kotlin 错误
+
+### Blockers
+- none（`compileDebugKotlin` 的 EXIT=1 是既有 fixture，见 KNOWN_DEVIATIONS #5）
+
+### Next
+1. PERF 仍开放的部分：热全量再补到 ≥3 次；冷 assemble 若要证明没有回退再重跑 3 次。空第二轮和跨模块字节码另做
+2. ORMLite / REST-Spring 仅在业务确认依赖后另开一期。RoboGuice / Otto 不再排期
+3. `@HierarchyViewerSupport` 保持不做
+

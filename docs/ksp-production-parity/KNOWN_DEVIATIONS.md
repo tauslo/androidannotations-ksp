@@ -33,6 +33,24 @@
    - 无 res 值时，Click / Change 的 R.string 名会去掉后缀 `PreferenceClicked` / `PreferenceChanged`（与 APT `extractElementName` 相同）。
    - `@IntArrayRes` 生成 `resources_.getIntArray`。`@MovieRes` 生成 `resources_.getMovie(R.movie.*)`。当前 AGP / aapt2 没有 `res/movie`，编不出 `R.movie`，所以 `@MovieRes` 没有可编译的 bench fixture。
 
+## 增量 originating files
+
+`Dependencies` 仍是非聚合。生成类会登记这些源文件（能拿到 `KSFile` 时）：
+
+- 注解类型自己的源文件
+- 父类源文件，且该父类当前声明了 AndroidAnnotations 的成员或参数注解
+- 本轮已经解析到的 `@Bean` / `@App` / `@Pref` 目标声明所在文件
+- 被内联进外层生成类的嵌套 `@EBean` / `@SharedPref` 所在文件（同一文件会去重）
+
+仍然不会失效、或只在更宽的一次编译里才会跟上的情况：
+
+1. **`R` 与 `AndroidManifest.xml`。** 它们由环境直接读文件，不是符号上的 `KSFile`。改资源或 manifest 不会单靠这条依赖让 `*_` 重生。
+2. **跨模块 / classpath 字节码。** `getContainingFile()` 为 null。已编译的 `@EBean` / `@EApplication` / `@SharedPref` 被别的模块注入时，注入方生成类不会因此失效。
+3. **当前没有 AA 成员注解的父类。** 抽取器会走过它，但不登记。之后在这个父类上第一次加上注解，子类生成类不会失效，直到一次能重新看到该注解的编译。
+4. **同一输出的多个 originating files 会连带重处理。** 只改 `BenchBean001.kt` 时，`BenchActivity112_` 会重生；KSP 还会再处理该 Activity 登记的其他 bean 文件，于是 `BenchBean002_` / `003_` / `004_` / `101_` 以及注入 `BenchBean101` 的 `BenchProvider_` 一并重生。无关 Activity 不会。
+
+手工负例（临时文件，未入库）和 3 次增量数字见根目录 `BENCHMARK.md`。
+
 ## 流程约束
 
 - `ksp/main` 分支**仅本地 commit，禁止 push**（用户未要求远程同步；exit acceptance 的 Push 项按 N/A 处理）。

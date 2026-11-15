@@ -26,6 +26,7 @@ import java.util.Set;
 
 import com.google.devtools.ksp.processing.Resolver;
 import com.google.devtools.ksp.symbol.ClassKind;
+import com.google.devtools.ksp.symbol.KSAnnotated;
 import com.google.devtools.ksp.symbol.KSAnnotation;
 import com.google.devtools.ksp.symbol.KSClassDeclaration;
 import com.google.devtools.ksp.symbol.KSDeclaration;
@@ -183,6 +184,11 @@ public final class MvpHandler {
 
 		collectMembers(resolver, classDeclaration.getDeclarations(), model);
 		for (KSClassDeclaration ancestor : superclasses(classDeclaration)) {
+			// Only a superclass that already contributes AA member/parameter annotations. A clean superclass is not
+			// an originating file, so the first annotation added there does not invalidate this subclass.
+			if (ancestorContributesAnnotations(ancestor)) {
+				model.addOriginatingFile(ancestor.getContainingFile());
+			}
 			collectMembers(resolver, ancestor.getDeclarations(), model);
 		}
 		if ((kind == MvpModel.Kind.VIEW || kind == MvpModel.Kind.VIEW_GROUP) && model.viewConstructors.isEmpty()) {
@@ -217,6 +223,39 @@ public final class MvpHandler {
 		}
 		Collections.reverse(chain);
 		return chain;
+	}
+
+	/**
+	 * True when {@code ancestor} declares an AndroidAnnotations annotation on a member or parameter that
+	 * {@link #collectMembers} will read. Class-level annotations are not collected from ancestors (APT parity).
+	 */
+	private boolean ancestorContributesAnnotations(KSClassDeclaration ancestor) {
+		for (KSDeclaration declaration : SequencesKt.toList(ancestor.getDeclarations())) {
+			if (!(declaration instanceof KSPropertyDeclaration) && !(declaration instanceof KSFunctionDeclaration)) {
+				continue;
+			}
+			if (hasAndroidAnnotation(declaration)) {
+				return true;
+			}
+			if (declaration instanceof KSFunctionDeclaration) {
+				for (KSValueParameter param : ((KSFunctionDeclaration) declaration).getParameters()) {
+					if (hasAndroidAnnotation(param)) {
+						return true;
+					}
+				}
+			}
+		}
+		return false;
+	}
+
+	private static boolean hasAndroidAnnotation(KSAnnotated annotated) {
+		for (KSAnnotation annotation : SequencesKt.toList(annotated.getAnnotations())) {
+			String name = KspAnnotationUtils.safeQualifiedName(annotation);
+			if (name != null && name.startsWith("org.androidannotations.annotations.")) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private void collectProperty(Resolver resolver, KSPropertyDeclaration property, MvpModel model) {
@@ -1764,6 +1803,7 @@ public final class MvpHandler {
 			model.errors.add("@App on '" + name + "': " + appQualifiedName + " must be annotated with @EApplication");
 			return null;
 		}
+		model.addOriginatingFile(appDecl.getContainingFile());
 		return new MvpModel.AppTarget(name, null, samePackageRef(generatedBeanQualifiedName(appQualifiedName), model));
 	}
 
@@ -1997,6 +2037,7 @@ public final class MvpHandler {
 		}
 		String scope = KspAnnotationUtils.enumArg(eBean, "scope", "Default");
 		boolean withRootFragmentArg = !"Singleton".equals(scope) && !"Activity".equals(scope);
+		model.addOriginatingFile(beanDecl.getContainingFile());
 		return new MvpModel.BeanTarget(name, null, samePackageRef(generatedBeanQualifiedName(beanQualifiedName), model), withRootFragmentArg);
 	}
 

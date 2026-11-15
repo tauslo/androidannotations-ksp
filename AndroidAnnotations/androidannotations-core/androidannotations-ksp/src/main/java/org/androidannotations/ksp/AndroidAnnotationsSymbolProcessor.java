@@ -194,7 +194,7 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 			} else if (model.kind == MvpModel.Kind.APPLICATION) {
 				ComponentValidator.applicationRegistered(classDeclaration, environment);
 			}
-			resolvePrefInjections(model, prefModels);
+			resolvePrefInjections(model, prefModels, prefOrigins);
 			for (String warning : model.warnings) {
 				logger.warn("AndroidAnnotations KSP: " + warning + " in " + model.qualifiedName, classDeclaration);
 			}
@@ -225,7 +225,7 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 				continue;
 			}
 			String source = generator.generate(model);
-			writeJavaFile(model, source, classDeclaration);
+			writeJavaFile(model, source, classDeclaration, models, origins, prefModels, prefOrigins);
 			generated++;
 		}
 
@@ -250,7 +250,9 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 			if (!written.add(fqcn)) {
 				continue;
 			}
-			writeJavaSource(prefModel.packageName, prefModel.generatedSimpleName(), fqcn, prefGenerator.generate(prefModel), origin);
+			List<KSFile> prefFiles = new ArrayList<KSFile>();
+			addOriginatingFile(prefFiles, origin.getContainingFile());
+			writeJavaSource(prefModel.packageName, prefModel.generatedSimpleName(), fqcn, prefGenerator.generate(prefModel), origin, prefFiles);
 			generated++;
 		}
 
@@ -568,19 +570,83 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 		}
 	}
 
-	private void writeJavaFile(MvpModel model, String source, KSClassDeclaration origin) {
-		writeJavaSource(model.packageName, model.generatedSimpleName(), model.generatedQualifiedName(), source, origin);
+	private void writeJavaFile(MvpModel model, String source, KSClassDeclaration origin, List<MvpModel> models,
+			List<KSClassDeclaration> origins, List<SharedPrefModel> prefModels, List<KSClassDeclaration> prefOrigins) {
+		List<KSFile> files = new ArrayList<KSFile>();
+		collectOriginatingFiles(model, files, models, origins, prefModels, prefOrigins);
+		writeJavaSource(model.packageName, model.generatedSimpleName(), model.generatedQualifiedName(), source, origin, files);
 	}
 
-	private void writeJavaSource(String packageName, String simpleName, String qualifiedName, String source, KSClassDeclaration origin) {
+	/**
+	 * Non-aggregating originating files for one generated type. Includes the annotated source, superclass sources that
+	 * contributed AndroidAnnotations member annotations, {@code @Bean} / {@code @App} / {@code @Pref} targets already
+	 * resolved to a source declaration, and nested {@code @EBean} / {@code @SharedPref} files inlined into this output.
+	 * Not included: {@code R} and {@code AndroidManifest} (read outside the symbol model), classpath or other-module
+	 * types with no {@link KSFile}, and a superclass that currently declares no AndroidAnnotations member annotations.
+	 */
+	private void collectOriginatingFiles(MvpModel model, List<KSFile> files, List<MvpModel> models, List<KSClassDeclaration> origins,
+			List<SharedPrefModel> prefModels, List<KSClassDeclaration> prefOrigins) {
+		if (model == null) {
+			return;
+		}
+		KSClassDeclaration declared = originOf(model, models, origins);
+		if (declared != null) {
+			addOriginatingFile(files, declared.getContainingFile());
+		}
+		for (KSFile extra : model.extraOriginatingFiles) {
+			addOriginatingFile(files, extra);
+		}
+		for (MvpModel nested : model.nestedModels) {
+			collectOriginatingFiles(nested, files, models, origins, prefModels, prefOrigins);
+		}
+		for (SharedPrefModel pref : model.nestedPrefs) {
+			addOriginatingFile(files, fileOfPref(pref, prefModels, prefOrigins));
+		}
+	}
+
+	private static KSClassDeclaration originOf(MvpModel model, List<MvpModel> models, List<KSClassDeclaration> origins) {
+		for (int i = 0; i < models.size(); i++) {
+			if (models.get(i) == model) {
+				return origins.get(i);
+			}
+		}
+		return null;
+	}
+
+	private static KSFile fileOfPref(SharedPrefModel pref, List<SharedPrefModel> prefModels, List<KSClassDeclaration> prefOrigins) {
+		for (int i = 0; i < prefModels.size(); i++) {
+			if (prefModels.get(i) == pref) {
+				return prefOrigins.get(i).getContainingFile();
+			}
+		}
+		return null;
+	}
+
+	private static void addOriginatingFile(List<KSFile> files, KSFile file) {
+		if (file == null) {
+			return;
+		}
+		String path = file.getFilePath();
+		for (KSFile existing : files) {
+			if (path.equals(existing.getFilePath())) {
+				return;
+			}
+		}
+		files.add(file);
+	}
+
+	private static Dependencies dependenciesOf(List<KSFile> originatingFiles) {
+		if (originatingFiles == null || originatingFiles.isEmpty()) {
+			return new Dependencies(false);
+		}
+		return new Dependencies(false, originatingFiles.toArray(new KSFile[originatingFiles.size()]));
+	}
+
+	private void writeJavaSource(String packageName, String simpleName, String qualifiedName, String source, KSClassDeclaration origin,
+			List<KSFile> originatingFiles) {
 		try {
 			String pkg = packageName == null ? "" : packageName;
-			KSFile containingFile = origin.getContainingFile();
-			// Non-aggregating, originating file only. Superclass files and @Bean/@App/@Pref targets are not
-			// declared, so editing those sources does not invalidate this generated class. See BENCHMARK.md.
-			Dependencies dependencies = containingFile != null
-					? new Dependencies(false, containingFile)
-					: new Dependencies(false);
+			Dependencies dependencies = dependenciesOf(originatingFiles);
 			OutputStream stream = codeGenerator.createNewFile(
 					dependencies,
 					pkg,
@@ -619,7 +685,7 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 		}
 	}
 
-	private void resolvePrefInjections(MvpModel model, List<SharedPrefModel> prefModels) {
+	private void resolvePrefInjections(MvpModel model, List<SharedPrefModel> prefModels, List<KSClassDeclaration> prefOrigins) {
 		if (model == null) {
 			return;
 		}
@@ -627,6 +693,7 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 			SharedPrefModel match = matchPref(prefModels, injection.typeSimpleName, model.packageName, model.classSuffix);
 			if (match != null) {
 				injection.generatedQualifiedName = match.generatedQualifiedName();
+				model.addOriginatingFile(fileOfPref(match, prefModels, prefOrigins));
 				continue;
 			}
 			if (injection.typeQualifiedName != null && !injection.typeQualifiedName.isEmpty()) {
@@ -646,7 +713,7 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 			model.errors.add("@Pref property '" + injection.propertyName + "' type " + injection.typeSimpleName + " does not match a generated @SharedPref helper");
 		}
 		for (MvpModel nested : model.nestedModels) {
-			resolvePrefInjections(nested, prefModels);
+			resolvePrefInjections(nested, prefModels, prefOrigins);
 		}
 	}
 
