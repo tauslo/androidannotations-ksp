@@ -34,6 +34,7 @@ import javax.lang.model.SourceVersion;
  * <li>{@code trace} (default {@code false}) - generate {@code @Trace} timing logs</li>
  * <li>{@code threadControl} (default {@code true}) - generate {@code @SupposeUiThread} / {@code @SupposeBackground} checks</li>
  * <li>{@code unimplementedIsError} (default {@code false}) - report recognized-but-unimplemented AA annotations as errors</li>
+ * <li>{@code logDebug} (default {@code false}) - emit processor timing / generated-count diagnostics at warn; otherwise info</li>
  * </ul>
  */
 public final class KspOptions {
@@ -49,6 +50,8 @@ public final class KspOptions {
 	public static final String THREAD_CONTROL = "threadControl";
 	/** When true, {@code RECOGNIZED_NOT_IMPLEMENTED} annotations fail the build instead of warning. Default false. */
 	public static final String UNIMPLEMENTED_IS_ERROR = "unimplementedIsError";
+	/** When true, processor timing / generated-count lines use warn; default info. */
+	public static final String LOG_DEBUG = "logDebug";
 
 	private final String classSuffix;
 	private final boolean library;
@@ -56,17 +59,19 @@ public final class KspOptions {
 	private final boolean trace;
 	private final boolean threadControl;
 	private final boolean unimplementedIsError;
+	private final boolean logDebug;
 	private final String resourcePackageName;
 	private final String androidManifestFile;
 	private final String initError;
 
-	private KspOptions(String classSuffix, boolean library, boolean useR2, boolean trace, boolean threadControl, boolean unimplementedIsError, String resourcePackageName, String androidManifestFile, String initError) {
+	private KspOptions(String classSuffix, boolean library, boolean useR2, boolean trace, boolean threadControl, boolean unimplementedIsError, boolean logDebug, String resourcePackageName, String androidManifestFile, String initError) {
 		this.classSuffix = classSuffix;
 		this.library = library;
 		this.useR2 = useR2;
 		this.trace = trace;
 		this.threadControl = threadControl;
 		this.unimplementedIsError = unimplementedIsError;
+		this.logDebug = logDebug;
 		this.resourcePackageName = resourcePackageName;
 		this.androidManifestFile = androidManifestFile;
 		this.initError = initError;
@@ -88,6 +93,7 @@ public final class KspOptions {
 				parseBoolean(options.get(TRACE), false),
 				parseBoolean(options.get(THREAD_CONTROL), true),
 				parseBoolean(options.get(UNIMPLEMENTED_IS_ERROR), false),
+				parseBoolean(options.get(LOG_DEBUG), false),
 				emptyToNull(options.get(RESOURCE_PACKAGE_NAME)),
 				emptyToNull(options.get(ANDROID_MANIFEST_FILE)),
 				error);
@@ -158,5 +164,10 @@ public final class KspOptions {
 	/** True when unrecognized-as-implemented AA annotations should fail compilation. */
 	public boolean isUnimplementedIsError() {
 		return unimplementedIsError;
+	}
+
+	/** True when processor generated-count / timing diagnostics should use warn instead of info. */
+	public boolean isLogDebug() {
+		return logDebug;
 	}
 }

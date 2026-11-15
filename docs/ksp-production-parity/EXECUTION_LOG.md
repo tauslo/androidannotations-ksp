@@ -1302,3 +1302,31 @@
 2. ORMLite / REST-Spring 仅在业务确认依赖后另开一期。RoboGuice / Otto 不再排期
 3. `@HierarchyViewerSupport` 保持不做
 
+## Session 2026-11-16 — PERF empty-round + log level; production-parity goal audit
+
+- **Agent**: Cursor Auto
+- **Goal slice**: 去掉 KSP follow-up 空轮 `generated 0` 日志；默认 info / `logDebug` warn；对照清单做生产替换完成审计
+- **Git**: branch=`ksp/main`，local only, not push
+- **Status**: done（功能替换目标可验收；PERF/插件边界见下）
+
+### Done
+- `AndroidAnnotationsSymbolProcessor`：本轮无 `@E*` / `@SharedPref` 时立刻返回，不再跑 Manifest/R，也不再打 `generated 0 class(es)`
+- generated-count / 耗时默认 `logger.info`；KSP 参数 `logDebug=true` 时用 warn（`KspOptions` / `KspEnvironment`）
+- `written` FQCN 去重 + `KspEnvironment.prepare` 短路与空轮提前返回对齐文档
+- 勾选 `CHECKLIST_PERF` 处理器效率四项与 corpus≥200；`CHECKLIST_P2` 增量依赖回归；更新 PLAYBOOK 覆盖边界
+
+### Verify
+- [x] `mvnw … androidannotations-ksp … install` BUILD SUCCESS
+- [x] `examples/kotlin-bench kspDebugKotlin -Paa.processor=ksp`：生成 **251** 个 `*_`；日志无 `generated 0 class(es)`（info 级 timing 默认不刷 warn）
+- [x] 清单审计：P0a/P0b/P1/P2 所选子集完成；插件 RoboGuice/Otto=N/A，ORMLite/REST=默认跳过；PERF 非阻塞项诚实保留开放
+
+### Core coverage boundary（本仓库宣称）
+- **可替换**：典型 Activity/Fragment/Service/Receiver/Provider/View + SharedPref + 监听 + Preference 屏 + DataBound/HttpsClient/Transactional 等 core 注解
+- **不能当可编译能力**：`@MovieRes`（无 `R.movie`）、`@HierarchyViewerSupport`（过时）
+- **默认不做**：ORMLite / REST-Spring / RoboGuice / Otto（见 `CHECKLIST_PLUGINS`）
+- **未 push** `ksp/main`（用户未要求）
+
+### Next
+1. 业务若确认 ORMLite / REST-Spring 依赖，另开插件期
+2. 可选：冷 assemble 3 次中位数重跑；跨模块 `@Bean` 失效策略；golden 脚本
+

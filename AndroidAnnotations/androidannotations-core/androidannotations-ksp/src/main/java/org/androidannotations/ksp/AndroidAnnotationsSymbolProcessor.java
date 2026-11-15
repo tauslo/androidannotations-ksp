@@ -82,6 +82,12 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 		classes.addAll(toClassList(resolver.getSymbolsWithAnnotation(AnnotationNames.E_VIEW_GROUP, false)));
 		List<KSClassDeclaration> prefClasses = toClassList(resolver.getSymbolsWithAnnotation(AnnotationNames.SHARED_PREF, false));
 
+		// KSP multi-round: after we emit Java sources, a follow-up round sees no AA-annotated types. Bail out
+		// before Manifest/R work and before the generated-count log (avoids "generated 0 class(es)" noise).
+		if (classes.isEmpty() && prefClasses.isEmpty()) {
+			return Collections.emptyList();
+		}
+
 		List<KSClassDeclaration> environmentSources = new ArrayList<KSClassDeclaration>(classes);
 		environmentSources.addAll(prefClasses);
 		environment.prepare(resolver, containingFiles(environmentSources));
@@ -257,8 +263,14 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 		}
 
 		String manifestPath = environment.getAndroidManifest() != null ? environment.getAndroidManifest().getSourceFile() : "none";
-		logger.warn("AndroidAnnotations KSP generated " + generated + " class(es) in " + (System.currentTimeMillis() - start) + " ms (resourcePackage="
-				+ resourcePackage + ", manifest=" + manifestPath + ")", null);
+		String timing = "AndroidAnnotations KSP generated " + generated + " class(es) in " + (System.currentTimeMillis() - start)
+				+ " ms (resourcePackage=" + resourcePackage + ", manifest=" + manifestPath + ")";
+		// written de-dupes FQCNs across rounds; empty follow-up rounds return earlier and never reach here.
+		if (environment.isLogDebug()) {
+			logger.warn(timing, null);
+		} else {
+			logger.info(timing, null);
+		}
 		return Collections.emptyList();
 	}
 

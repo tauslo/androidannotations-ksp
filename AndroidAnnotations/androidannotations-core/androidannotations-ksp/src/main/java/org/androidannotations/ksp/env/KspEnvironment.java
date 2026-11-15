@@ -104,6 +104,10 @@ public final class KspEnvironment {
 		return options.isUnimplementedIsError();
 	}
 
+	public boolean isLogDebug() {
+		return options.isLogDebug();
+	}
+
 	/** Simple name of the resource class to reference, mirroring APT {@code ProjectRClassFinder}. */
 	public String getRClassName() {
 		return options.isUseR2() ? "R2" : "R";

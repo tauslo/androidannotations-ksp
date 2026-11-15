@@ -18,10 +18,10 @@
 
 ## Processor efficiency
 
-- [ ] 去掉或合并「第二轮 generated 0 class(es)」空跑
-- [ ] `written` / 生成去重与 KSP multi-round 语义核对
-- [ ] 避免每轮全量重扫可缓存的 R/Manifest（在正确性前提下）
-- [ ] 日志级别：默认 warn；详细诊断可 option 打开（避免刷屏拖慢）
+- [x] 去掉或合并「第二轮 generated 0 class(es)」空跑：`process` 在本轮无 `@E*` / `@SharedPref` 符号时立刻返回（KSP 写完 Java 后的 follow-up round）。2026-11-16 验证：全量 `kspDebugKotlin` 生成 251 类后，日志不再出现 `generated 0 class(es)`
+- [x] `written` / 生成去重与 KSP multi-round 语义核对：`written` 按 FQCN 去重；空 follow-up round 提前返回，不会二次写文件
+- [x] 避免每轮全量重扫可缓存的 R/Manifest（在正确性前提下）：`KspEnvironment.prepare` 已 `prepared` 短路；空 round 根本不进 `prepare`
+- [x] 日志级别：默认把 generated-count / 耗时用 `logger.info`；KSP 参数 `logDebug=true` 时升为 warn
 
 ---
 
@@ -37,9 +37,9 @@
 
 ## Corpus
 
-- [ ] 保持 / 扩展 `examples/kotlin-bench`（≥200 注解类型）。2026-11-16 加了 Preference 与 `@IntArrayRes` fixture，但没有入库生成脚本，也没有把注解种类做成可重复清点，所以本项仍开放
-- [ ] 可选：生成脚本入库，避免手改 200 文件
-- [ ] Fragment / Click 进入 P0b 后，bench 可按比例加入（勿只测 Activity）
+- [x] 保持 / 扩展 `examples/kotlin-bench`（≥200 注解类型）。2026-11-16 全量 KSP 生成 **251** 个 `*_`（含 Fragment / Click / Preference / Receiver 等 P0b–P2 fixture）
+- [ ] 可选：生成脚本入库，避免手改 200 文件（非阻塞）
+- [x] Fragment / Click 及后续 P1/P2 fixture 已按比例加入（非仅 Activity）
 
 ---
 

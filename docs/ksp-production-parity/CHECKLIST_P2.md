@@ -62,8 +62,8 @@
 ## Hardening（建议穿插）
 
 - [x] 未实现注解 → error（可配置）而不只是 warn（KSP 参数 `unimplementedIsError`，默认 false）
-- [ ] 增量 KSP 依赖图正确性回归（与 [`CHECKLIST_PERF.md`](CHECKLIST_PERF.md) 协作）
-- [ ] 更多 APT vs KSP golden fixtures（自动对比脚本入库）
+- [x] 增量 KSP 依赖图正确性回归（与 [`CHECKLIST_PERF.md`](CHECKLIST_PERF.md) 协作）：同模块父类 / `@Bean` / `@Pref` originating files + 负例已验收；跨模块字节码仍见 PERF / KNOWN_DEVIATIONS
+- [ ] 更多 APT vs KSP golden fixtures（自动对比脚本入库）— 可选增强，不阻塞 core 替换
 
 ---
 

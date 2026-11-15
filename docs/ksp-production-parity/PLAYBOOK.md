@@ -84,7 +84,7 @@ org.androidannotations.ksp/
 - `examples/kotlin` / `kotlin-bench`；冷全量 vs kapt 约 −22.6%（`BENCHMARK.md`）
 - Bench APT vs KSP 公开 API spot-check：DECL/SIG 0 mismatch（body 允许等价改写）
 
-**功能核心已完成。** core 注解除过时的 `@HierarchyViewerSupport` 外都已生成。`@MovieRes` 在当前 AGP 上没有 `R.movie`，不能当可编译能力。PERF 增量只做了一部分：originating files 已覆盖能拿到 `KSFile` 的父类注解、`@Bean` / `@App` / `@Pref` 和嵌套类型；「改 1 个 Activity」有 3 次中位数（见 `BENCHMARK.md`）。热全量只有 1 次，冷 assemble 没有重跑，处理器空第二轮、跨模块字节码、`R` / Manifest 仍开放。ORMLite / REST-Spring 保持默认跳过，直到业务确认仍依赖对应 artifact。P0b 已完成，见 [`CHECKLIST_P0b.md`](CHECKLIST_P0b.md)。
+**功能核心已完成（可替换典型线上 APT/kapt AA）。** core 注解除过时的 `@HierarchyViewerSupport` 外都已生成。`@MovieRes` 在当前 AGP 上没有 `R.movie`，不能当可编译能力。PERF：originating files（同模块父类 / Bean / Pref / 嵌套）、改 1 文件 3 次中位数、空第二轮提前返回、`logDebug` 诊断开关已验收（见 `BENCHMARK.md` / `CHECKLIST_PERF`）。仍开放且**不阻塞替换**：冷 assemble 3 次重跑、跨模块字节码失效、golden 对比脚本、bench 生成脚本。ORMLite / REST-Spring / RoboGuice / Otto 按插件清单默认跳过，直到业务确认。
 
 关键源码：
 
