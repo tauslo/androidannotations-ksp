@@ -25,6 +25,22 @@ public final class MvpModel {
 		ACTIVITY, APPLICATION, BEAN, FRAGMENT, SERVICE
 	}
 
+	/** Which view callback a {@link ViewListener} wires. Click and long-click stay on their own lists. */
+	public enum ListenerKind {
+		CLICK, LONG_CLICK, TOUCH, FOCUS_CHANGE, CHECKED_CHANGE, EDITOR_ACTION,
+		ITEM_CLICK, ITEM_LONG_CLICK, ITEM_SELECT,
+		TEXT_CHANGE, BEFORE_TEXT_CHANGE, AFTER_TEXT_CHANGE
+	}
+
+	/**
+	 * How a user parameter maps onto the generated listener method. Text-change ints are matched by name
+	 * ({@code start}/{@code count}/{@code before}/{@code after}), not by position.
+	 */
+	public enum ParamRole {
+		VIEW, MOTION_EVENT, BOOLEAN, TEXT_VIEW, INT, KEY_EVENT, ITEM,
+		CHAR_SEQUENCE, START, COUNT, BEFORE, AFTER, EDITABLE
+	}
+
 	public static final class Param {
 		/** @NotNull/@Nullable synthesized from Kotlin nullability for .kt sources; null otherwise. */
 		public final String nullAnnotation;
@@ -305,18 +321,21 @@ public final class MvpModel {
 	}
 
 	public static final class ViewListener {
-		public final boolean longClick;
+		public final ListenerKind kind;
 		public final String methodName;
 		public final List<Param> params;
+		/** Parallel to {@link #params}. Empty for a no-arg listener. */
+		public final List<ParamRole> roles;
 		public final boolean returnsBoolean;
 		public final List<Integer> valueIds;
 		public final List<String> nameIds;
 
-		public ViewListener(boolean longClick, String methodName, List<Param> params,
+		public ViewListener(ListenerKind kind, String methodName, List<Param> params, List<ParamRole> roles,
 			boolean returnsBoolean, List<Integer> valueIds, List<String> nameIds) {
-			this.longClick = longClick;
+			this.kind = kind;
 			this.methodName = methodName;
 			this.params = params;
+			this.roles = roles;
 			this.returnsBoolean = returnsBoolean;
 			this.valueIds = valueIds;
 			this.nameIds = nameIds;
@@ -448,6 +467,15 @@ public final class MvpModel {
 	public final List<FragmentInjection> fragmentByIds = new ArrayList<>();
 	public final List<ViewListener> clickListeners = new ArrayList<>();
 	public final List<ViewListener> longClickListeners = new ArrayList<>();
+	public final List<ViewListener> touchListeners = new ArrayList<>();
+	public final List<ViewListener> focusChangeListeners = new ArrayList<>();
+	public final List<ViewListener> checkedChangeListeners = new ArrayList<>();
+	public final List<ViewListener> editorActionListeners = new ArrayList<>();
+	public final List<ViewListener> itemClickListeners = new ArrayList<>();
+	public final List<ViewListener> itemLongClickListeners = new ArrayList<>();
+	public final List<ViewListener> itemSelectListeners = new ArrayList<>();
+	/** @TextChange / @BeforeTextChange / @AfterTextChange in source order. One TextWatcher is shared per view id. */
+	public final List<ViewListener> textWatcherListeners = new ArrayList<>();
 	public final List<OptionsMenuRef> optionsMenus = new ArrayList<>();
 	public final List<OptionsItem> optionsItems = new ArrayList<>();
 	public final List<MenuInjection> injectMenuInjections = new ArrayList<>();
@@ -488,6 +516,13 @@ public final class MvpModel {
 		this.layoutResName = layoutResName;
 		this.nested = nested;
 		this.scope = scope;
+	}
+
+	public boolean hasViewListeners() {
+		return !clickListeners.isEmpty() || !longClickListeners.isEmpty() || !touchListeners.isEmpty()
+				|| !focusChangeListeners.isEmpty() || !checkedChangeListeners.isEmpty() || !editorActionListeners.isEmpty()
+				|| !itemClickListeners.isEmpty() || !itemLongClickListeners.isEmpty() || !itemSelectListeners.isEmpty()
+				|| !textWatcherListeners.isEmpty();
 	}
 
 	public String generatedSimpleName() {

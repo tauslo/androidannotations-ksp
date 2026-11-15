@@ -244,7 +244,7 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 	private boolean needsResourcePackage(MvpModel model) {
 		return !model.stringRes.isEmpty() || !model.viewInjections.isEmpty() || model.layoutId != AnnotationNames.RES_DEFAULT
 				|| (model.layoutResName != null && !model.layoutResName.isEmpty()) || !model.fragmentByIds.isEmpty()
-				|| !model.clickListeners.isEmpty() || !model.longClickListeners.isEmpty() || !model.resFields.isEmpty();
+				|| model.hasViewListeners() || !model.resFields.isEmpty();
 	}
 
 	/**
@@ -279,6 +279,14 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 		}
 		validateViewListeners(canCheckValues, index, model.clickListeners, errors);
 		validateViewListeners(canCheckValues, index, model.longClickListeners, errors);
+		validateViewListeners(canCheckValues, index, model.touchListeners, errors);
+		validateViewListeners(canCheckValues, index, model.focusChangeListeners, errors);
+		validateViewListeners(canCheckValues, index, model.checkedChangeListeners, errors);
+		validateViewListeners(canCheckValues, index, model.editorActionListeners, errors);
+		validateViewListeners(canCheckValues, index, model.itemClickListeners, errors);
+		validateViewListeners(canCheckValues, index, model.itemLongClickListeners, errors);
+		validateViewListeners(canCheckValues, index, model.itemSelectListeners, errors);
+		validateViewListeners(canCheckValues, index, model.textWatcherListeners, errors);
 		for (MvpModel.FieldInjection stringRes : model.stringRes) {
 			errors.addAll(validateInjection(canCheckValues, index, "string", stringRes));
 		}
@@ -322,7 +330,7 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 		return errors;
 	}
 
-	/** Mirrors APT {@code AbstractViewListenerHandler} id validation for {@code @Click}/{@code @LongClick}. */
+	/** Mirrors APT id validation for view listener annotations ({@code @Click} and the other {@code @*Listener} kinds). */
 	private void validateViewListeners(boolean canCheckValues, RClassIndex index, List<MvpModel.ViewListener> listeners, List<String> errors) {
 		for (MvpModel.ViewListener listener : listeners) {
 			for (Integer resId : listener.valueIds) {

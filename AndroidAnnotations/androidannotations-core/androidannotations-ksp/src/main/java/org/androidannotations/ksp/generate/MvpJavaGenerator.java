@@ -67,7 +67,7 @@ public final class MvpJavaGenerator {
 		StringBuilder out = new StringBuilder();
 		appendHeader(out, model);
 		boolean hasViewSupport = !model.viewInjections.isEmpty() || !model.afterViews.isEmpty()
-				|| !model.clickListeners.isEmpty() || !model.longClickListeners.isEmpty();
+				|| model.hasViewListeners();
 		out.append("public final class ").append(model.generatedSimpleName())
 				.append(" extends ").append(model.simpleName)
 				.append(" implements org.androidannotations.api.bean.BeanHolder, org.androidannotations.api.view.HasViews")
@@ -212,7 +212,7 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 		StringBuilder out = new StringBuilder();
 		appendHeader(out, model);
 		boolean hasViewSupport = !model.viewInjections.isEmpty() || !model.afterViews.isEmpty()
-			|| !model.clickListeners.isEmpty() || !model.longClickListeners.isEmpty();
+			|| model.hasViewListeners();
 		out.append("public final class ").append(model.generatedSimpleName())
 				.append(" extends ").append(model.qualifiedName)
 				.append(" implements org.androidannotations.api.bean.BeanHolder, org.androidannotations.api.view.HasViews")
@@ -345,12 +345,28 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 	private void appendViewListeners(StringBuilder out, MvpModel model, ViewInjectionPlan plan) {
 		LinkedHashMap<String, String> refs = new LinkedHashMap<>();
 		LinkedHashMap<String, String> locals = new LinkedHashMap<>();
+		LinkedHashMap<String, String> localTypes = new LinkedHashMap<>();
 		LinkedHashMap<String, List<String>> setters = new LinkedHashMap<>();
+		LinkedHashMap<String, String> foundTypes = new LinkedHashMap<>(plan.foundTypes);
 		refs.putAll(plan.foundRefs);
-		appendListenerIds(model, model.clickListeners, false, refs, locals, setters);
-		appendListenerIds(model, model.longClickListeners, true, refs, locals, setters);
+		appendListenerIds(model, model.clickListeners, refs, locals, localTypes, foundTypes, setters);
+		appendListenerIds(model, model.longClickListeners, refs, locals, localTypes, foundTypes, setters);
+		appendListenerIds(model, model.touchListeners, refs, locals, localTypes, foundTypes, setters);
+		appendListenerIds(model, model.focusChangeListeners, refs, locals, localTypes, foundTypes, setters);
+		appendListenerIds(model, model.checkedChangeListeners, refs, locals, localTypes, foundTypes, setters);
+		appendListenerIds(model, model.editorActionListeners, refs, locals, localTypes, foundTypes, setters);
+		appendListenerIds(model, model.itemClickListeners, refs, locals, localTypes, foundTypes, setters);
+		appendListenerIds(model, model.itemLongClickListeners, refs, locals, localTypes, foundTypes, setters);
+		appendListenerIds(model, model.itemSelectListeners, refs, locals, localTypes, foundTypes, setters);
 		for (Map.Entry<String, String> e : locals.entrySet()) {
-			out.append("\t\tandroid.view.View ").append(e.getKey()).append(" = hasViews.internalFindViewById(")
+			String type = localTypes.get(e.getKey());
+			if (type == null) {
+				type = "android.view.View";
+			}
+			if (type.indexOf('<') >= 0) {
+				out.append("\t\t@SuppressWarnings(\"unchecked\")\n");
+			}
+			out.append("\t\t").append(type).append(" ").append(e.getKey()).append(" = hasViews.internalFindViewById(")
 				.append(e.getValue()).append(");\n");
 		}
 		for (Map.Entry<String, List<String>> e : setters.entrySet()) {
@@ -360,6 +376,7 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 			}
 			out.append("\t\t}\n");
 		}
+		appendTextWatchers(out, model);
 	}
 
 	/** APT ViewByIdHandler parity: planned pass1 (before-injection) / pass3 (injection) code plus the found-view cache. */
@@ -608,62 +625,72 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 		out.append("\t\t}\n");
 	}
 
-	private void appendListenerIds(MvpModel model, List<MvpModel.ViewListener> listeners, boolean longClick,
-		Map<String, String> refs, Map<String, String> locals, Map<String, List<String>> setters) {
+	private void appendListenerIds(MvpModel model, List<MvpModel.ViewListener> listeners, Map<String, String> refs,
+			Map<String, String> locals, Map<String, String> localTypes, Map<String, String> foundTypes, Map<String, List<String>> setters) {
 		for (MvpModel.ViewListener listener : listeners) {
 			for (Integer resId : listener.valueIds) {
 				String rName = rClassIndex != null ? rClassIndex.fieldNameForValue("id", resId) : null;
 				if (rName == null) {
 					rName = Integer.toString(resId);
 				}
-				addListenerEntry(model, refs, locals, setters, rName,
+				addListenerEntry(model, refs, locals, localTypes, foundTypes, setters, rName,
 					KspAnnotationUtils.resExpression(resourcePackage, rClassName, "id", rName, resId, null, rClassIndex),
-					listener, longClick);
+					listener);
 			}
 			for (String resName : listener.nameIds) {
 				String rName = rClassIndex != null ? rClassIndex.resolveFieldName("id", resName) : null;
 				if (rName == null) {
 					rName = resName;
 				}
-				addListenerEntry(model, refs, locals, setters, rName,
+				addListenerEntry(model, refs, locals, localTypes, foundTypes, setters, rName,
 					KspAnnotationUtils.resExpression(resourcePackage, rClassName, "id", rName, AnnotationNames.RES_DEFAULT, resName, rClassIndex),
-					listener, longClick);
+					listener);
 			}
 		}
 	}
 
-	private void addListenerEntry(MvpModel model, Map<String, String> refs, Map<String, String> locals,
-		Map<String, List<String>> setters, String rName, String findExpr, MvpModel.ViewListener listener, boolean longClick) {
+	private void addListenerEntry(MvpModel model, Map<String, String> refs, Map<String, String> locals, Map<String, String> localTypes,
+			Map<String, String> foundTypes, Map<String, List<String>> setters, String rName, String findExpr, MvpModel.ViewListener listener) {
+		String declType = listenerDeclarationType(listener.kind);
 		if (!refs.containsKey(rName)) {
 			String local = "view_" + rName;
 			refs.put(rName, local);
 			locals.put(local, findExpr);
+			localTypes.put(local, declType);
+			foundTypes.put(rName, declType);
 		}
 		String ref = refs.get(rName);
-		StringBuilder call = new StringBuilder(model.generatedSimpleName()).append(".this.").append(listener.methodName).append("(");
-		if (!listener.params.isEmpty()) {
-			String type = listener.params.get(0).typeName;
-			boolean plainView = "android.view.View".equals(type) || "View".equals(type);
-			call.append(plainView ? "view" : "((" + type + ") view)");
-		}
-		call.append(")");
-		StringBuilder s = new StringBuilder("\t\t\t").append(ref).append(longClick
-		? ".setOnLongClickListener(new android.view.View.OnLongClickListener() {\n"
-		: ".setOnClickListener(new android.view.View.OnClickListener() {\n");
-		s.append("\t\t\t@Override\n");
-		if (longClick) {
-			s.append("\t\t\tpublic boolean onLongClick(android.view.View view) {\n");
-			if (listener.returnsBoolean) {
-				s.append("\t\t\t\treturn ").append(call).append(";\n");
-			} else {
-				s.append("\t\t\t\t").append(call).append(";\n");
-				s.append("\t\t\t\treturn true;\n");
+		StringBuilder s = new StringBuilder();
+		if (listener.kind == MvpModel.ListenerKind.CLICK || listener.kind == MvpModel.ListenerKind.LONG_CLICK) {
+			boolean longClick = listener.kind == MvpModel.ListenerKind.LONG_CLICK;
+			StringBuilder call = new StringBuilder(model.generatedSimpleName()).append(".this.").append(listener.methodName).append("(");
+			if (!listener.params.isEmpty()) {
+				String type = listener.params.get(0).typeName;
+				boolean plainView = "android.view.View".equals(type) || "View".equals(type);
+				call.append(plainView ? "view" : "((" + type + ") view)");
 			}
+			call.append(")");
+			s.append("\t\t\t").append(ref).append(longClick
+				? ".setOnLongClickListener(new android.view.View.OnLongClickListener() {\n"
+				: ".setOnClickListener(new android.view.View.OnClickListener() {\n");
+			s.append("\t\t\t@Override\n");
+			if (longClick) {
+				s.append("\t\t\tpublic boolean onLongClick(android.view.View view) {\n");
+				if (listener.returnsBoolean) {
+					s.append("\t\t\t\treturn ").append(call).append(";\n");
+				} else {
+					s.append("\t\t\t\t").append(call).append(";\n");
+					s.append("\t\t\t\treturn true;\n");
+				}
+			} else {
+				s.append("\t\t\tpublic void onClick(android.view.View view) {\n");
+				s.append("\t\t\t\t").append(call).append(";\n");
+			}
+			s.append("\t\t\t}\n\t\t\t});\n");
 		} else {
-			s.append("\t\t\tpublic void onClick(android.view.View view) {\n");
-			s.append("\t\t\t\t").append(call).append(";\n");
+			String receiver = castRef(foundTypes.get(rName), declType, ref);
+			s.append(extendedListenerSetter(model, listener, receiver));
 		}
-		s.append("\t\t\t}\n\t\t\t});\n");
 		List<String> list = setters.get(rName);
 		if (list == null) {
 			list = new ArrayList<>();
@@ -671,6 +698,292 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 		}
 		list.add(s.toString());
 	}
+
+	/** Type of a newly declared found-view local. Matches APT {@code getListenerTargetClass}. */
+	private static String listenerDeclarationType(MvpModel.ListenerKind kind) {
+		switch (kind) {
+		case CHECKED_CHANGE:
+			return "android.widget.CompoundButton";
+		case EDITOR_ACTION:
+			return "android.widget.TextView";
+		case ITEM_CLICK:
+		case ITEM_LONG_CLICK:
+		case ITEM_SELECT:
+			return "android.widget.AdapterView<?>";
+		default:
+			return "android.view.View";
+		}
+	}
+
+	private String extendedListenerSetter(MvpModel model, MvpModel.ViewListener listener, String receiver) {
+		switch (listener.kind) {
+		case TOUCH:
+			return anonymousListener(receiver, "setOnTouchListener", "android.view.View.OnTouchListener",
+				"public boolean onTouch(android.view.View view, android.view.MotionEvent event)",
+				voidOrBooleanBody(listener, qualifiedCall(model, listener, listenerArgs(listener, "view", "android.view.View"))), false);
+		case FOCUS_CHANGE:
+			return anonymousListener(receiver, "setOnFocusChangeListener", "android.view.View.OnFocusChangeListener",
+				"public void onFocusChange(android.view.View view, boolean hasFocus)",
+				"\t\t\t\t" + qualifiedCall(model, listener, listenerArgs(listener, "view", "android.view.View")) + ";\n", false);
+		case CHECKED_CHANGE:
+			return anonymousListener(receiver, "setOnCheckedChangeListener", "android.widget.CompoundButton.OnCheckedChangeListener",
+				"public void onCheckedChanged(android.widget.CompoundButton buttonView, boolean isChecked)",
+				"\t\t\t\t" + qualifiedCall(model, listener, listenerArgs(listener, "buttonView", "android.widget.CompoundButton")) + ";\n", false);
+		case EDITOR_ACTION:
+			return anonymousListener(receiver, "setOnEditorActionListener", "android.widget.TextView.OnEditorActionListener",
+				"public boolean onEditorAction(android.widget.TextView textView, int actionId, android.view.KeyEvent event)",
+				voidOrBooleanBody(listener, qualifiedCall(model, listener, listenerArgs(listener, "textView", "android.widget.TextView"))), false);
+		case ITEM_CLICK:
+			return itemClickSetter(model, listener, receiver, false);
+		case ITEM_LONG_CLICK:
+			return itemClickSetter(model, listener, receiver, true);
+		case ITEM_SELECT:
+			return itemSelectSetter(model, listener, receiver);
+		default:
+			return "";
+		}
+	}
+
+	private String itemClickSetter(MvpModel model, MvpModel.ViewListener listener, String receiver, boolean longClick) {
+		List<String> args = new ArrayList<>();
+		boolean suppress = false;
+		if (listener.params.size() == 1) {
+			if (listener.roles.get(0) == MvpModel.ParamRole.INT) {
+				args.add("position");
+			} else {
+				String type = listener.params.get(0).typeName;
+				args.add("((" + type + ") parent.getAdapter().getItem(position))");
+				suppress = type.indexOf('<') >= 0;
+			}
+		}
+		String call = qualifiedCall(model, listener, args);
+		String body;
+		String signature;
+		String setter;
+		String listenerType;
+		if (longClick) {
+			setter = "setOnItemLongClickListener";
+			listenerType = "android.widget.AdapterView.OnItemLongClickListener";
+			signature = "public boolean onItemLongClick(android.widget.AdapterView<?> parent, android.view.View view, int position, long id)";
+			body = listener.returnsBoolean ? "\t\t\t\treturn " + call + ";\n" : "\t\t\t\t" + call + ";\n\t\t\t\treturn true;\n";
+		} else {
+			setter = "setOnItemClickListener";
+			listenerType = "android.widget.AdapterView.OnItemClickListener";
+			signature = "public void onItemClick(android.widget.AdapterView<?> parent, android.view.View view, int position, long id)";
+			body = "\t\t\t\t" + call + ";\n";
+		}
+		return anonymousListener(receiver, setter, listenerType, signature, body, suppress);
+	}
+
+	private String itemSelectSetter(MvpModel model, MvpModel.ViewListener listener, String receiver) {
+		List<String> selected = new ArrayList<>();
+		selected.add("true");
+		List<String> nothing = new ArrayList<>();
+		nothing.add("false");
+		boolean suppress = false;
+		if (listener.params.size() == 2) {
+			if (listener.roles.get(1) == MvpModel.ParamRole.INT) {
+				selected.add("position");
+				nothing.add("-1");
+			} else {
+				String type = listener.params.get(1).typeName;
+				selected.add("((" + type + ") parent.getAdapter().getItem(position))");
+				nothing.add("null");
+				suppress = type.indexOf('<') >= 0;
+			}
+		}
+		StringBuilder s = new StringBuilder("\t\t\t").append(receiver)
+			.append(".setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {\n");
+		s.append("\t\t\t@Override\n");
+		s.append("\t\t\tpublic void onNothingSelected(android.widget.AdapterView<?> parent) {\n");
+		s.append("\t\t\t\t").append(qualifiedCall(model, listener, nothing)).append(";\n");
+		s.append("\t\t\t}\n");
+		s.append("\t\t\t@Override\n");
+		if (suppress) {
+			s.append("\t\t\t@SuppressWarnings(\"unchecked\")\n");
+		}
+		s.append("\t\t\tpublic void onItemSelected(android.widget.AdapterView<?> parent, android.view.View view, int position, long id) {\n");
+		s.append("\t\t\t\t").append(qualifiedCall(model, listener, selected)).append(";\n");
+		s.append("\t\t\t}\n\t\t\t});\n");
+		return s.toString();
+	}
+
+	private List<String> listenerArgs(MvpModel.ViewListener listener, String viewExpr, String viewBaseType) {
+		List<String> args = new ArrayList<>();
+		for (int i = 0; i < listener.params.size(); i++) {
+			MvpModel.ParamRole role = listener.roles.get(i);
+			if (role == MvpModel.ParamRole.MOTION_EVENT) {
+				args.add("event");
+			} else if (role == MvpModel.ParamRole.VIEW || role == MvpModel.ParamRole.TEXT_VIEW) {
+				args.add(typedCast(listener.params.get(i).typeName, viewBaseType, viewExpr));
+			} else if (role == MvpModel.ParamRole.BOOLEAN) {
+				args.add(listener.kind == MvpModel.ListenerKind.FOCUS_CHANGE ? "hasFocus" : "isChecked");
+			} else if (role == MvpModel.ParamRole.INT) {
+				args.add("actionId");
+			} else if (role == MvpModel.ParamRole.KEY_EVENT) {
+				args.add("event");
+			}
+		}
+		return args;
+	}
+
+	private static String typedCast(String typeName, String baseType, String expr) {
+		if (baseType.equals(typeName) || ("android.view.View".equals(baseType) && "View".equals(typeName))) {
+			return expr;
+		}
+		return "((" + typeName + ") " + expr + ")";
+	}
+
+	private static String voidOrBooleanBody(MvpModel.ViewListener listener, String call) {
+		if (listener.returnsBoolean) {
+			return "\t\t\t\treturn " + call + ";\n";
+		}
+		return "\t\t\t\t" + call + ";\n\t\t\t\treturn true;\n";
+	}
+
+	private static String qualifiedCall(MvpModel model, MvpModel.ViewListener listener, List<String> args) {
+		StringBuilder call = new StringBuilder(model.generatedSimpleName());
+		call.append(".this.").append(listener.methodName).append('(');
+		for (int i = 0; i < args.size(); i++) {
+			if (i > 0) {
+				call.append(", ");
+			}
+			call.append(args.get(i));
+		}
+		call.append(')');
+		return call.toString();
+	}
+
+	private String anonymousListener(String receiver, String setter, String listenerType, String signature, String body, boolean suppressUnchecked) {
+		StringBuilder s = new StringBuilder("\t\t\t").append(receiver).append(".").append(setter)
+			.append("(new ").append(listenerType).append("() {\n");
+		s.append("\t\t\t@Override\n");
+		if (suppressUnchecked) {
+			s.append("\t\t\t@SuppressWarnings(\"unchecked\")\n");
+		}
+		s.append("\t\t\t").append(signature).append(" {\n");
+		s.append(body);
+		s.append("\t\t\t}\n\t\t\t});\n");
+		return s.toString();
+	}
+
+	/**
+	 * APT TextWatcherHolder parity: every id gets one anonymous TextWatcher. Methods of @BeforeTextChange, @TextChange
+	 * and @AfterTextChange on that id are appended into the matching callback, in source order.
+	 */
+	private void appendTextWatchers(StringBuilder out, MvpModel model) {
+		if (model.textWatcherListeners.isEmpty()) {
+			return;
+		}
+		LinkedHashMap<String, String> exprs = new LinkedHashMap<>();
+		LinkedHashMap<String, List<MvpModel.ViewListener>> groups = new LinkedHashMap<>();
+		for (MvpModel.ViewListener listener : model.textWatcherListeners) {
+			for (Integer resId : listener.valueIds) {
+				String rName = rClassIndex != null ? rClassIndex.fieldNameForValue("id", resId) : null;
+				if (rName == null) {
+					rName = Integer.toString(resId);
+				}
+				addTextGroup(groups, exprs, rName,
+					KspAnnotationUtils.resExpression(resourcePackage, rClassName, "id", rName, resId, null, rClassIndex), listener);
+			}
+			for (String resName : listener.nameIds) {
+				String rName = rClassIndex != null ? rClassIndex.resolveFieldName("id", resName) : null;
+				if (rName == null) {
+					rName = resName;
+				}
+				addTextGroup(groups, exprs, rName,
+					KspAnnotationUtils.resExpression(resourcePackage, rClassName, "id", rName, AnnotationNames.RES_DEFAULT, resName, rClassIndex), listener);
+			}
+		}
+		for (Map.Entry<String, List<MvpModel.ViewListener>> group : groups.entrySet()) {
+			String viewType = "android.widget.TextView";
+			for (MvpModel.ViewListener listener : group.getValue()) {
+				String typed = textViewParamType(listener);
+				if (typed != null) {
+					viewType = typed;
+					break;
+				}
+			}
+			out.append("\t\t{\n");
+			out.append("\t\t\tfinal ").append(viewType).append(" view = ((").append(viewType)
+				.append(") hasViews.internalFindViewById(").append(exprs.get(group.getKey())).append("));\n");
+			out.append("\t\t\tif (view != null) {\n");
+			out.append("\t\t\t\tview.addTextChangedListener(new android.text.TextWatcher() {\n");
+			appendTextCallback(out, model, group.getValue(), MvpModel.ListenerKind.BEFORE_TEXT_CHANGE,
+				"public void beforeTextChanged(java.lang.CharSequence s, int start, int count, int after)");
+			appendTextCallback(out, model, group.getValue(), MvpModel.ListenerKind.TEXT_CHANGE,
+				"public void onTextChanged(java.lang.CharSequence s, int start, int before, int count)");
+			appendTextCallback(out, model, group.getValue(), MvpModel.ListenerKind.AFTER_TEXT_CHANGE,
+				"public void afterTextChanged(android.text.Editable s)");
+			out.append("\t\t\t\t});\n");
+			out.append("\t\t\t}\n");
+			out.append("\t\t}\n");
+		}
+	}
+
+	private static void addTextGroup(Map<String, List<MvpModel.ViewListener>> groups, Map<String, String> exprs, String rName,
+			String expr, MvpModel.ViewListener listener) {
+		exprs.put(rName, expr);
+		List<MvpModel.ViewListener> list = groups.get(rName);
+		if (list == null) {
+			list = new ArrayList<>();
+			groups.put(rName, list);
+		}
+		list.add(listener);
+	}
+
+	private static String textViewParamType(MvpModel.ViewListener listener) {
+		for (int i = 0; i < listener.roles.size(); i++) {
+			if (listener.roles.get(i) == MvpModel.ParamRole.TEXT_VIEW) {
+				return listener.params.get(i).typeName;
+			}
+		}
+		return null;
+	}
+
+	private void appendTextCallback(StringBuilder out, MvpModel model, List<MvpModel.ViewListener> listeners,
+			MvpModel.ListenerKind kind, String signature) {
+		out.append("\t\t\t\t\t@Override\n");
+		out.append("\t\t\t\t\t").append(signature).append(" {\n");
+		for (MvpModel.ViewListener listener : listeners) {
+			if (listener.kind != kind) {
+				continue;
+			}
+			out.append("\t\t\t\t\t\t").append(qualifiedCall(model, listener, textWatcherArgs(listener))).append(";\n");
+		}
+		out.append("\t\t\t\t\t}\n");
+	}
+
+	private static List<String> textWatcherArgs(MvpModel.ViewListener listener) {
+		List<String> args = new ArrayList<>();
+		for (MvpModel.ParamRole role : listener.roles) {
+			switch (role) {
+			case CHAR_SEQUENCE:
+			case EDITABLE:
+				args.add("s");
+				break;
+			case START:
+				args.add("start");
+				break;
+			case COUNT:
+				args.add("count");
+				break;
+			case BEFORE:
+				args.add("before");
+				break;
+			case AFTER:
+				args.add("after");
+				break;
+			case TEXT_VIEW:
+				args.add("view");
+				break;
+			default:
+				break;
+			}
+		}
+		return args;
+	}
+
 
 	private void appendFragmentOnCreateView(StringBuilder out, MvpModel model) {
 		boolean hasLayoutId = model.layoutId != AnnotationNames.RES_DEFAULT;

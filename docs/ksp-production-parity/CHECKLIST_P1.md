@@ -21,13 +21,13 @@
 
 ## More view listeners
 
-- [ ] `@Touch`
-- [ ] `@FocusChange`
-- [ ] `@CheckedChange`
-- [ ] `@TextChange` `@BeforeTextChange` `@AfterTextChange`
-- [ ] `@EditorAction`
-- [ ] `@ItemClick` `@ItemLongClick` `@ItemSelect`
-- [ ] 统一走 listener 基类模式（对照 `AbstractViewListenerHandler` / `AbstractTextWatcherHandler` 等）
+- [x] `@Touch`
+- [x] `@FocusChange`
+- [x] `@CheckedChange`
+- [x] `@TextChange` `@BeforeTextChange` `@AfterTextChange`
+- [x] `@EditorAction`
+- [x] `@ItemClick` `@ItemLongClick` `@ItemSelect`
+- [x] 统一走 listener 基类模式（对照 `AbstractViewListenerHandler` / `AbstractTextWatcherHandler` 等）
 
 ---
 

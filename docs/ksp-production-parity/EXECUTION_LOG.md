@@ -1015,3 +1015,41 @@
 
 ### Next
 1. P1 下一项：更多 View 监听（`@Touch` / `@FocusChange` / `@CheckedChange` / TextWatcher / `@EditorAction` / Item*），或补 `@Pref` 的方法注入（APT `InjectHelper` method form，本次只做字段）
+
+## Session 2026-11-16 — P1: more view listeners
+
+- **Agent**: Cursor Grok
+- **Goal slice**: P1 — `@Touch` / `@FocusChange` / `@CheckedChange` / `@TextChange` `@BeforeTextChange` `@AfterTextChange` / `@EditorAction` / `@ItemClick` `@ItemLongClick` `@ItemSelect`，对照 APT `AbstractViewListenerHandler` 与 `TextWatcherHolder`
+- **Git**: branch=`ksp/main`，local only, not push
+- **Status**: done
+
+### Done
+- `ViewListener` 增加 `ListenerKind` 与参数 `ParamRole`。`@Click` / `@LongClick` 仍走原列表与原匿名类文本；新监听器按 APT 规则校验并生成 setter
+- 参数：Touch 任意序 `MotionEvent?` + `View?`（void → `return true`）；FocusChange `View?` + `boolean?`；CheckedChange 目标类型 `CompoundButton`（必要时 cast）；EditorAction `TextView?` + `int?` + `KeyEvent?`（void → `return true`）；ItemClick/ItemLongClick 单参 `int` 传 position，否则 `parent.getAdapter().getItem(position)`；ItemSelect 先 `boolean`，`onItemSelected(true, item|position)` / `onNothingSelected(false, null|-1)`，void 的 long-click 返回 true
+- TextChange 家族按 id 合并为一个 `TextWatcher`（before/on/after 三个方法都生成；同 id 多个 `@TextChange` 进同一个 `onTextChanged`）。int 参数按名字 `start`/`count`/`before`/`after` 匹配；视图局部变量类型取该 id 上第一个 TextView 子类型，否则 `TextView`
+- id：`value={-1}` 与空 `resName` 回退方法名（USE_ELEMENT_NAME）。非 TextWatcher 的 kind 仍按列表做重复 id 检查；TextWatcher 与 APT 一样不拒绝同 id 多方法
+- Fixture `BenchListenersActivity` + `bench_listeners.xml`：每种注解一个方法，`textTarget` 上 Before + 两个 TextChange + After 合成一个 watcher
+- CHECKLIST_P1「More view listeners」7 项打勾
+
+### Changed paths
+- `androidannotations-ksp`：`AnnotationNames`、`MvpModel`、`handler/MvpHandler`、`generate/MvpJavaGenerator`、`AndroidAnnotationsSymbolProcessor`
+- `examples/kotlin-bench`：`BenchListenersActivity.kt`、`res/layout/bench_listeners.xml`
+- `docs/ksp-production-parity/CHECKLIST_P1.md`、`EXECUTION_LOG.md`
+
+### Verify
+- [x] `mvnw -pl androidannotations-core/androidannotations-ksp -am install`（skipTests）BUILD SUCCESS
+- [x] `examples/kotlin-bench assembleDebug -Paa.processor=ksp`：`kspDebugKotlin` 成功，`generated 232 class(es)`（+1 `BenchListenersActivity_`）；`:compileDebugKotlin` EXIT=1，仅既有 9 个 `lateinit` 原始类型错误（BenchActivity107×8 + BenchFragment109×1），无新增错误
+- [x] `BenchListenersActivity_.java` 含 `setOnTouchListener`、`setOnFocusChangeListener`、`setOnCheckedChangeListener`（CheckBox cast）、`setOnEditorActionListener`、`setOnItemClickListener`、`setOnItemLongClickListener`（void → `return true`）、`setOnItemSelectedListener`（true/item 与 false/null）、同一 id 一个 `addTextChangedListener` 且 `onTextChanged` 调用 `onText` 与 `onTextView`，另有独立 `textAfterOnly` watcher
+- [x] 既有 `BenchActivity101_.java` 仍生成 `setOnClickListener` / `setOnLongClickListener`
+
+### Known limitations
+- TextWatcher 局部变量类型由该 id 上第一个带 TextView 子类型参数的方法决定；之后更具体的参数不再额外 cast（与 APT `TextWatcherHolder` 相同）
+- 非 Text 监听的重复 id 仍比较原始 value/name 列表，name 与 value 指向同一 int 时不会报出（与 `@Click` 相同）
+- 仅 `@EActivity` / `@EFragment`；未做 private / throws 校验（与 `@Click` 相同）
+- SeekBar / PageChange 不在本切片
+
+### Blockers
+- none（assembleDebug 的 EXIT=1 是既有 fixture，见 KNOWN_DEVIATIONS #5）
+
+### Next
+1. P1：`@ViewsById`、`@FromHtml`、动态 `@Receiver`（及 receiver 方法上的 `@Extra`）

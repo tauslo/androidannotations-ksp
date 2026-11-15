@@ -353,6 +353,47 @@ public final class MvpHandler {
 			collectViewListener(resolver, function, name, longClick, true, model);
 		}
 
+		KSAnnotation touch = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.TOUCH);
+		if (touch != null) {
+			collectExtendedListener(resolver, function, name, touch, MvpModel.ListenerKind.TOUCH, model);
+		}
+		KSAnnotation focusChange = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.FOCUS_CHANGE);
+		if (focusChange != null) {
+			collectExtendedListener(resolver, function, name, focusChange, MvpModel.ListenerKind.FOCUS_CHANGE, model);
+		}
+		KSAnnotation checkedChange = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.CHECKED_CHANGE);
+		if (checkedChange != null) {
+			collectExtendedListener(resolver, function, name, checkedChange, MvpModel.ListenerKind.CHECKED_CHANGE, model);
+		}
+		KSAnnotation editorAction = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.EDITOR_ACTION);
+		if (editorAction != null) {
+			collectExtendedListener(resolver, function, name, editorAction, MvpModel.ListenerKind.EDITOR_ACTION, model);
+		}
+		KSAnnotation itemClick = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.ITEM_CLICK);
+		if (itemClick != null) {
+			collectExtendedListener(resolver, function, name, itemClick, MvpModel.ListenerKind.ITEM_CLICK, model);
+		}
+		KSAnnotation itemLongClick = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.ITEM_LONG_CLICK);
+		if (itemLongClick != null) {
+			collectExtendedListener(resolver, function, name, itemLongClick, MvpModel.ListenerKind.ITEM_LONG_CLICK, model);
+		}
+		KSAnnotation itemSelect = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.ITEM_SELECT);
+		if (itemSelect != null) {
+			collectExtendedListener(resolver, function, name, itemSelect, MvpModel.ListenerKind.ITEM_SELECT, model);
+		}
+		KSAnnotation textChange = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.TEXT_CHANGE);
+		if (textChange != null) {
+			collectExtendedListener(resolver, function, name, textChange, MvpModel.ListenerKind.TEXT_CHANGE, model);
+		}
+		KSAnnotation beforeTextChange = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.BEFORE_TEXT_CHANGE);
+		if (beforeTextChange != null) {
+			collectExtendedListener(resolver, function, name, beforeTextChange, MvpModel.ListenerKind.BEFORE_TEXT_CHANGE, model);
+		}
+		KSAnnotation afterTextChange = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.AFTER_TEXT_CHANGE);
+		if (afterTextChange != null) {
+			collectExtendedListener(resolver, function, name, afterTextChange, MvpModel.ListenerKind.AFTER_TEXT_CHANGE, model);
+		}
+
 		KSAnnotation optionsItem = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.OPTIONS_ITEM);
 		if (optionsItem != null) {
 			collectOptionsItem(resolver, function, name, optionsItem, model);
@@ -442,6 +483,22 @@ public final class MvpHandler {
 			model.errors.add(label + " method \'" + name + "\' must return void");
 			return;
 		}
+		ListenerIdRefs ids = listenerIds(annotation, name);
+		List<MvpModel.ViewListener> target = longClick ? model.longClickListeners : model.clickListeners;
+		if (duplicateListenerIds(target, ids)) {
+			model.errors.add(label + " on method \'" + name + "\' has duplicate resource ids");
+			return;
+		}
+		List<MvpModel.ParamRole> roles = new ArrayList<>();
+		if (!params.isEmpty()) {
+			roles.add(MvpModel.ParamRole.VIEW);
+		}
+		MvpModel.ListenerKind kind = longClick ? MvpModel.ListenerKind.LONG_CLICK : MvpModel.ListenerKind.CLICK;
+		target.add(new MvpModel.ViewListener(kind, name, params, roles, returnsBoolean, ids.valueIds, ids.nameIds));
+	}
+
+	/** APT USE_ELEMENT_NAME parity: default value/resName collapse to the raw method name (no suffix stripping). */
+	private ListenerIdRefs listenerIds(KSAnnotation annotation, String methodName) {
 		List<Integer> valueIds = KspAnnotationUtils.intArrayArg(annotation, "value");
 		if (valueIds.size() == 1 && valueIds.get(0) == AnnotationNames.RES_DEFAULT) {
 			valueIds = new ArrayList<>();
@@ -452,18 +509,325 @@ public final class MvpHandler {
 		} else {
 			nameIds = KspAnnotationUtils.stringArrayArg(annotation, "resName");
 			if (nameIds.isEmpty() || nameIds.size() == 1 && "".equals(nameIds.get(0))) {
-				// APT USE_ELEMENT_NAME parity: the default id is the raw method name (no suffix stripping).
-				nameIds = Collections.singletonList(name);
+				nameIds = Collections.singletonList(methodName);
 			}
 		}
-		List<MvpModel.ViewListener> target = longClick ? model.longClickListeners : model.clickListeners;
+		return new ListenerIdRefs(valueIds, nameIds);
+	}
+
+	private boolean duplicateListenerIds(List<MvpModel.ViewListener> target, ListenerIdRefs ids) {
 		for (MvpModel.ViewListener other : target) {
-			if ((!valueIds.isEmpty() && other.valueIds.equals(valueIds)) || (!nameIds.isEmpty() && other.nameIds.equals(nameIds))) {
-				model.errors.add(label + " on method \'" + name + "\' has duplicate resource ids");
-				return;
+			if ((!ids.valueIds.isEmpty() && other.valueIds.equals(ids.valueIds))
+					|| (!ids.nameIds.isEmpty() && other.nameIds.equals(ids.nameIds))) {
+				return true;
 			}
 		}
-		target.add(new MvpModel.ViewListener(longClick, name, params, returnsBoolean, valueIds, nameIds));
+		return false;
+	}
+
+	/**
+	 * APT listener handlers other than {@code @Click}/{@code @LongClick}. Text-change kinds share one list so several
+	 * methods on the same id merge into a single {@code TextWatcher} (APT does not unique-check those ids).
+	 */
+	private void collectExtendedListener(Resolver resolver, KSFunctionDeclaration function, String name,
+			KSAnnotation annotation, MvpModel.ListenerKind kind, MvpModel model) {
+		String label = listenerLabel(kind);
+		if (model.kind != MvpModel.Kind.ACTIVITY && model.kind != MvpModel.Kind.FRAGMENT) {
+			model.errors.add(label + " is only supported in @EActivity or @EFragment components: method '" + name + "'");
+			return;
+		}
+		List<MvpModel.Param> params = KspAnnotationUtils.methodParams(function);
+		List<MvpModel.ParamRole> roles = new ArrayList<>();
+		String returnType = functionReturnType(function);
+		if (!validateExtendedSignature(resolver, kind, label, name, params, roles, returnType, model)) {
+			return;
+		}
+		boolean returnsBoolean = "boolean".equals(returnType) || "java.lang.Boolean".equals(returnType);
+		ListenerIdRefs ids = listenerIds(annotation, name);
+		List<MvpModel.ViewListener> target = listenerList(model, kind);
+		boolean textWatcher = kind == MvpModel.ListenerKind.TEXT_CHANGE || kind == MvpModel.ListenerKind.BEFORE_TEXT_CHANGE
+				|| kind == MvpModel.ListenerKind.AFTER_TEXT_CHANGE;
+		if (!textWatcher && duplicateListenerIds(target, ids)) {
+			model.errors.add(label + " on method '" + name + "' has duplicate resource ids");
+			return;
+		}
+		target.add(new MvpModel.ViewListener(kind, name, params, roles, returnsBoolean, ids.valueIds, ids.nameIds));
+	}
+
+	private boolean validateExtendedSignature(Resolver resolver, MvpModel.ListenerKind kind, String label, String name,
+			List<MvpModel.Param> params, List<MvpModel.ParamRole> roles, String returnType, MvpModel model) {
+		boolean voidOrBoolean = "void".equals(returnType) || "boolean".equals(returnType) || "java.lang.Boolean".equals(returnType);
+		switch (kind) {
+		case TOUCH:
+			if (!voidOrBoolean) {
+				model.errors.add(label + " method '" + name + "' must return void or boolean");
+				return false;
+			}
+			return validateAnyOrder(resolver, label, name, params, roles, model, true, true, false, false, false);
+		case FOCUS_CHANGE:
+			if (!"void".equals(returnType)) {
+				model.errors.add(label + " method '" + name + "' must return void");
+				return false;
+			}
+			return validateAnyOrder(resolver, label, name, params, roles, model, false, true, false, false, true);
+		case CHECKED_CHANGE:
+			if (!"void".equals(returnType)) {
+				model.errors.add(label + " method '" + name + "' must return void");
+				return false;
+			}
+			return validateAnyOrder(resolver, label, name, params, roles, model, false, false, true, false, true);
+		case EDITOR_ACTION:
+			if (!voidOrBoolean) {
+				model.errors.add(label + " method '" + name + "' must return void or boolean");
+				return false;
+			}
+			return validateAnyOrder(resolver, label, name, params, roles, model, false, false, false, true, false);
+		case ITEM_CLICK:
+			if (!"void".equals(returnType)) {
+				model.errors.add(label + " method '" + name + "' must return void");
+				return false;
+			}
+			return validateItemParam(label, name, params, roles, model, false);
+		case ITEM_LONG_CLICK:
+			if (!voidOrBoolean) {
+				model.errors.add(label + " method '" + name + "' must return void or boolean");
+				return false;
+			}
+			return validateItemParam(label, name, params, roles, model, false);
+		case ITEM_SELECT:
+			if (!"void".equals(returnType)) {
+				model.errors.add(label + " method '" + name + "' must return void");
+				return false;
+			}
+			return validateItemParam(label, name, params, roles, model, true);
+		case TEXT_CHANGE:
+		case BEFORE_TEXT_CHANGE:
+		case AFTER_TEXT_CHANGE:
+			if (!"void".equals(returnType)) {
+				model.errors.add(label + " method '" + name + "' must return void");
+				return false;
+			}
+			return validateTextChangeParams(resolver, kind, label, name, params, roles, model);
+		default:
+			model.errors.add(label + " method '" + name + "' is not supported");
+			return false;
+		}
+	}
+
+	/**
+	 * Optional slots, first match wins (APT {@code anyOrder}). Touch checks MotionEvent before View because
+	 * MotionEvent is a View subclass.
+	 */
+	private boolean validateAnyOrder(Resolver resolver, String label, String name, List<MvpModel.Param> params,
+			List<MvpModel.ParamRole> roles, MvpModel model, boolean motion, boolean acceptView, boolean compound,
+			boolean editor, boolean acceptBoolean) {
+		boolean seenMotion = false;
+		boolean seenView = false;
+		boolean seenBoolean = false;
+		boolean seenText = false;
+		boolean seenInt = false;
+		boolean seenKey = false;
+		for (MvpModel.Param param : params) {
+			String type = param.typeName;
+			if (motion && !seenMotion && "android.view.MotionEvent".equals(type)) {
+				seenMotion = true;
+				roles.add(MvpModel.ParamRole.MOTION_EVENT);
+			} else if (editor && !seenText && isTextViewSubtype(resolver, type)) {
+				seenText = true;
+				roles.add(MvpModel.ParamRole.TEXT_VIEW);
+			} else if (compound && !seenView && isCompoundButtonSubtype(resolver, type)) {
+				seenView = true;
+				roles.add(MvpModel.ParamRole.VIEW);
+			} else if (acceptView && !seenView && isViewSubtype(resolver, type)) {
+				seenView = true;
+				roles.add(MvpModel.ParamRole.VIEW);
+			} else if (acceptBoolean && !seenBoolean && isBooleanType(type)) {
+				seenBoolean = true;
+				roles.add(MvpModel.ParamRole.BOOLEAN);
+			} else if (editor && !seenInt && isIntType(type)) {
+				seenInt = true;
+				roles.add(MvpModel.ParamRole.INT);
+			} else if (editor && !seenKey && "android.view.KeyEvent".equals(type)) {
+				seenKey = true;
+				roles.add(MvpModel.ParamRole.KEY_EVENT);
+			} else {
+				model.errors.add(label + " method '" + name + "' has an unrecognized parameter '" + param.name + "'");
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/** @ItemClick / @ItemLongClick take an optional item; @ItemSelect requires boolean then an optional item. */
+	private boolean validateItemParam(String label, String name, List<MvpModel.Param> params, List<MvpModel.ParamRole> roles,
+			MvpModel model, boolean select) {
+		if (select) {
+			if (params.isEmpty() || params.size() > 2 || !isBooleanType(params.get(0).typeName)) {
+				model.errors.add(label + " method '" + name + "' must take a boolean and an optional second parameter");
+				return false;
+			}
+			roles.add(MvpModel.ParamRole.BOOLEAN);
+			if (params.size() == 2) {
+				roles.add("int".equals(params.get(1).typeName) ? MvpModel.ParamRole.INT : MvpModel.ParamRole.ITEM);
+			}
+			return true;
+		}
+		if (params.size() > 1) {
+			model.errors.add(label + " method '" + name + "' must have at most one parameter");
+			return false;
+		}
+		if (params.size() == 1) {
+			roles.add("int".equals(params.get(0).typeName) ? MvpModel.ParamRole.INT : MvpModel.ParamRole.ITEM);
+		}
+		return true;
+	}
+
+	/** APT CoreValidatorHelper text-watcher parameter rules. Ints are accepted only when named like the framework callback. */
+	private boolean validateTextChangeParams(Resolver resolver, MvpModel.ListenerKind kind, String label, String name,
+			List<MvpModel.Param> params, List<MvpModel.ParamRole> roles, MvpModel model) {
+		boolean after = kind == MvpModel.ListenerKind.AFTER_TEXT_CHANGE;
+		boolean seenCharSequence = false;
+		boolean seenEditable = false;
+		boolean seenView = false;
+		for (MvpModel.Param param : params) {
+			String type = param.typeName;
+			if (!after && "java.lang.CharSequence".equals(type)) {
+				if (seenCharSequence) {
+					model.errors.add(label + " method '" + name + "' can declare only one CharSequence parameter");
+					return false;
+				}
+				seenCharSequence = true;
+				roles.add(MvpModel.ParamRole.CHAR_SEQUENCE);
+			} else if (after && "android.text.Editable".equals(type)) {
+				if (seenEditable) {
+					model.errors.add(label + " method '" + name + "' can declare only one Editable parameter");
+					return false;
+				}
+				seenEditable = true;
+				roles.add(MvpModel.ParamRole.EDITABLE);
+			} else if (!after && isIntType(type)) {
+				MvpModel.ParamRole role = textIntRole(kind, param.name);
+				if (role == null) {
+					String allowed = kind == MvpModel.ListenerKind.BEFORE_TEXT_CHANGE ? "start, count, or after" : "start, before, or count";
+					model.errors.add(label + " method '" + name + "' int parameter must be named " + allowed);
+					return false;
+				}
+				roles.add(role);
+			} else if (isTextViewSubtype(resolver, type)) {
+				if (seenView) {
+					model.errors.add(label + " method '" + name + "' can declare only one TextView parameter");
+					return false;
+				}
+				seenView = true;
+				roles.add(MvpModel.ParamRole.TEXT_VIEW);
+			} else {
+				model.errors.add(label + " method '" + name + "' has an unrecognized parameter '" + param.name + "'");
+				return false;
+			}
+		}
+		return true;
+	}
+
+	private MvpModel.ParamRole textIntRole(MvpModel.ListenerKind kind, String paramName) {
+		if ("start".equals(paramName)) {
+			return MvpModel.ParamRole.START;
+		}
+		if ("count".equals(paramName)) {
+			return MvpModel.ParamRole.COUNT;
+		}
+		if (kind == MvpModel.ListenerKind.BEFORE_TEXT_CHANGE && "after".equals(paramName)) {
+			return MvpModel.ParamRole.AFTER;
+		}
+		if (kind == MvpModel.ListenerKind.TEXT_CHANGE && "before".equals(paramName)) {
+			return MvpModel.ParamRole.BEFORE;
+		}
+		return null;
+	}
+
+	private List<MvpModel.ViewListener> listenerList(MvpModel model, MvpModel.ListenerKind kind) {
+		switch (kind) {
+		case TOUCH:
+			return model.touchListeners;
+		case FOCUS_CHANGE:
+			return model.focusChangeListeners;
+		case CHECKED_CHANGE:
+			return model.checkedChangeListeners;
+		case EDITOR_ACTION:
+			return model.editorActionListeners;
+		case ITEM_CLICK:
+			return model.itemClickListeners;
+		case ITEM_LONG_CLICK:
+			return model.itemLongClickListeners;
+		case ITEM_SELECT:
+			return model.itemSelectListeners;
+		case TEXT_CHANGE:
+		case BEFORE_TEXT_CHANGE:
+		case AFTER_TEXT_CHANGE:
+			return model.textWatcherListeners;
+		default:
+			return model.clickListeners;
+		}
+	}
+
+	private static String listenerLabel(MvpModel.ListenerKind kind) {
+		switch (kind) {
+		case TOUCH:
+			return "@Touch";
+		case FOCUS_CHANGE:
+			return "@FocusChange";
+		case CHECKED_CHANGE:
+			return "@CheckedChange";
+		case EDITOR_ACTION:
+			return "@EditorAction";
+		case ITEM_CLICK:
+			return "@ItemClick";
+		case ITEM_LONG_CLICK:
+			return "@ItemLongClick";
+		case ITEM_SELECT:
+			return "@ItemSelect";
+		case TEXT_CHANGE:
+			return "@TextChange";
+		case BEFORE_TEXT_CHANGE:
+			return "@BeforeTextChange";
+		case AFTER_TEXT_CHANGE:
+			return "@AfterTextChange";
+		default:
+			return "@Click";
+		}
+	}
+
+	private static boolean isBooleanType(String typeName) {
+		return "boolean".equals(typeName) || "java.lang.Boolean".equals(typeName);
+	}
+
+	private static boolean isIntType(String typeName) {
+		return "int".equals(typeName) || "java.lang.Integer".equals(typeName);
+	}
+
+	private boolean isCompoundButtonSubtype(Resolver resolver, String typeName) {
+		return isSubtypeOf(resolver, typeName, "android.widget.CompoundButton");
+	}
+
+	private boolean isTextViewSubtype(Resolver resolver, String typeName) {
+		return isSubtypeOf(resolver, typeName, "android.widget.TextView");
+	}
+
+	private boolean isSubtypeOf(Resolver resolver, String typeName, String base) {
+		if (base.equals(typeName)) {
+			return true;
+		}
+		KSClassDeclaration declaration = resolveClassDeclaration(resolver, typeName);
+		return declaration != null && implementsInterface(declaration, base);
+	}
+
+	private static final class ListenerIdRefs {
+		final List<Integer> valueIds;
+		final List<String> nameIds;
+
+		ListenerIdRefs(List<Integer> valueIds, List<String> nameIds) {
+			this.valueIds = valueIds;
+			this.nameIds = nameIds;
+		}
 	}
 
 /** APT OptionsMenuHandler parity: class-level @OptionsMenu menu resource refs (NEED_RES_ID, no element-name fallback). */

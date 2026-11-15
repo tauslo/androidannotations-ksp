@@ -29,6 +29,16 @@ public final class AnnotationNames {
 	public static final String VIEW_BY_ID = "org.androidannotations.annotations.ViewById";
 	public static final String CLICK = "org.androidannotations.annotations.Click";
 	public static final String LONG_CLICK = "org.androidannotations.annotations.LongClick";
+	public static final String TOUCH = "org.androidannotations.annotations.Touch";
+	public static final String FOCUS_CHANGE = "org.androidannotations.annotations.FocusChange";
+	public static final String CHECKED_CHANGE = "org.androidannotations.annotations.CheckedChange";
+	public static final String TEXT_CHANGE = "org.androidannotations.annotations.TextChange";
+	public static final String BEFORE_TEXT_CHANGE = "org.androidannotations.annotations.BeforeTextChange";
+	public static final String AFTER_TEXT_CHANGE = "org.androidannotations.annotations.AfterTextChange";
+	public static final String EDITOR_ACTION = "org.androidannotations.annotations.EditorAction";
+	public static final String ITEM_CLICK = "org.androidannotations.annotations.ItemClick";
+	public static final String ITEM_LONG_CLICK = "org.androidannotations.annotations.ItemLongClick";
+	public static final String ITEM_SELECT = "org.androidannotations.annotations.ItemSelect";
 	public static final String OPTIONS_MENU = "org.androidannotations.annotations.OptionsMenu";
 	public static final String OPTIONS_ITEM = "org.androidannotations.annotations.OptionsItem";
 	public static final String OPTIONS_MENU_ITEM = "org.androidannotations.annotations.OptionsMenuItem";
