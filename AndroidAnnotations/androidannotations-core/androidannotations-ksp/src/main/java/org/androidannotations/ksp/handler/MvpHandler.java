@@ -154,6 +154,8 @@ public final class MvpHandler {
 				model.errors.add("@Fullscreen can only be used on an @EActivity");
 			}
 		}
+		applyDataBound(resolver, classDeclaration, model);
+		applyCustomTitle(classDeclaration, model);
 
 		KSAnnotation optionsMenu = KspAnnotationUtils.findAnnotation(classDeclaration.getAnnotations(), AnnotationNames.OPTIONS_MENU);
 		if (optionsMenu != null) {
@@ -347,6 +349,16 @@ public final class MvpHandler {
 		KSAnnotation rootFragment = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.ROOT_FRAGMENT);
 		if (rootFragment != null) {
 			collectRoot(name, true, jvmField, KspAnnotationUtils.fullJavaTypeName(property.getType()), true, model);
+		}
+
+		KSAnnotation bindingObject = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.BINDING_OBJECT);
+		if (bindingObject != null) {
+			collectBindingField(resolver, property, name, jvmField, model);
+		}
+
+		KSAnnotation httpsClient = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.HTTPS_CLIENT);
+		if (httpsClient != null) {
+			collectHttpsField(property, name, jvmField, httpsClient, model);
 		}
 
 		KSAnnotation injectMenu = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.INJECT_MENU);
@@ -607,6 +619,25 @@ public final class MvpHandler {
 		KSAnnotation onActivityResult = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.ON_ACTIVITY_RESULT);
 		if (onActivityResult != null) {
 			collectActivityResult(resolver, function, name, onActivityResult, model);
+		}
+
+		KSAnnotation bindingObjectMethod = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.BINDING_OBJECT);
+		if (bindingObjectMethod != null) {
+			collectBindingMethod(resolver, function, name, model);
+		} else if (hasParamAnnotation(function, AnnotationNames.BINDING_OBJECT)) {
+			collectBindingParams(resolver, function, name, model);
+		}
+
+		KSAnnotation httpsClientMethod = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.HTTPS_CLIENT);
+		if (httpsClientMethod != null) {
+			collectHttpsMethod(function, name, httpsClientMethod, model);
+		} else if (hasParamAnnotation(function, AnnotationNames.HTTPS_CLIENT)) {
+			collectHttpsParams(function, name, model);
+		}
+
+		KSAnnotation transactional = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.TRANSACTIONAL);
+		if (transactional != null) {
+			collectTransactional(function, name, model);
 		}
 
 		KSAnnotation viewByIdMethod = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.VIEW_BY_ID);
@@ -3329,6 +3360,236 @@ public final class MvpHandler {
 		MvpModel.WrappedMethod created = new MvpModel.WrappedMethod(name, KspAnnotationUtils.methodParams(function), methodVisibility(function), returnType);
 		model.wrappedMethods.add(created);
 		return created;
+	}
+
+	private void applyDataBound(Resolver resolver, KSClassDeclaration declaration, MvpModel model) {
+		if (KspAnnotationUtils.findAnnotation(declaration.getAnnotations(), AnnotationNames.DATA_BOUND) == null) {
+			return;
+		}
+		if (model.kind != MvpModel.Kind.ACTIVITY && model.kind != MvpModel.Kind.FRAGMENT && model.kind != MvpModel.Kind.VIEW_GROUP) {
+			model.errors.add("@DataBound can only be used on an @EActivity, @EFragment or @EViewGroup");
+			return;
+		}
+		boolean androidx = resolveClassDeclaration(resolver, "androidx.databinding.DataBindingUtil") != null;
+		boolean legacy = resolveClassDeclaration(resolver, "android.databinding.DataBindingUtil") != null;
+		if (!androidx && !legacy) {
+			model.errors.add("@DataBound requires androidx.databinding.DataBindingUtil or android.databinding.DataBindingUtil on the classpath");
+			return;
+		}
+		model.dataBound = true;
+		if (androidx) {
+			model.dataBindingUtil = "androidx.databinding.DataBindingUtil";
+			model.viewDataBindingType = "androidx.databinding.ViewDataBinding";
+		} else {
+			model.dataBindingUtil = "android.databinding.DataBindingUtil";
+			model.viewDataBindingType = "android.databinding.ViewDataBinding";
+		}
+	}
+
+	private void applyCustomTitle(KSClassDeclaration declaration, MvpModel model) {
+		KSAnnotation customTitle = KspAnnotationUtils.findAnnotation(declaration.getAnnotations(), AnnotationNames.CUSTOM_TITLE);
+		if (customTitle == null) {
+			return;
+		}
+		if (model.kind != MvpModel.Kind.ACTIVITY) {
+			model.errors.add("@CustomTitle can only be used on an @EActivity");
+			return;
+		}
+		int layoutId = KspAnnotationUtils.intArg(customTitle, "value", AnnotationNames.RES_DEFAULT);
+		if (layoutId == AnnotationNames.RES_DEFAULT) {
+			model.errors.add("@CustomTitle requires a layout resource id");
+			return;
+		}
+		model.customTitleLayoutId = layoutId;
+	}
+
+	private void collectBindingField(Resolver resolver, KSPropertyDeclaration property, String name, boolean jvmField, MvpModel model) {
+		if (!model.dataBound) {
+			model.errors.add("@BindingObject requires @DataBound on the enclosing class");
+			return;
+		}
+		if (property.getModifiers().contains(Modifier.PRIVATE)) {
+			model.errors.add("@BindingObject cannot be used on a private element");
+			return;
+		}
+		String typeName = KspAnnotationUtils.fullJavaTypeName(property.getType());
+		if (!isViewDataBinding(resolver, typeName)) {
+			model.errors.add("@BindingObject can only be used on a type that extends ViewDataBinding");
+			return;
+		}
+		List<MvpModel.BindingTarget> targets = new ArrayList<MvpModel.BindingTarget>();
+		targets.add(new MvpModel.BindingTarget(name, typeName));
+		model.bindingObjects.add(new MvpModel.BindingObjectInjection(MvpModel.BindingObjectInjection.Form.FIELD, name, jvmField, targets));
+	}
+
+	private void collectBindingMethod(Resolver resolver, KSFunctionDeclaration function, String name, MvpModel model) {
+		if (!model.dataBound) {
+			model.errors.add("@BindingObject requires @DataBound on the enclosing class");
+			return;
+		}
+		if (function.getModifiers().contains(Modifier.PRIVATE)) {
+			model.errors.add("@BindingObject cannot be used on a private element");
+			return;
+		}
+		if (function.getParameters().size() != 1) {
+			model.errors.add("@BindingObject method '" + name + "' must have exactly one parameter");
+			return;
+		}
+		KSValueParameter param = function.getParameters().get(0);
+		String typeName = KspAnnotationUtils.fullJavaTypeName(param.getType());
+		if (!isViewDataBinding(resolver, typeName)) {
+			model.errors.add("@BindingObject can only be used on a type that extends ViewDataBinding");
+			return;
+		}
+		List<MvpModel.BindingTarget> targets = new ArrayList<MvpModel.BindingTarget>();
+		targets.add(new MvpModel.BindingTarget(param.getName().asString(), typeName));
+		model.bindingObjects.add(new MvpModel.BindingObjectInjection(MvpModel.BindingObjectInjection.Form.METHOD, name, false, targets));
+	}
+
+	private void collectBindingParams(Resolver resolver, KSFunctionDeclaration function, String name, MvpModel model) {
+		if (!model.dataBound) {
+			model.errors.add("@BindingObject requires @DataBound on the enclosing class");
+			return;
+		}
+		if (function.getModifiers().contains(Modifier.PRIVATE)) {
+			model.errors.add("@BindingObject cannot be used on a private element");
+			return;
+		}
+		List<MvpModel.BindingTarget> targets = new ArrayList<MvpModel.BindingTarget>();
+		for (KSValueParameter param : function.getParameters()) {
+			if (KspAnnotationUtils.findAnnotation(param.getAnnotations(), AnnotationNames.BINDING_OBJECT) == null) {
+				model.errors.add("@BindingObject parameter form requires every parameter of '" + name + "' to be annotated");
+				return;
+			}
+			String typeName = KspAnnotationUtils.fullJavaTypeName(param.getType());
+			if (!isViewDataBinding(resolver, typeName)) {
+				model.errors.add("@BindingObject can only be used on a type that extends ViewDataBinding");
+				return;
+			}
+			targets.add(new MvpModel.BindingTarget(param.getName().asString(), typeName));
+		}
+		model.bindingObjects.add(new MvpModel.BindingObjectInjection(MvpModel.BindingObjectInjection.Form.METHOD, name, false, targets));
+	}
+
+	private boolean isViewDataBinding(Resolver resolver, String typeName) {
+		KSClassDeclaration declaration = resolveClassDeclaration(resolver, typeName);
+		if (declaration == null) {
+			// Generated in this round: only the simple name is available. Qualified at generation time.
+			return typeName != null && !typeName.isEmpty();
+		}
+		String self = declaration.getQualifiedName() != null ? declaration.getQualifiedName().asString() : "";
+		if ("androidx.databinding.ViewDataBinding".equals(self) || "android.databinding.ViewDataBinding".equals(self)) {
+			return true;
+		}
+		return implementsInterface(declaration, "androidx.databinding.ViewDataBinding")
+				|| implementsInterface(declaration, "android.databinding.ViewDataBinding");
+	}
+
+	private void collectHttpsField(KSPropertyDeclaration property, String name, boolean jvmField, KSAnnotation annotation, MvpModel model) {
+		if (!enhancedComponent(model.kind)) {
+			model.errors.add("@HttpsClient can only be used in an AndroidAnnotations enhanced component");
+			return;
+		}
+		if (property.getModifiers().contains(Modifier.PRIVATE)) {
+			model.errors.add("@HttpsClient cannot be used on a private element");
+			return;
+		}
+		List<MvpModel.HttpsTarget> targets = new ArrayList<MvpModel.HttpsTarget>();
+		targets.add(httpsTarget(name, KspAnnotationUtils.fullJavaTypeName(property.getType()), annotation));
+		model.httpsClients.add(new MvpModel.HttpsClientInjection(MvpModel.HttpsClientInjection.Form.FIELD, name, jvmField, targets));
+	}
+
+	private void collectHttpsMethod(KSFunctionDeclaration function, String name, KSAnnotation annotation, MvpModel model) {
+		if (!enhancedComponent(model.kind)) {
+			model.errors.add("@HttpsClient can only be used in an AndroidAnnotations enhanced component");
+			return;
+		}
+		if (function.getModifiers().contains(Modifier.PRIVATE)) {
+			model.errors.add("@HttpsClient cannot be used on a private element");
+			return;
+		}
+		if (function.getParameters().size() != 1) {
+			model.errors.add("@HttpsClient method '" + name + "' must have exactly one parameter");
+			return;
+		}
+		KSValueParameter param = function.getParameters().get(0);
+		List<MvpModel.HttpsTarget> targets = new ArrayList<MvpModel.HttpsTarget>();
+		targets.add(httpsTarget(param.getName().asString(), KspAnnotationUtils.fullJavaTypeName(param.getType()), annotation));
+		model.httpsClients.add(new MvpModel.HttpsClientInjection(MvpModel.HttpsClientInjection.Form.METHOD, name, false, targets));
+	}
+
+	private void collectHttpsParams(KSFunctionDeclaration function, String name, MvpModel model) {
+		if (!enhancedComponent(model.kind)) {
+			model.errors.add("@HttpsClient can only be used in an AndroidAnnotations enhanced component");
+			return;
+		}
+		if (function.getModifiers().contains(Modifier.PRIVATE)) {
+			model.errors.add("@HttpsClient cannot be used on a private element");
+			return;
+		}
+		List<MvpModel.HttpsTarget> targets = new ArrayList<MvpModel.HttpsTarget>();
+		for (KSValueParameter param : function.getParameters()) {
+			KSAnnotation annotation = KspAnnotationUtils.findAnnotation(param.getAnnotations(), AnnotationNames.HTTPS_CLIENT);
+			if (annotation == null) {
+				model.errors.add("@HttpsClient parameter form requires every parameter of '" + name + "' to be annotated");
+				return;
+			}
+			targets.add(httpsTarget(param.getName().asString(), KspAnnotationUtils.fullJavaTypeName(param.getType()), annotation));
+		}
+		model.httpsClients.add(new MvpModel.HttpsClientInjection(MvpModel.HttpsClientInjection.Form.METHOD, name, false, targets));
+	}
+
+	private static MvpModel.HttpsTarget httpsTarget(String name, String typeName, KSAnnotation annotation) {
+		return new MvpModel.HttpsTarget(name, typeName,
+				KspAnnotationUtils.intArg(annotation, "trustStore", AnnotationNames.RES_DEFAULT),
+				KspAnnotationUtils.stringArg(annotation, "trustStoreResName", ""),
+				KspAnnotationUtils.stringArg(annotation, "trustStorePwd", "changeit"),
+				KspAnnotationUtils.intArg(annotation, "keyStore", AnnotationNames.RES_DEFAULT),
+				KspAnnotationUtils.stringArg(annotation, "keyStoreResName", ""),
+				KspAnnotationUtils.stringArg(annotation, "keyStorePwd", "changeit"),
+				KspAnnotationUtils.booleanArg(annotation, "allowAllHostnames", true));
+	}
+
+	private void collectTransactional(KSFunctionDeclaration function, String name, MvpModel model) {
+		if (!enhancedComponent(model.kind)) {
+			model.errors.add("@Transactional can only be used in an AndroidAnnotations enhanced component: method '" + name + "'");
+			return;
+		}
+		if (function.getModifiers().contains(Modifier.PRIVATE)) {
+			model.errors.add("@Transactional method '" + name + "' must not be private");
+			return;
+		}
+		if (function.getModifiers().contains(Modifier.FINAL)) {
+			model.errors.add("@Transactional method '" + name + "' must not be final");
+			return;
+		}
+		List<KSValueParameter> params = function.getParameters();
+		String first = params.isEmpty() ? "" : KspAnnotationUtils.fullJavaTypeName(params.get(0).getType());
+		if (!"android.database.sqlite.SQLiteDatabase".equals(first)) {
+			model.errors.add("@Transactional method '" + name + "' must have android.database.sqlite.SQLiteDatabase as its first parameter");
+			return;
+		}
+		int count = params.size();
+		if (findThreaded(model, name, count) != null || existingWrapped(model, name, count) != null) {
+			model.errors.add("@Transactional method '" + name + "' cannot be combined with @UiThread, @Background, @WakeLock, @Trace or @Suppose*");
+			return;
+		}
+		for (MvpModel.IgnoreWhenMethod ignore : model.ignoreWhens) {
+			if (ignore.name.equals(name) && ignore.params.size() == count) {
+				model.errors.add("@Transactional method '" + name + "' cannot be combined with @IgnoreWhen");
+				return;
+			}
+		}
+		wrapped(function, name, model).transactional = true;
+	}
+
+	private static boolean hasParamAnnotation(KSFunctionDeclaration function, String qualifiedName) {
+		for (KSValueParameter param : function.getParameters()) {
+			if (KspAnnotationUtils.findAnnotation(param.getAnnotations(), qualifiedName) != null) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private KSClassDeclaration superclassOf(KSClassDeclaration declaration) {

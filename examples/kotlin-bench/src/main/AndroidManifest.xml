@@ -26,6 +26,7 @@
         <activity android:name="org.androidannotations.bench.BenchAndroidXHost_" />
         <activity android:name="org.androidannotations.bench.BenchSeekKeyActivity_" />
         <activity android:name="org.androidannotations.bench.BenchThreadsActivity_" />
+        <activity android:name="org.androidannotations.bench.BenchDataActivity_" />
         <service android:name="org.androidannotations.bench.BenchIntentWork_" />
         <receiver
             android:name="org.androidannotations.bench.BenchBroadcast_"

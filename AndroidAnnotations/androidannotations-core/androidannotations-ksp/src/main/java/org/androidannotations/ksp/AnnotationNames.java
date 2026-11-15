@@ -106,30 +106,30 @@ public final class AnnotationNames {
 	public static final String NON_CONFIGURATION_INSTANCE = "org.androidannotations.annotations.NonConfigurationInstance";
 	public static final String WINDOW_FEATURE = "org.androidannotations.annotations.WindowFeature";
 	public static final String FULLSCREEN = "org.androidannotations.annotations.Fullscreen";
+	public static final String DATA_BOUND = "org.androidannotations.annotations.DataBound";
+	public static final String BINDING_OBJECT = "org.androidannotations.annotations.BindingObject";
+	public static final String CUSTOM_TITLE = "org.androidannotations.annotations.CustomTitle";
+	public static final String HTTPS_CLIENT = "org.androidannotations.annotations.HttpsClient";
+	public static final String TRANSACTIONAL = "org.androidannotations.annotations.Transactional";
 
 	public static final int RES_DEFAULT = -1;
 
 	/**
-	 * AA annotations the processor knows about but does not generate yet. Using one produces a KSP warning.
-	 * P2 implemented {@code @EReceiver}/{@code @EIntentService}/{@code @EProvider}, SeekBar/ViewPager/Key,
-	 * {@code @WakeLock}/{@code @Trace}/{@code @Suppose*}, and {@code @RootContext}/{@code @RootFragment}.
-	 * Preference screens, DataBinding, and the remaining misc UI annotations stay here.
+	 * AA annotations the processor knows about but does not generate yet. Using one produces a KSP warning,
+	 * or an error when the {@code unimplementedIsError} option is true.
+	 * Still open: Preference screens (no coherent fixture this slice), obsolete {@code @HierarchyViewerSupport},
+	 * and the two unused resource annotations {@code @MovieRes} / {@code @IntArrayRes}.
 	 * {@code @Trace} is implemented but generated only when the {@code trace} option is true (APT default false).
 	 * {@code @Suppose*} is generated only when {@code threadControl} is true (APT default true).
 	 */
 	public static final String[] RECOGNIZED_NOT_IMPLEMENTED = {
-			"org.androidannotations.annotations.DataBound",
-			"org.androidannotations.annotations.BindingObject",
-			"org.androidannotations.annotations.CustomTitle",
 			"org.androidannotations.annotations.HierarchyViewerSupport",
-			"org.androidannotations.annotations.HttpsClient",
 			"org.androidannotations.annotations.PreferenceByKey",
 			"org.androidannotations.annotations.PreferenceChange",
 			"org.androidannotations.annotations.PreferenceClick",
 			"org.androidannotations.annotations.PreferenceHeaders",
 			"org.androidannotations.annotations.PreferenceScreen",
 			"org.androidannotations.annotations.AfterPreferences",
-			"org.androidannotations.annotations.Transactional",
 			"org.androidannotations.annotations.res.IntArrayRes",
 			"org.androidannotations.annotations.res.MovieRes"
 	};

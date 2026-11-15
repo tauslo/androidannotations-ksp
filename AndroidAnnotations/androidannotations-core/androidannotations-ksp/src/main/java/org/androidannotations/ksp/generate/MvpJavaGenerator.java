@@ -95,7 +95,8 @@ public final class MvpJavaGenerator {
 		}
 
 		out.append("\tprivate final org.androidannotations.api.view.OnViewChangedNotifier onViewChangedNotifier_ = new org.androidannotations.api.view.OnViewChangedNotifier();\n");
-out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new java.util.HashMap<Class<?>, Object>();\n");
+		appendDataBindingField(out, model);
+		out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new java.util.HashMap<Class<?>, Object>();\n");
 		appendActivityResultConstants(out, model);
 		appendReceiverExtraConstants(out, model);
 		appendReceiverFields(out, model);
@@ -140,6 +141,7 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 		}
 		appendNonConfigurationRestore(out, model);
 		appendBeanInjections(out, model);
+		appendHttpsClientInjections(out, model);
 		if (!model.instanceStates.isEmpty()) {
 			out.append("\t\trestoreSavedInstanceState_(savedInstanceState);\n");
 		}
@@ -206,12 +208,14 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 		if (hasViewSupport) {
 			out.append("\t@Override\n");
 			out.append("\tpublic void onViewChanged(org.androidannotations.api.view.HasViews hasViews) {\n");
+			appendCustomTitle(out, model);
 			ViewInjectionPlan plan = planViewInjections(model);
 			out.append(plan.pass1);
 			appendViewsById(out, model);
 			appendFromHtml(out, model);
 			appendViewListeners(out, model, plan);
 			out.append(plan.pass3);
+			appendBindingObjects(out, model);
 			appendFragmentInjections(out, model);
 			for (String method : model.afterViews) {
 				out.append("\t\t").append(method).append("();\n");
@@ -246,6 +250,7 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 
 		out.append("\tprivate final org.androidannotations.api.view.OnViewChangedNotifier onViewChangedNotifier_ = new org.androidannotations.api.view.OnViewChangedNotifier();\n");
 		out.append("\tprivate android.view.View contentView_;\n");
+		appendDataBindingField(out, model);
 		if (model.needsViewDestroyed) {
 			out.append("\tprivate volatile boolean viewDestroyed_ = true;\n");
 		}
@@ -282,10 +287,18 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 		out.append("\t@Override\n");
 		out.append("\tpublic void onDestroyView() {\n");
 		out.append("\t\tsuper.onDestroyView();\n");
+		if (model.dataBound && hasLayout(model)) {
+			out.append("\t\tviewDataBinding_.unbind();\n");
+		}
 		out.append("\t\tcontentView_ = null;\n");
 		for (MvpModel.ViewInjection injection : model.viewInjections) {
 			if (injection.form == MvpModel.ViewInjection.Form.FIELD) {
 				out.append("\t\t").append(injection.field.propertyName).append(" = null;\n");
+			}
+		}
+		for (MvpModel.BindingObjectInjection injection : model.bindingObjects) {
+			if (injection.form == MvpModel.BindingObjectInjection.Form.FIELD) {
+				out.append("\t\t").append(injection.name).append(" = null;\n");
 			}
 		}
 		if (model.needsViewDestroyed) {
@@ -318,6 +331,7 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 		appendSystemServiceInjections(out, model, "getActivity()");
 		appendPrefInjections(out, model);
 		appendBeanInjections(out, model);
+		appendHttpsClientInjections(out, model);
 		if (!model.instanceStates.isEmpty()) {
 			out.append("\t\trestoreSavedInstanceState_(savedInstanceState);\n");
 		}
@@ -353,6 +367,7 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 			appendFromHtml(out, model);
 			appendViewListeners(out, model, plan);
 			out.append(plan.pass3);
+			appendBindingObjects(out, model);
 			appendFragmentInjections(out, model);
 			for (String method : model.afterViews) {
 				out.append("\t\t").append(method).append("();\n");
@@ -1029,7 +1044,20 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 		out.append("\tpublic android.view.View onCreateView(android.view.LayoutInflater inflater, android.view.ViewGroup container, android.os.Bundle savedInstanceState) {\n");
 		if (hasLayout) {
 			String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "layout", "", model.layoutId, hasLayoutName ? model.layoutResName : "", rClassIndex);
-			if (model.forceLayoutInjection) {
+			if (model.dataBound) {
+				if (model.forceLayoutInjection) {
+					appendDataBindingInflate(out, model, resExpr, "getActivity()", "container", false, "\t\t");
+					out.append("\t\tcontentView_ = viewDataBinding_.getRoot();\n");
+				} else {
+					out.append("\t\tcontentView_ = super.onCreateView(inflater, container, savedInstanceState);\n");
+					out.append("\t\tif (contentView_ == null) {\n");
+					appendDataBindingInflate(out, model, resExpr, "getActivity()", "container", false, "\t\t\t");
+					out.append("\t\t\tcontentView_ = viewDataBinding_.getRoot();\n");
+					out.append("\t\t}\n");
+				}
+				appendViewCreated(out, model);
+				out.append("\t\treturn contentView_;\n");
+			} else if (model.forceLayoutInjection) {
 				appendViewCreated(out, model);
 				out.append("\t\treturn inflater.inflate(").append(resExpr).append(", container, false);\n");
 			} else {
@@ -1097,6 +1125,7 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 		appendAppInjections(out, model);
 		appendPrefInjections(out, model);
 		appendBeanInjections(out, model);
+		appendHttpsClientInjections(out, model);
 		for (String method : model.afterInject) {
 			out.append("\t\t").append(method).append("();\n");
 		}
@@ -1140,6 +1169,7 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 		appendAppInjections(out, model);
 		appendPrefInjections(out, model);
 		appendBeanInjections(out, model);
+		appendHttpsClientInjections(out, model);
 		for (String method : model.afterInject) {
 			out.append("\t\t").append(method).append("();\n");
 		}
@@ -1286,6 +1316,7 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 			appendResAssign(out, model.kind, resField);
 		}
 		appendPrefInjections(out, model);
+		appendHttpsClientInjections(out, model);
 		if (hasViewSupport) {
 			out.append("\t\torg.androidannotations.api.view.OnViewChangedNotifier.registerOnViewChangedListener(this);\n");
 		}
@@ -1307,6 +1338,7 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 			appendViewsById(out, model);
 			appendFromHtml(out, model);
 			out.append(plan.pass3);
+			appendBindingObjects(out, model);
 			for (String method : model.afterViews) {
 				out.append("\t\t").append(method).append("();\n");
 			}
@@ -1339,6 +1371,7 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 				.append(" {\n\n");
 		out.append("\tprivate final org.androidannotations.api.view.OnViewChangedNotifier onViewChangedNotifier_ = new org.androidannotations.api.view.OnViewChangedNotifier();\n");
 		out.append("\tprivate boolean alreadyInflated_ = false;\n");
+		appendDataBindingField(out, model);
 		appendReceiverExtraConstants(out, model);
 		appendReceiverFields(out, model);
 		appendPowerManagerField(out, model);
@@ -1373,6 +1406,7 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 			appendResAssign(out, model.kind, resField);
 		}
 		appendPrefInjections(out, model);
+		appendHttpsClientInjections(out, model);
 		if (hasViewSupport) {
 			out.append("\t\torg.androidannotations.api.view.OnViewChangedNotifier.registerOnViewChangedListener(this);\n");
 		}
@@ -1390,7 +1424,11 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 		if (model.kind == MvpModel.Kind.VIEW_GROUP && (model.layoutId != AnnotationNames.RES_DEFAULT
 				|| (model.layoutResName != null && !model.layoutResName.isEmpty()))) {
 			String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "layout", "", model.layoutId, model.layoutResName, rClassIndex);
-			out.append("\t\t\tinflate(getContext(), ").append(resExpr).append(", this);\n");
+			if (model.dataBound) {
+				appendDataBindingInflate(out, model, resExpr, "getContext()", "this", true, "\t\t\t");
+			} else {
+				out.append("\t\t\tinflate(getContext(), ").append(resExpr).append(", this);\n");
+			}
 		}
 		out.append("\t\t\tonViewChangedNotifier_.notifyViewChanged(this);\n");
 		out.append("\t\t}\n");
@@ -1405,6 +1443,7 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 			appendFromHtml(out, model);
 			appendViewListeners(out, model, plan);
 			out.append(plan.pass3);
+			appendBindingObjects(out, model);
 			appendFragmentInjections(out, model);
 			for (String method : model.afterViews) {
 				out.append("\t\t").append(method).append("();\n");
@@ -1440,6 +1479,201 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 		for (Integer feature : model.windowFeatures) {
 			out.append("\t\t").append(method).append("(").append(feature.intValue()).append(");\n");
 		}
+		if (model.hasCustomTitle()) {
+			// APT CustomTitleHandler always calls requestWindowFeature, including on AppCompat activities.
+			out.append("\t\trequestWindowFeature(android.view.Window.FEATURE_CUSTOM_TITLE);\n");
+		}
+	}
+
+	private void appendDataBindingField(StringBuilder out, MvpModel model) {
+		if (!model.dataBound) {
+			return;
+		}
+		String type = model.viewDataBindingType != null ? model.viewDataBindingType : "androidx.databinding.ViewDataBinding";
+		out.append("\tprivate ").append(type).append(" viewDataBinding_;\n");
+	}
+
+	private void appendDataBindingInflate(StringBuilder out, MvpModel model, String resExpr, String contextExpr, String containerExpr, boolean attach, String indent) {
+		String util = model.dataBindingUtil != null ? model.dataBindingUtil : "androidx.databinding.DataBindingUtil";
+		out.append(indent).append("viewDataBinding_ = ").append(util).append(".inflate(android.view.LayoutInflater.from(")
+				.append(contextExpr).append("), ").append(resExpr).append(", ").append(containerExpr).append(", ").append(attach).append(");\n");
+	}
+
+	private void appendCustomTitle(StringBuilder out, MvpModel model) {
+		if (!model.hasCustomTitle()) {
+			return;
+		}
+		String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "layout", "", model.customTitleLayoutId, "", rClassIndex);
+		out.append("\t\tgetWindow().setFeatureInt(android.view.Window.FEATURE_CUSTOM_TITLE, ").append(resExpr).append(");\n");
+	}
+
+	private void appendBindingObjects(StringBuilder out, MvpModel model) {
+		for (MvpModel.BindingObjectInjection injection : model.bindingObjects) {
+			if (injection.form == MvpModel.BindingObjectInjection.Form.FIELD) {
+				MvpModel.BindingTarget target = injection.targets.get(0);
+				appendAssign(out, injection.name, injection.jvmField, "((" + bindingCastType(target.typeName) + ") viewDataBinding_)");
+			} else {
+				out.append("\t\t{\n");
+				for (MvpModel.BindingTarget target : injection.targets) {
+					out.append("\t\t\t").append(bindingCastType(target.typeName)).append(" ").append(target.name)
+							.append(" = ((").append(bindingCastType(target.typeName)).append(") viewDataBinding_);\n");
+				}
+				out.append("\t\t\t").append(injection.name).append("(");
+				for (int i = 0; i < injection.targets.size(); i++) {
+					if (i > 0) {
+						out.append(", ");
+					}
+					out.append(injection.targets.get(i).name);
+				}
+				out.append(");\n");
+				out.append("\t\t}\n");
+			}
+		}
+	}
+
+	/** APT BindingObjectHandler: a binding class generated in this round has only a simple name. */
+	private String bindingCastType(String typeName) {
+		if (typeName == null || typeName.isEmpty()) {
+			return "androidx.databinding.ViewDataBinding";
+		}
+		int generic = typeName.indexOf('<');
+		String head = generic < 0 ? typeName : typeName.substring(0, generic);
+		if (head.indexOf('.') < 0 && resourcePackage != null && !resourcePackage.isEmpty()) {
+			return resourcePackage + ".databinding." + typeName;
+		}
+		return typeName;
+	}
+
+	private void appendHttpsClientInjections(StringBuilder out, MvpModel model) {
+		for (MvpModel.HttpsClientInjection injection : model.httpsClients) {
+			if (injection.form == MvpModel.HttpsClientInjection.Form.FIELD) {
+				MvpModel.HttpsTarget target = injection.targets.get(0);
+				appendAssign(out, injection.name, injection.jvmField, httpsClientExpression(model, target));
+			} else {
+				out.append("\t\t{\n");
+				for (MvpModel.HttpsTarget target : injection.targets) {
+					out.append("\t\t\t").append(target.typeName).append(" ").append(target.name).append(" = ")
+							.append(httpsClientExpression(model, target)).append(";\n");
+				}
+				out.append("\t\t\t").append(injection.name).append("(");
+				for (int i = 0; i < injection.targets.size(); i++) {
+					if (i > 0) {
+						out.append(", ");
+					}
+					out.append(injection.targets.get(i).name);
+				}
+				out.append(");\n");
+				out.append("\t\t}\n");
+			}
+		}
+	}
+
+	/**
+	 * Anonymous {@code DefaultHttpClient} from HttpsClientHandler. Keystore loading uses the outer component
+	 * ({@code Foo_.this} / {@code context_}) because an unqualified {@code this.getResources()} would bind to the client.
+	 */
+	private String httpsClientExpression(MvpModel model, MvpModel.HttpsTarget target) {
+		boolean useTrust = hasRes(target.trustStore, target.trustStoreResName);
+		boolean useKey = hasRes(target.keyStore, target.keyStoreResName);
+		String trustExpr = useTrust ? KspAnnotationUtils.resExpression(resourcePackage, rClassName, "raw", "", target.trustStore, target.trustStoreResName, rClassIndex) : "";
+		String keyExpr = useKey ? KspAnnotationUtils.resExpression(resourcePackage, rClassName, "raw", "", target.keyStore, target.keyStoreResName, rClassIndex) : "";
+		String context = httpsOuterContext(model);
+		StringBuilder body = new StringBuilder();
+		body.append("new org.apache.http.impl.client.DefaultHttpClient() {\n");
+		body.append("\t\t\t@Override\n");
+		body.append("\t\t\tprotected org.apache.http.conn.ClientConnectionManager createClientConnectionManager() {\n");
+		body.append("\t\t\t\ttry {\n");
+		if (!useTrust && !useKey) {
+			body.append("\t\t\t\t\torg.apache.http.conn.ClientConnectionManager ccm = super.createClientConnectionManager();\n");
+			if (target.allowAllHostnames) {
+				body.append("\t\t\t\t\t((org.apache.http.conn.ssl.SSLSocketFactory) ccm.getSchemeRegistry().getScheme(\"https\").getSocketFactory()).setHostnameVerifier(org.apache.http.conn.ssl.SSLSocketFactory.ALLOW_ALL_HOSTNAME_VERIFIER);\n");
+			}
+			body.append("\t\t\t\t\treturn ccm;\n");
+		} else {
+			if (useKey) {
+				body.append("\t\t\t\t\tjava.security.KeyStore keystore = java.security.KeyStore.getInstance(\"BKS\");\n");
+			}
+			body.append("\t\t\t\t\tjava.security.KeyStore trusted = java.security.KeyStore.getInstance(\"BKS\");\n");
+			body.append("\t\t\t\t\tandroid.content.res.Resources res = ").append(context).append(".getResources();\n");
+			if (useKey) {
+				body.append("\t\t\t\t\tjava.io.InputStream inKeystore = res.openRawResource(").append(keyExpr).append(");\n");
+			}
+			if (useTrust) {
+				body.append("\t\t\t\t\tjava.io.InputStream inTrustStore = res.openRawResource(").append(trustExpr).append(");\n");
+			} else {
+				body.append("\t\t\t\t\tjava.io.InputStream inTrustStore = new java.io.FileInputStream(\"/system/etc/security/cacerts.bks\");\n");
+			}
+			body.append("\t\t\t\t\ttry {\n");
+			if (useKey) {
+				body.append("\t\t\t\t\t\tkeystore.load(inKeystore, \"").append(escape(target.keyStorePwd)).append("\".toCharArray());\n");
+			}
+			body.append("\t\t\t\t\t\ttrusted.load(inTrustStore, \"").append(escape(target.trustStorePwd)).append("\".toCharArray());\n");
+			body.append("\t\t\t\t\t} finally {\n");
+			if (useKey) {
+				body.append("\t\t\t\t\t\tinKeystore.close();\n");
+			}
+			body.append("\t\t\t\t\t\tinTrustStore.close();\n");
+			body.append("\t\t\t\t\t}\n");
+			body.append("\t\t\t\t\torg.apache.http.conn.ssl.SSLSocketFactory newSslSocketFactory = new org.apache.http.conn.ssl.SSLSocketFactory(")
+					.append(useKey ? "keystore" : "null").append(", \"").append(escape(target.keyStorePwd)).append("\", trusted);\n");
+			if (target.allowAllHostnames) {
+				body.append("\t\t\t\t\tnewSslSocketFactory.setHostnameVerifier(org.apache.http.conn.ssl.SSLSocketFactory.ALLOW_ALL_HOSTNAME_VERIFIER);\n");
+			}
+			body.append("\t\t\t\t\torg.apache.http.conn.scheme.SchemeRegistry registry = new org.apache.http.conn.scheme.SchemeRegistry();\n");
+			body.append("\t\t\t\t\tregistry.register(new org.apache.http.conn.scheme.Scheme(\"https\", newSslSocketFactory, 443));\n");
+			body.append("\t\t\t\t\tregistry.register(new org.apache.http.conn.scheme.Scheme(\"http\", org.apache.http.conn.scheme.PlainSocketFactory.getSocketFactory(), 80));\n");
+			body.append("\t\t\t\t\torg.apache.http.conn.ClientConnectionManager ccm = new org.apache.http.impl.conn.SingleClientConnManager(getParams(), registry);\n");
+			body.append("\t\t\t\t\treturn ccm;\n");
+		}
+		body.append("\t\t\t\t} catch (java.lang.Exception e) {\n");
+		body.append("\t\t\t\t\te.printStackTrace();\n");
+		body.append("\t\t\t\t\treturn super.createClientConnectionManager();\n");
+		body.append("\t\t\t\t}\n");
+		body.append("\t\t\t}\n");
+		body.append("\t\t}");
+		return body.toString();
+	}
+
+	private static boolean hasLayout(MvpModel model) {
+		return model.layoutId != AnnotationNames.RES_DEFAULT || (model.layoutResName != null && !model.layoutResName.isEmpty());
+	}
+
+	private static boolean hasRes(int resId, String resName) {
+		return resId != AnnotationNames.RES_DEFAULT || (resName != null && !resName.isEmpty());
+	}
+
+	private static String httpsOuterContext(MvpModel model) {
+		String ref = contextRef(model.kind);
+		if ("this".equals(ref)) {
+			return model.generatedSimpleName() + ".this";
+		}
+		return ref;
+	}
+
+	private void appendTransactionalBody(StringBuilder out, MvpModel model, String name, List<MvpModel.Param> params, String returnType, String indent) {
+		String db = params.get(0).name;
+		String tag = model.generatedSimpleName();
+		if (tag.length() > 23) {
+			tag = tag.substring(0, 23);
+		}
+		boolean voidReturn = returnType == null || "void".equals(returnType);
+		out.append(indent).append(db).append(".beginTransaction();\n");
+		out.append(indent).append("try {\n");
+		if (voidReturn) {
+			out.append(indent).append("\t").append(superCall(model, name, params)).append(";\n");
+			out.append(indent).append("\t").append(db).append(".setTransactionSuccessful();\n");
+			out.append(indent).append("\treturn;\n");
+		} else {
+			out.append(indent).append("\t").append(returnType).append(" result_ = ").append(superCall(model, name, params)).append(";\n");
+			out.append(indent).append("\t").append(db).append(".setTransactionSuccessful();\n");
+			out.append(indent).append("\treturn result_;\n");
+		}
+		out.append(indent).append("} catch (java.lang.RuntimeException e) {\n");
+		out.append(indent).append("\tandroid.util.Log.e(\"").append(escape(tag)).append("\", \"Error in transaction\", e);\n");
+		out.append(indent).append("\tthrow e;\n");
+		out.append(indent).append("} finally {\n");
+		out.append(indent).append("\t").append(db).append(".endTransaction();\n");
+		out.append(indent).append("}\n");
 	}
 
 	private void appendNonConfigurationRestore(StringBuilder out, MvpModel model) {
@@ -1684,15 +1918,22 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 	}
 
 	private void appendReceiverLifecycle(StringBuilder out, MvpModel model) {
-		if (model.receivers.isEmpty() || model.kind == MvpModel.Kind.VIEW || model.kind == MvpModel.Kind.VIEW_GROUP) {
+		boolean unbind = model.kind == MvpModel.Kind.ACTIVITY && model.dataBound && hasLayout(model);
+		if ((model.receivers.isEmpty() || model.kind == MvpModel.Kind.VIEW || model.kind == MvpModel.Kind.VIEW_GROUP) && !unbind) {
 			return;
 		}
-		if (hasReceiver(model, "OnCreateOnDestroy")) {
+		if (hasReceiver(model, "OnCreateOnDestroy") || unbind) {
 			out.append("\t@Override\n");
 			out.append("\tpublic void onDestroy() {\n");
 			appendReceiverUnregister(out, model, "OnCreateOnDestroy", "\t\t");
+			if (unbind) {
+				out.append("\t\tviewDataBinding_.unbind();\n");
+			}
 			out.append("\t\tsuper.onDestroy();\n");
 			out.append("\t}\n\n");
+		}
+		if (model.receivers.isEmpty() || model.kind == MvpModel.Kind.VIEW || model.kind == MvpModel.Kind.VIEW_GROUP) {
+			return;
 		}
 		if (model.kind == MvpModel.Kind.SERVICE) {
 			return;
@@ -1844,7 +2085,13 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 		boolean hasLayoutName = model.layoutResName != null && !model.layoutResName.isEmpty();
 		if (hasLayoutId || hasLayoutName) {
 			String resExpr = KspAnnotationUtils.resExpression(resourcePackage, rClassName, "layout", "", model.layoutId, hasLayoutName ? model.layoutResName : "", rClassIndex);
-			out.append("\t\tsetContentView(").append(resExpr).append(");\n");
+			if (model.dataBound) {
+				out.append("\t\tandroid.view.ViewGroup contentView = internalFindViewById(android.R.id.content);\n");
+				appendDataBindingInflate(out, model, resExpr, "this", "contentView", false, "\t\t");
+				out.append("\t\tsetContentView(viewDataBinding_.getRoot(), viewDataBinding_.getRoot().getLayoutParams());\n");
+			} else {
+				out.append("\t\tsetContentView(").append(resExpr).append(");\n");
+			}
 		}
 	}
 
@@ -2758,10 +3005,15 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 			out.append("\t@Override\n");
 			out.append("\t").append(method.visibility == null ? "" : method.visibility).append(method.visibility == null || method.visibility.isEmpty() ? "" : " ")
 					.append(ret).append(" ").append(method.name).append("(");
-			appendParams(out, method.params, true);
+			// @Transactional parameters keep canonical names. Other wrappers stay on the existing simple-name form.
+			appendParams(out, method.params, true, !method.transactional);
 			out.append(") {\n");
-			appendSupposePrefix(out, method.suppose, "\t\t");
-			appendThreadedCore(out, model, method.params, method.name, null, method.wakeLock, method.trace, ret, "\t\t");
+			if (method.transactional) {
+				appendTransactionalBody(out, model, method.name, method.params, ret, "\t\t");
+			} else {
+				appendSupposePrefix(out, method.suppose, "\t\t");
+				appendThreadedCore(out, model, method.params, method.name, null, method.wakeLock, method.trace, ret, "\t\t");
+			}
 			out.append("\t}\n\n");
 		}
 	}
@@ -3208,6 +3460,7 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 		appendAppInjections(out, model);
 		appendPrefInjections(out, model);
 		appendBeanInjections(out, model);
+		appendHttpsClientInjections(out, model);
 		for (String method : model.afterInject) {
 			out.append("\t\t").append(method).append("();\n");
 		}

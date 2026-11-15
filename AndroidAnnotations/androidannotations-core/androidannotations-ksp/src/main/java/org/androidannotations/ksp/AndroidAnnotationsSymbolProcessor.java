@@ -270,7 +270,20 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 	private boolean needsResourcePackage(MvpModel model) {
 		return !model.stringRes.isEmpty() || !model.viewInjections.isEmpty() || model.layoutId != AnnotationNames.RES_DEFAULT
 				|| (model.layoutResName != null && !model.layoutResName.isEmpty()) || !model.fragmentByIds.isEmpty()
-				|| model.hasViewListeners() || !model.resFields.isEmpty() || !model.viewsByIds.isEmpty() || !model.fromHtml.isEmpty();
+				|| model.hasViewListeners() || !model.resFields.isEmpty() || !model.viewsByIds.isEmpty() || !model.fromHtml.isEmpty()
+				|| model.hasCustomTitle() || model.dataBound || httpsNeedsResources(model);
+	}
+
+	private static boolean httpsNeedsResources(MvpModel model) {
+		for (MvpModel.HttpsClientInjection injection : model.httpsClients) {
+			for (MvpModel.HttpsTarget target : injection.targets) {
+				if (target.trustStore != AnnotationNames.RES_DEFAULT || (target.trustStoreResName != null && !target.trustStoreResName.isEmpty())
+						|| target.keyStore != AnnotationNames.RES_DEFAULT || (target.keyStoreResName != null && !target.keyStoreResName.isEmpty())) {
+					return true;
+				}
+			}
+		}
+		return false;
 	}
 
 	/**
@@ -292,6 +305,17 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 		} else if (model.layoutResName != null && !model.layoutResName.isEmpty()) {
 			if (!index.containsField("layout", model.layoutResName)) {
 				errors.add("Resource name not found in R.layout: " + model.layoutResName);
+			}
+		}
+		if (model.hasCustomTitle()) {
+			if (canCheckValues && !index.containsIdValue("layout", model.customTitleLayoutId)) {
+				errors.add("Resource id value not found in R.layout: " + model.customTitleLayoutId);
+			}
+		}
+		for (MvpModel.HttpsClientInjection injection : model.httpsClients) {
+			for (MvpModel.HttpsTarget target : injection.targets) {
+				errors.addAll(validateOptionalRaw(canCheckValues, index, target.trustStore, target.trustStoreResName, "trustStore"));
+				errors.addAll(validateOptionalRaw(canCheckValues, index, target.keyStore, target.keyStoreResName, "keyStore"));
 			}
 		}
 		for (MvpModel.ViewInjection injection : model.viewInjections) {
@@ -410,6 +434,21 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 		return errors;
 	}
 
+	/** Optional raw id: absent is fine, a value or name must exist in {@code R.raw}. */
+	private List<String> validateOptionalRaw(boolean canCheckValues, RClassIndex index, int resId, String resName, String label) {
+		List<String> errors = new ArrayList<>();
+		if (resId != AnnotationNames.RES_DEFAULT) {
+			if (canCheckValues && !index.containsIdValue("raw", resId)) {
+				errors.add("@HttpsClient " + label + " resource id value not found in R.raw: " + resId);
+			}
+		} else if (resName != null && !resName.isEmpty()) {
+			if (!index.containsField("raw", resName)) {
+				errors.add("@HttpsClient " + label + " resource name not found in R.raw: " + resName);
+			}
+		}
+		return errors;
+	}
+
 	/** Mirrors APT {@code resIdsExist} for {@code @FragmentById}. */
 	private List<String> validateFragmentById(boolean canCheckValues, RClassIndex index, MvpModel.FragmentInjection byId) {
 		List<String> errors = new ArrayList<>();
@@ -448,15 +487,21 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 		return result;
 	}
 
-	/** Warns on AA annotations that are recognized but not implemented yet (one warning per annotation type). */
+	/** Warns, or errors when {@code unimplementedIsError} is set, on AA annotations that are recognized but not implemented. */
 	private void warnUnimplemented(Resolver resolver) {
+		boolean asError = environment.isUnimplementedIsError();
 		for (String annotationName : AnnotationNames.RECOGNIZED_NOT_IMPLEMENTED) {
 			List<KSAnnotated> symbols = SequencesKt.toList(resolver.getSymbolsWithAnnotation(annotationName, false));
 			if (!symbols.isEmpty()) {
 				KSAnnotated first = symbols.get(0);
-				logger.warn("AndroidAnnotations KSP: @" + annotationName.substring(annotationName.lastIndexOf('.') + 1)
-						+ " is recognized but not implemented yet; ignoring " + symbols.size() + " annotated element(s)",
-						first instanceof KSNode ? (KSNode) first : null);
+				String message = "AndroidAnnotations KSP: @" + annotationName.substring(annotationName.lastIndexOf('.') + 1)
+						+ " is recognized but not implemented yet; ignoring " + symbols.size() + " annotated element(s)";
+				KSNode node = first instanceof KSNode ? (KSNode) first : null;
+				if (asError) {
+					logger.error(message, node);
+				} else {
+					logger.warn(message, node);
+				}
 			}
 		}
 	}
@@ -469,6 +514,8 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 		try {
 			String pkg = packageName == null ? "" : packageName;
 			KSFile containingFile = origin.getContainingFile();
+			// Non-aggregating, originating file only. Superclass files and @Bean/@App/@Pref targets are not
+			// declared, so editing those sources does not invalidate this generated class. See BENCHMARK.md.
 			Dependencies dependencies = containingFile != null
 					? new Dependencies(false, containingFile)
 					: new Dependencies(false);

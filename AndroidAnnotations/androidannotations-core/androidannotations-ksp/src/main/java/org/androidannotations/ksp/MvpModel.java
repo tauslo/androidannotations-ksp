@@ -722,6 +722,8 @@ public final class MvpModel {
 		public WakeLockSpec wakeLock;
 		public TraceSpec trace;
 		public SupposeSpec suppose;
+		/** Standalone {@code @Transactional}. Not combined with the other wrappers. */
+		public boolean transactional;
 
 		public WrappedMethod(String name, List<Param> params, String visibility, String returnType) {
 			this.name = name;
@@ -747,6 +749,81 @@ public final class MvpModel {
 			this.jvmField = jvmField;
 			this.typeName = typeName;
 			this.plainContext = plainContext;
+		}
+	}
+
+	/** One {@code @BindingObject} target. The cast type may be qualified later when the binding class is generated this round. */
+	public static final class BindingTarget {
+		public final String name;
+		public final String typeName;
+
+		public BindingTarget(String name, String typeName) {
+			this.name = name;
+			this.typeName = typeName;
+		}
+	}
+
+	/** APT BindingObjectHandler: field assignment or a method call whose parameters are cast from {@code viewDataBinding_}. */
+	public static final class BindingObjectInjection {
+		public enum Form {
+			FIELD, METHOD
+		}
+
+		public final Form form;
+		public final String name;
+		public final boolean jvmField;
+		public final List<BindingTarget> targets;
+
+		public BindingObjectInjection(Form form, String name, boolean jvmField, List<BindingTarget> targets) {
+			this.form = form;
+			this.name = name;
+			this.jvmField = jvmField;
+			this.targets = targets;
+		}
+	}
+
+	/** One {@code @HttpsClient} value (a field, or one parameter of a method injection). */
+	public static final class HttpsTarget {
+		public final String name;
+		public final String typeName;
+		public final int trustStore;
+		public final String trustStoreResName;
+		public final String trustStorePwd;
+		public final int keyStore;
+		public final String keyStoreResName;
+		public final String keyStorePwd;
+		public final boolean allowAllHostnames;
+
+		public HttpsTarget(String name, String typeName, int trustStore, String trustStoreResName, String trustStorePwd,
+				int keyStore, String keyStoreResName, String keyStorePwd, boolean allowAllHostnames) {
+			this.name = name;
+			this.typeName = typeName;
+			this.trustStore = trustStore;
+			this.trustStoreResName = trustStoreResName;
+			this.trustStorePwd = trustStorePwd;
+			this.keyStore = keyStore;
+			this.keyStoreResName = keyStoreResName;
+			this.keyStorePwd = keyStorePwd;
+			this.allowAllHostnames = allowAllHostnames;
+		}
+	}
+
+	/** APT HttpsClientHandler: init-body injection of a {@code DefaultHttpClient} subclass. */
+	public static final class HttpsClientInjection {
+		public enum Form {
+			FIELD, METHOD
+		}
+
+		public final Form form;
+		public final String name;
+		public final boolean jvmField;
+		public final List<HttpsTarget> targets;
+
+		public HttpsClientInjection(Form form, String name, boolean jvmField, List<HttpsTarget> targets) {
+			this.form = form;
+			this.name = name;
+			this.jvmField = jvmField;
+			this.targets = targets;
 		}
 	}
 
@@ -848,6 +925,16 @@ public final class MvpModel {
 	public final List<IgnoreWhenMethod> ignoreWhens = new ArrayList<>();
 	/** Any {@code @IgnoreWhen(VIEW_DESTROYED)} needs the volatile {@code viewDestroyed_} flag. */
 	public boolean needsViewDestroyed;
+	/** {@code @DataBound}: inflate the layout with DataBindingUtil instead of setContentView/inflate. */
+	public boolean dataBound;
+	/** {@code androidx.databinding.DataBindingUtil} when that class is on the classpath, otherwise the support/framework name. */
+	public String dataBindingUtil;
+	/** Base type of the generated {@code viewDataBinding_} field. */
+	public String viewDataBindingType;
+	/** {@code @CustomTitle} layout id. {@link AnnotationNames#RES_DEFAULT} when absent. */
+	public int customTitleLayoutId = AnnotationNames.RES_DEFAULT;
+	public final List<BindingObjectInjection> bindingObjects = new ArrayList<>();
+	public final List<HttpsClientInjection> httpsClients = new ArrayList<>();
 
 	public MvpModel(Kind kind, String packageName, String simpleName, String qualifiedName, String classSuffix, int layoutId, String layoutResName, boolean nested, String scope) {
 		this.kind = kind;
@@ -896,7 +983,12 @@ public final class MvpModel {
 	public boolean hasViewSupport() {
 		return !viewInjections.isEmpty() || !afterViews.isEmpty() || hasViewListeners()
 				|| !viewsByIds.isEmpty() || !fromHtml.isEmpty()
-				|| !fragmentByIds.isEmpty() || !fragmentByTags.isEmpty();
+				|| !fragmentByIds.isEmpty() || !fragmentByTags.isEmpty()
+				|| !bindingObjects.isEmpty() || hasCustomTitle();
+	}
+
+	public boolean hasCustomTitle() {
+		return customTitleLayoutId != AnnotationNames.RES_DEFAULT;
 	}
 
 	public String generatedSimpleName() {

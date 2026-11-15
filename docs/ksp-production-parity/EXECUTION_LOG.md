@@ -1146,3 +1146,54 @@
 1. 剩余 P2：Preference 屏，或 `@DataBound` / `@BindingObject`（仅当 EActivity content view 路径已经够直）
 2. 若要继续扩 core 边界之外：PERF 增量，或插件边界（ORMLite / REST-Spring 仅当业务依赖存在；RoboGuice / Otto 默认不做）
 
+## Session 2026-11-16 — P2 remainder: binding, title, https, transactional
+
+- **Agent**: Cursor Grok
+- **Goal slice**: 剩余有用的 P2 core（DataBound / BindingObject / CustomTitle / HttpsClient / Transactional），hardening lite，PERF spot，插件边界。不 push
+- **Git**: branch=`ksp/main`，local only, not push
+- **Status**: done for the chosen subset
+
+### Done
+- `@DataBound` + `@BindingObject`：Activity `onCreate` 用 `DataBindingUtil.inflate` 再 `setContentView(getRoot, getLayoutParams)`，`onDestroy` 里 `unbind`。Fragment / ViewGroup 的现有 inflate 路径同样替换，否则同一个注解无法按目标拆开。`@BindingObject` 在 `onViewChanged` 里把 `viewDataBinding_` cast 到字段或方法参数。优先 androidx databinding，否则旧 `android.databinding`
+- `@CustomTitle`：`init_` 里 `requestWindowFeature(FEATURE_CUSTOM_TITLE)`（与 APT 一样，不用 AppCompat 的 support 变体），`onViewChanged` 开头 `setFeatureInt`
+- `@HttpsClient`：`init_` 里生成 `DefaultHttpClient` 匿名子类。无 keystore 走 `createClientConnectionManager`；有 trust/key raw 时加载 BKS。keystore 读取用外层组件 context（bean 为 `context_`），避免匿名类里的 `this.getResources()` 绑到 HttpClient
+- `@Transactional`：`beginTransaction` / `setTransactionSuccessful` / `endTransaction`，`RuntimeException` 打 `Log.e` 后重新抛出。不与 `@UiThread` / `@Background` / `@WakeLock` / `@Trace` / `@Suppose*` / `@IgnoreWhen` 组合（报错）
+- `unimplementedIsError`（默认 false）：为 true 时 `RECOGNIZED_NOT_IMPLEMENTED` 打 error。kotlin-bench 的 KSP 参数已打开，用来确认新注解不再落在该列表里
+- `RECOGNIZED_NOT_IMPLEMENTED` 现为：`@HierarchyViewerSupport`、六个 Preference 注解、`@IntArrayRes`、`@MovieRes`
+
+### Skipped
+- Preference 屏：六注解是一整套 PreferenceActivity / PreferenceFragment 生命周期。只做其中一个没有 coherent fixture，kotlin-bench 也没有 Preference 用例。留在未实现列表
+- `@HierarchyViewerSupport`：Hierarchy Viewer 已从平台移除，注解过时。留在未实现列表，使用时仍 warning/error
+- RoboGuice、Otto：N/A。库已停维护 / 已归档，core 不实现
+- ORMLite、REST-Spring：默认跳过，直到业务确认仍依赖 `androidannotations-ormlite` / `androidannotations-rest-spring`。清单保持未勾
+
+### Core 覆盖边界
+已覆盖：P0a + P0b + P1 + P2 高价值子集 + 本轮 `@DataBound` / `@BindingObject` / `@CustomTitle` / `@HttpsClient` / `@Transactional`。
+仍未覆盖（使用时 warning，或 `unimplementedIsError=true` 时 error）：Preference 屏、`@HierarchyViewerSupport`、`@MovieRes`、`@IntArrayRes`。
+插件不在 core jar：RoboGuice / Otto 明确不做；ORMLite / REST-Spring 默认跳过直到业务确认。
+因此「生产替换」对典型 Activity/Fragment（加上本轮这四个注解）可以视为 **core ready**。若线上仍用 Preference 屏、`@MovieRes` / `@IntArrayRes`、ORMLite 或 REST-Spring，则还被这些边界挡住，不能算全量替换。
+
+### PERF
+- 工具链锁定项已勾（Kotlin 2.1.10 / KSP 2.1.10-1.0.31 / AGP 8.7.3 / Gradle 8.11.1 / JDK 17）
+- 冷全量仍以 `BENCHMARK.md` 的 3 次中位数为准：kapt 129.88 s，KSP 100.55 s（−22.6%）。本轮没有重跑冷全量
+- 单次 spot（daemon 热、未删 `build/`）：处理器刚换 jar 时 249 class / 3074 ms；只改 `BenchActivity001.kt` 后 1 class / 252 ms，`:kspDebugKotlin` 墙钟 11 s → 5 s。空的第二轮 `generated 0 class(es)` 仍在（约 70–150 ms）
+- `Dependencies` 复核：非聚合，只登记注解类自己的源文件。同文件修改会失效；另一个文件的父类或 `@Bean` / `@App` / `@Pref` 目标不会。负例仍开放
+
+### Changed paths
+- `androidannotations-ksp`：`AnnotationNames`、`MvpModel`、`handler/MvpHandler`、`generate/MvpJavaGenerator`、`AndroidAnnotationsSymbolProcessor`、`env/KspOptions`、`env/KspEnvironment`
+- `examples/kotlin-bench`：`BenchDataActivity`（含 Fragment / ViewGroup）、`BenchTxnBean`、`BenchHttpsBean`、`res/raw/bench_trust.bks`、manifest、`databinding-runtime`、`useLibrary org.apache.http.legacy`、`unimplementedIsError=true`
+- docs：CHECKLIST_P2、CHECKLIST_PERF、CHECKLIST_PLUGINS、KNOWN_DEVIATIONS、PLAYBOOK、EXECUTION_LOG；根 `BENCHMARK.md`
+
+### Verify
+- [x] `mvnw -pl androidannotations-core/androidannotations-ksp -am install`（skipTests）BUILD SUCCESS
+- [x] `examples/kotlin-bench` `kspDebugKotlin` / `assembleDebug -Paa.processor=ksp`：`kspDebugKotlin` 成功，全量 `generated 249 class(es)`（244 + 5）；`:compileDebugKotlin` EXIT=1，仅既有 9 个 `lateinit` 原始类型错误（BenchActivity107×8 + BenchFragment109×1），无新增 Kotlin 错误
+- [x] 生成片段：`BenchDataActivity_` 含 `DataBindingUtil.inflate`、`setContentView(viewDataBinding_.getRoot(), ...getLayoutParams())`、`FEATURE_CUSTOM_TITLE`、`setFeatureInt`、`this.binding = ((androidx.databinding.ViewDataBinding) viewDataBinding_)`、`takeBinding`、`unbind`。`BenchDataFragment_` / `BenchDataGroup_` 含对应 inflate。`BenchTxnBean_.write` 含 `beginTransaction` / `setTransactionSuccessful` / `Log.e` / `endTransaction`，参数类型为 `android.database.sqlite.SQLiteDatabase`。`BenchHttpsBean_` 的 `plain` 走无 keystore 分支，`trusted` 含 `R.raw.bench_trust` 与 `SingleClientConnManager`
+
+### Blockers
+- none（assembleDebug 的 EXIT=1 是既有 fixture，见 KNOWN_DEVIATIONS #5）
+
+### Next
+1. 若业务确认仍用 Preference 屏，再做整套（Screen / Headers / ByKey / Change / Click / AfterPreferences）并加 fixture
+2. PERF：热全量与「改 1 文件」各做 ≥3 次中位数；补 `Dependencies` 的父类与 `@Bean` originating files，并回归负例
+3. ORMLite / REST-Spring 仅在业务确认依赖后另开一期。RoboGuice / Otto 不再排期
+

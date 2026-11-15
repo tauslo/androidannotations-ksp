@@ -22,17 +22,19 @@ org.androidannotations:androidannotations-roboguice
 
 ## RoboGuice（默认跳过）
 
-- [ ] N/A — 库已停维护；若极老工程需要再开
+- [x] N/A — 库已停维护（2016 年后无发布）。core KSP 不实现 `@RoboGuice`。极老工程若强制要求，再单开一期
 - [ ] `@RoboGuice` → `RoboGuiceHandler` 行为移植（仅当强制要求）
 
 ## Otto（默认跳过）
 
-- [ ] N/A — 已归档
+- [x] N/A — Square Otto 已归档。core KSP 不实现 `@Subscribe` / `@Produce`
 - [ ] `@Subscribe` / `@Produce`（Square Otto）handler（仅当强制要求）
 
 ---
 
 ## ORMLite（按需）
+
+默认跳过，直到业务确认线上工程仍依赖 `org.androidannotations:androidannotations-ormlite`。未确认前不要开工。
 
 - [ ] 确认业务仍用 ORMLite（而非 Room）
 - [ ] KSP 模块或包：`OrmLiteDaoHandler`（`@OrmLiteDao`）
@@ -45,6 +47,8 @@ org.androidannotations:androidannotations-roboguice
 ---
 
 ## REST-Spring（按需，大期）
+
+默认跳过，直到业务确认线上工程仍依赖 `org.androidannotations:androidannotations-rest-spring`。未确认前不要开工。
 
 - [ ] 确认业务仍用 `@Rest` 而非 Retrofit
 - [ ] **生成** `@Rest` → `RestHandler` / client 实现类
