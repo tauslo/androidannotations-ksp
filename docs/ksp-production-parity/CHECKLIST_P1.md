@@ -10,12 +10,12 @@
 
 ## SharedPreferences（最大单块）
 
-- [ ] **BLOCKER** `@SharedPref` 生成 helper 实现（scope：`ACTIVITY` / `ACTIVITY_DEFAULT` / `APPLICATION_DEFAULT` / `UNIQUE`）
-- [ ] `@DefaultBoolean` `@DefaultInt` `@DefaultLong` `@DefaultFloat` `@DefaultString` `@DefaultStringSet` `@DefaultRes`（无独立 handler，由 SharedPref 消费）
-- [ ] Field 类型 → `BooleanPrefField` / `IntPrefField` / …（复用 `androidannotations-api` runtime）
-- [ ] `@Pref` 注入 helper 到 `@E*` 组件
-- [ ] 嵌套 / 顶层 `@SharedPref` 生成位置对齐 APT（含 static nested）
-- [ ] Demo + APT vs KSP API spot-check（prefs getter/editor 方法名）
+- [x] **BLOCKER** `@SharedPref` 生成 helper 实现（scope：`ACTIVITY` / `ACTIVITY_DEFAULT` / `APPLICATION_DEFAULT` / `UNIQUE`）
+- [x] `@DefaultBoolean` `@DefaultInt` `@DefaultLong` `@DefaultFloat` `@DefaultString` `@DefaultStringSet` `@DefaultRes`（无独立 handler，由 SharedPref 消费）
+- [x] Field 类型 → `BooleanPrefField` / `IntPrefField` / …（复用 `androidannotations-api` runtime）
+- [x] `@Pref` 注入 helper 到 `@E*` 组件
+- [x] 嵌套 / 顶层 `@SharedPref` 生成位置对齐 APT（含 static nested）
+- [x] Demo + APT vs KSP API spot-check（prefs getter/editor 方法名）
 
 ---
 

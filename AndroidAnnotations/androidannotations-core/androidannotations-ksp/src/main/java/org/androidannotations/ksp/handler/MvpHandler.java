@@ -37,6 +37,7 @@ import com.google.devtools.ksp.symbol.KSType;
 import com.google.devtools.ksp.symbol.KSTypeReference;
 import com.google.devtools.ksp.symbol.KSValueParameter;
 import com.google.devtools.ksp.symbol.Modifier;
+import com.google.devtools.ksp.symbol.Origin;
 
 import kotlin.sequences.Sequence;
 import kotlin.sequences.SequencesKt;
@@ -251,6 +252,11 @@ public final class MvpHandler {
 		KSAnnotation systemService = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.SYSTEM_SERVICE);
 		if (systemService != null) {
 			collectSystemServiceField(resolver, property, name, jvmField, model);
+		}
+
+		KSAnnotation pref = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.PREF);
+		if (pref != null) {
+			collectPrefField(property, name, jvmField, model);
 		}
 
 		KSAnnotation injectMenu = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.INJECT_MENU);
@@ -734,6 +740,72 @@ public final class MvpHandler {
 		}
 		KSClassDeclaration declaration = resolveClassDeclaration(resolver, typeName);
 		return declaration != null && implementsInterface(declaration, "android.view.View");
+	}
+
+	/** APT PrefHandler parity: one {@code @Pref} field. The generated helper name is resolved later, once every {@code @SharedPref} model exists. */
+	private void collectPrefField(KSPropertyDeclaration property, String name, boolean jvmField, MvpModel model) {
+		if (property.getModifiers().contains(Modifier.PRIVATE)) {
+			model.errors.add("@Pref property '" + name + "' must not be private");
+			return;
+		}
+		if (!property.isMutable()) {
+			model.errors.add("@Pref cannot be used on a final element");
+			return;
+		}
+		String[] typeNames = readPrefTypeNames(property.getType());
+		boolean directAssign = jvmField || property.getOrigin() == Origin.JAVA || property.getOrigin() == Origin.JAVA_LIB;
+		model.prefs.add(new MvpModel.PrefInjection(name, directAssign, typeNames[0], typeNames[1]));
+	}
+
+	/**
+	 * Simple name plus qualified name of a prefs field type. Generated helpers ({@code Name_}) are often still error
+	 * types in this round, so fall back to the name as written in source.
+	 */
+	private static String[] readPrefTypeNames(KSTypeReference reference) {
+		String simple = null;
+		String qualified = null;
+		try {
+			KSType type = reference.resolve();
+			if (type != null && !type.isError() && type.getDeclaration() != null && type.getDeclaration().getQualifiedName() != null) {
+				qualified = KspAnnotationUtils.toJavaTypeName(type.getDeclaration().getQualifiedName().asString());
+				simple = type.getDeclaration().getSimpleName().asString();
+			}
+		} catch (RuntimeException ignored) {
+			// unresolved generated helper; use the source reference below
+		}
+		if (simple == null) {
+			try {
+				com.google.devtools.ksp.symbol.KSReferenceElement element = reference.getElement();
+				if (element instanceof com.google.devtools.ksp.symbol.KSClassifierReference) {
+					com.google.devtools.ksp.symbol.KSClassifierReference classifier = (com.google.devtools.ksp.symbol.KSClassifierReference) element;
+					String referenced = referencedQualifiedName(classifier);
+					if (referenced != null && !referenced.isEmpty()) {
+						int dot = referenced.lastIndexOf('.');
+						simple = dot >= 0 ? referenced.substring(dot + 1) : referenced;
+						if (dot >= 0) {
+							qualified = referenced;
+						}
+					}
+				}
+			} catch (RuntimeException ignored) {
+				// leave the fallback below
+			}
+		}
+		if (simple == null || simple.isEmpty()) {
+			simple = "Object";
+		}
+		return new String[] { simple, qualified };
+	}
+
+	private static String referencedQualifiedName(com.google.devtools.ksp.symbol.KSClassifierReference reference) {
+		StringBuilder sb = new StringBuilder(reference.referencedName());
+		com.google.devtools.ksp.symbol.KSClassifierReference qualifier = reference.getQualifier();
+		while (qualifier != null) {
+			sb.insert(0, '.');
+			sb.insert(0, qualifier.referencedName());
+			qualifier = qualifier.getQualifier();
+		}
+		return sb.toString();
 	}
 
 	/** APT BeanHandler.processField parity: one assignment target in the init-body injection block. */

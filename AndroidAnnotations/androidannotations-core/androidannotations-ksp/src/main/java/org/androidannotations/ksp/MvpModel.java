@@ -400,6 +400,26 @@ public final class MvpModel {
 		}
 	}
 
+	/** APT PrefHandler parity: one {@code @Pref} field assigned in {@code init_} to {@code new Helper_(context)}. */
+	public static final class PrefInjection {
+		public final String propertyName;
+		/** Direct field write ({@code lateinit} / {@code @JvmField} / Java field) rather than a setter call. */
+		public final boolean jvmField;
+		/** Simple name of the declared field type (generated helper, or the {@code @SharedPref} interface). */
+		public final String typeSimpleName;
+		/** Qualified name when the type resolved; null while it is still an error type. */
+		public final String typeQualifiedName;
+		/** Generated prefs helper to instantiate. Filled before generation. */
+		public String generatedQualifiedName;
+
+		public PrefInjection(String propertyName, boolean jvmField, String typeSimpleName, String typeQualifiedName) {
+			this.propertyName = propertyName;
+			this.jvmField = jvmField;
+			this.typeSimpleName = typeSimpleName;
+			this.typeQualifiedName = typeQualifiedName;
+		}
+	}
+
 	/** APT ExtraParameterHandler.getStaticExtraField parity: one generated @OnActivityResult extra key constant. */
 	public static final class ExtraConstant {
 		public final String constantName;
@@ -439,6 +459,9 @@ public final class MvpModel {
 	public final List<String> afterViews = new ArrayList<>();
 	public final List<String> afterExtras = new ArrayList<>();
 	public final List<BeanInjection> beans = new ArrayList<>();
+	public final List<PrefInjection> prefs = new ArrayList<>();
+	/** {@code @SharedPref} interfaces nested in this component, emitted as static nested helpers. */
+	public final List<SharedPrefModel> nestedPrefs = new ArrayList<>();
 	public final List<AppInjection> apps = new ArrayList<>();
 	public final List<SystemServiceInjection> systemServices = new ArrayList<>();
 	public final List<String> afterInject = new ArrayList<>();

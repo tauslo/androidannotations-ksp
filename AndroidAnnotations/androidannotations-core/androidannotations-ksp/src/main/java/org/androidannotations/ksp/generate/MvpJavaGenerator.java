@@ -24,6 +24,7 @@ import java.util.Map;
 import org.androidannotations.ksp.AnnotationNames;
 import org.androidannotations.ksp.KspAnnotationUtils;
 import org.androidannotations.ksp.MvpModel;
+import org.androidannotations.ksp.SharedPrefModel;
 import org.androidannotations.ksp.IntentBuilderCompat;
 import org.androidannotations.ksp.ResCompat;
 import org.androidannotations.ksp.env.RClassIndex;
@@ -117,6 +118,7 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 		}
 		appendSystemServiceInjections(out, model, "this");
 		appendAppInjections(out, model);
+		appendPrefInjections(out, model);
 		if (!model.extras.isEmpty() || !model.afterExtras.isEmpty()) {
 			out.append("\t\tinjectExtras_();\n");
 		}
@@ -261,7 +263,7 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 		// APT parity: the three virtual blocks (before/injection/after) are created on first access; a direct append
 		// (setHasOptionsMenu) lands at the tail once any earlier handler has created them, otherwise it is first.
 		boolean hasPreMenuContent = hasViewSupport || !model.resFields.isEmpty() || !model.fragmentArgs.isEmpty()
-				|| !model.systemServices.isEmpty() || !model.beans.isEmpty();
+				|| !model.systemServices.isEmpty() || !model.beans.isEmpty() || !model.prefs.isEmpty();
 		if (hasMenus && !hasPreMenuContent) {
 			out.append("\t\tsetHasOptionsMenu(true);\n");
 		}
@@ -278,6 +280,7 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 			out.append("\t\tinjectFragmentArguments_();\n");
 		}
 		appendSystemServiceInjections(out, model, "getActivity()");
+		appendPrefInjections(out, model);
 		appendBeanInjections(out, model);
 		if (!model.instanceStates.isEmpty()) {
 			out.append("\t\trestoreSavedInstanceState_(savedInstanceState);\n");
@@ -736,6 +739,7 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 		}
 		appendSystemServiceInjections(out, model, "this");
 		appendAppInjections(out, model);
+		appendPrefInjections(out, model);
 		appendBeanInjections(out, model);
 		for (String method : model.afterInject) {
 			out.append("\t\t").append(method).append("();\n");
@@ -773,6 +777,7 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 		}
 		appendSystemServiceInjections(out, model, "this");
 		appendAppInjections(out, model);
+		appendPrefInjections(out, model);
 		appendBeanInjections(out, model);
 		for (String method : model.afterInject) {
 			out.append("\t\t").append(method).append("();\n");
@@ -911,6 +916,7 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 		for (MvpModel.ResField resField : model.resFields) {
 			appendResAssign(out, model.kind, resField);
 		}
+		appendPrefInjections(out, model);
 		if (hasViewSupport) {
 			out.append("\t\torg.androidannotations.api.view.OnViewChangedNotifier.registerOnViewChangedListener(this);\n");
 		}
@@ -1019,6 +1025,17 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 			out.append(indent).append("this.").append(injection.propertyName).append(" = ").append(expression).append(";\n");
 		} else {
 			out.append(indent).append(setterName(injection.propertyName)).append("(").append(expression).append(");\n");
+		}
+	}
+
+	/** APT PrefHandler parity: {@code field = new Pref_(context)} inside the init-body injection block. */
+	private void appendPrefInjections(StringBuilder out, MvpModel model) {
+		String contextRef = model.kind == MvpModel.Kind.BEAN ? "context_" : (model.kind == MvpModel.Kind.FRAGMENT ? "getActivity()" : "this");
+		for (MvpModel.PrefInjection pref : model.prefs) {
+			if (pref.generatedQualifiedName == null) {
+				continue;
+			}
+			appendAssign(out, pref.propertyName, pref.jvmField, "new " + pref.generatedQualifiedName + "(" + contextRef + ")");
 		}
 	}
 
@@ -1356,10 +1373,30 @@ out.append("\tprivate final java.util.HashMap<Class<?>, Object> beans_ = new jav
 
 	/** Inlines directly nested annotated models as static nested classes (APT parity), re-indented one level. */
 	private void appendNestedClasses(StringBuilder out, MvpModel model) {
+		appendNestedPrefs(out, model);
 		for (MvpModel nested : model.nestedModels) {
 			out.append('\n');
 			String source = generateNestedBean(nested);
 			for (String line : source.split("\n")) {
+				if (!line.isEmpty()) {
+					out.append('\t').append(line).append('\n');
+				} else {
+					out.append('\n');
+				}
+			}
+		}
+	}
+
+	/** Inlines {@code @SharedPref} helpers nested in this component (APT: static nested class of the enclosing generated class). */
+	private void appendNestedPrefs(StringBuilder out, MvpModel model) {
+		if (model.nestedPrefs.isEmpty()) {
+			return;
+		}
+		SharedPrefGenerator prefGenerator = new SharedPrefGenerator(resourcePackage, rClassName, rClassIndex);
+		for (SharedPrefModel pref : model.nestedPrefs) {
+			out.append('\n');
+			String source = prefGenerator.generateNested(pref);
+			for (String line : source.split("\n", -1)) {
 				if (!line.isEmpty()) {
 					out.append('\t').append(line).append('\n');
 				} else {

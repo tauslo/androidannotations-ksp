@@ -3,5 +3,6 @@
 
     <string name="hello">"Hello, the date is %s!"</string>
     <string name="app_name">AA-sample-gradle</string>
+    <string name="bench_key">benchKey</string>
 
 </resources>

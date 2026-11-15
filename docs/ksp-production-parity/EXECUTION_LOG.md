@@ -983,3 +983,35 @@
 
 ### Next
 1. P1 首项（CHECKLIST_P1）：SharedPreferences BLOCKER——`@SharedPref` helper 生成（scope ACTIVITY / ACTIVITY_DEFAULT / APPLICATION_DEFAULT / UNIQUE），APT oracle = SharedPrefHandler + PrefHandler
+
+## Session 2026-11-16 — P1: @SharedPref / @Pref KSP generation
+
+- **Agent**: Cursor Grok
+- **Goal slice**: P1 — `@SharedPref` helper 生成 + `@Pref` 字段注入（APT SharedPrefHandler / SharedPrefHolder / PrefHandler）
+- **Git**: branch=`ksp/main`，local only, not push
+- **Status**: done
+
+### Done
+- `@SharedPref` 接口收集进 `SharedPrefModel`，生成 `Name_` / `NameEditor_`（scope ACTIVITY、ACTIVITY_DEFAULT、APPLICATION_DEFAULT、UNIQUE）
+- 默认值注解：`@DefaultBoolean/Int/Long/Float/String/StringSet` 与 `@DefaultRes` + `keyRes`；字段类型映射到 `*PrefField` / `*PrefEditorField`
+- 顶层 helper 单独出 Java 文件；嵌套在 `@E*` 里的接口生成为 enclosing 生成类的 `public static final` 内部类
+- `@Pref` 字段在 `init_` 里赋 `new Helper_(contextRef)`（Activity/Application/Service=`this`，Fragment=`getActivity()`，Bean=`context_`）
+- `AnnotationNames.SHARED_PREF` / `PREF`；`SharedPref` 移出 `RECOGNIZED_NOT_IMPLEMENTED`（现为空数组）
+- CHECKLIST_P1 SharedPreferences 六项打勾
+
+### Changed paths
+- `androidannotations-ksp`：`SharedPrefModel`、`handler/SharedPrefHandler`、`generate/SharedPrefGenerator`、`AndroidAnnotationsSymbolProcessor`、`MvpHandler`、`MvpModel`、`MvpJavaGenerator`、`AnnotationNames`
+- `examples/kotlin-bench`：`BenchPrefsClient.kt`（`@EBean` + 五个 `@Pref` + 嵌套 `@SharedPref`）
+- `docs/ksp-production-parity/CHECKLIST_P1.md`、`EXECUTION_LOG.md`
+
+### Verify
+- [x] `mvnw -pl androidannotations-core/androidannotations-ksp -am install`（skipTests）BUILD SUCCESS
+- [x] `examples/kotlin-bench assembleDebug -Paa.processor=ksp`：KSP 任务成功，`generated 231 class(es)`；`:compileDebugKotlin` EXIT=1，仅既有 9 个 `lateinit` 原始类型错误（BenchActivity107×8 + BenchFragment109×1），无新增错误
+- [x] `build/generated/ksp/debug/java/.../BenchPrefs{Activity,ActivityDefault,App,Unique,Java}_.java` 与 `BenchPrefsClient_.java`（含 `Nested_`）存在
+- [x] 与既有 kapt 产物对照：四个 scope 的 `super(...)`、getter/editor 方法名、`keyRes`/`@DefaultRes` 表达式、`DefaultStringSet` 的 `HashSet` 默认值与 APT 一致（FQCN / 成员顺序 / javadoc 空白不同）
+
+### Blockers
+- none（assembleDebug 的 EXIT=1 是既有 fixture，见 KNOWN_DEVIATIONS #5）
+
+### Next
+1. P1 下一项：更多 View 监听（`@Touch` / `@FocusChange` / `@CheckedChange` / TextWatcher / `@EditorAction` / Item*），或补 `@Pref` 的方法注入（APT `InjectHelper` method form，本次只做字段）

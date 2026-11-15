@@ -62,13 +62,13 @@ public final class AnnotationNames {
 	public static final String AFTER_INJECT = "org.androidannotations.annotations.AfterInject";
 	public static final String PARCEL_ANNOTATION = "org.parceler.Parcel";
 	public static final String JVM_FIELD = "kotlin.jvm.JvmField";
+	public static final String SHARED_PREF = "org.androidannotations.annotations.sharedpreferences.SharedPref";
+	public static final String PREF = "org.androidannotations.annotations.sharedpreferences.Pref";
 
 	public static final int RES_DEFAULT = -1;
 
 	/** AA annotations recognized by the KSP processor but not implemented yet; their use is reported with a warning. */
-	public static final String[] RECOGNIZED_NOT_IMPLEMENTED = {
-			"org.androidannotations.annotations.sharedpreferences.SharedPref" // P1
-	};
+	public static final String[] RECOGNIZED_NOT_IMPLEMENTED = new String[0];
 
 	private AnnotationNames() {
 	}

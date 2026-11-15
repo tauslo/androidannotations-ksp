@@ -47,7 +47,9 @@ import kotlin.sequences.SequencesKt;
 import org.androidannotations.ksp.env.KspEnvironment;
 import org.androidannotations.ksp.env.RClassIndex;
 import org.androidannotations.ksp.generate.MvpJavaGenerator;
+import org.androidannotations.ksp.generate.SharedPrefGenerator;
 import org.androidannotations.ksp.handler.MvpHandler;
+import org.androidannotations.ksp.handler.SharedPrefHandler;
 import org.androidannotations.ksp.validate.ComponentValidator;
 
 public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
@@ -73,8 +75,11 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 		classes.addAll(toClassList(resolver.getSymbolsWithAnnotation(AnnotationNames.E_FRAGMENT, false)));
 		classes.addAll(toClassList(resolver.getSymbolsWithAnnotation(AnnotationNames.E_APPLICATION, false)));
 		classes.addAll(toClassList(resolver.getSymbolsWithAnnotation(AnnotationNames.E_SERVICE, false)));
+		List<KSClassDeclaration> prefClasses = toClassList(resolver.getSymbolsWithAnnotation(AnnotationNames.SHARED_PREF, false));
 
-		environment.prepare(resolver, containingFiles(classes));
+		List<KSClassDeclaration> environmentSources = new ArrayList<KSClassDeclaration>(classes);
+		environmentSources.addAll(prefClasses);
+		environment.prepare(resolver, containingFiles(environmentSources));
 		if (!environment.isValid()) {
 			return Collections.emptyList();
 		}
@@ -90,6 +95,14 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 		}
 		IntentBuilderCompat intentBuilderCompat = IntentBuilderCompat.detect(resolver, minSdkVersion);
 		MvpJavaGenerator generator = new MvpJavaGenerator(intentBuilderCompat, resourcePackage, environment.getRClassName(), environment.getRClassIndex(), resCompatModes);
+		SharedPrefGenerator prefGenerator = new SharedPrefGenerator(resourcePackage, environment.getRClassName(), environment.getRClassIndex());
+		SharedPrefHandler prefHandler = new SharedPrefHandler();
+		List<SharedPrefModel> prefModels = new ArrayList<SharedPrefModel>();
+		List<KSClassDeclaration> prefOrigins = new ArrayList<KSClassDeclaration>();
+		for (KSClassDeclaration prefClass : prefClasses) {
+			prefModels.add(prefHandler.build(prefClass, classSuffix, resourcePackage, environment.getRClassName(), environment.getRClassIndex()));
+			prefOrigins.add(prefClass);
+		}
 
 		MvpHandler handler = new MvpHandler();
 
@@ -156,6 +169,8 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 			outer.nestedModels.add(model);
 		}
 
+		attachNestedPrefs(prefModels, prefOrigins, models);
+
 		for (int i = 0; i < models.size(); i++) {
 			MvpModel model = models.get(i);
 			if (model == null || model.nested) {
@@ -171,6 +186,7 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 			} else if (model.kind == MvpModel.Kind.APPLICATION) {
 				ComponentValidator.applicationRegistered(classDeclaration, environment);
 			}
+			resolvePrefInjections(model, prefModels);
 			if (resourcePackage == null && needsResourcePackage(model)) {
 				logger.error("AndroidAnnotations KSP: could not determine the resource package name for " + model.qualifiedName
 						+ ". Set the 'resourcePackageName' KSP argument or provide an AndroidManifest.xml with a package attribute.", classDeclaration);
@@ -191,6 +207,31 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 			}
 			String source = generator.generate(model);
 			writeJavaFile(model, source, classDeclaration);
+			generated++;
+		}
+
+		for (int i = 0; i < prefModels.size(); i++) {
+			SharedPrefModel prefModel = prefModels.get(i);
+			KSClassDeclaration origin = prefOrigins.get(i);
+			if (prefModel.isNested()) {
+				continue;
+			}
+			if (!prefModel.errors.isEmpty()) {
+				for (String error : prefModel.errors) {
+					logger.error("AndroidAnnotations KSP: " + error + " in " + prefModel.qualifiedName(), origin);
+				}
+				continue;
+			}
+			if (resourcePackage == null && prefModel.hasOuterContext) {
+				logger.error("AndroidAnnotations KSP: could not determine the resource package name for " + prefModel.qualifiedName()
+						+ ". Set the 'resourcePackageName' KSP argument or provide an AndroidManifest.xml with a package attribute.", origin);
+				continue;
+			}
+			String fqcn = prefModel.generatedQualifiedName();
+			if (!written.add(fqcn)) {
+				continue;
+			}
+			writeJavaSource(prefModel.packageName, prefModel.generatedSimpleName(), fqcn, prefGenerator.generate(prefModel), origin);
 			generated++;
 		}
 
@@ -370,22 +411,148 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 	}
 
 	private void writeJavaFile(MvpModel model, String source, KSClassDeclaration origin) {
+		writeJavaSource(model.packageName, model.generatedSimpleName(), model.generatedQualifiedName(), source, origin);
+	}
+
+	private void writeJavaSource(String packageName, String simpleName, String qualifiedName, String source, KSClassDeclaration origin) {
 		try {
-			String packageName = model.packageName == null ? "" : model.packageName;
+			String pkg = packageName == null ? "" : packageName;
 			KSFile containingFile = origin.getContainingFile();
 			Dependencies dependencies = containingFile != null
 					? new Dependencies(false, containingFile)
 					: new Dependencies(false);
 			OutputStream stream = codeGenerator.createNewFile(
 					dependencies,
-					packageName,
-					model.generatedSimpleName(),
+					pkg,
+					simpleName,
 					"java");
 			try (OutputStreamWriter writer = new OutputStreamWriter(stream, StandardCharsets.UTF_8)) {
 				writer.write(source);
 			}
 		} catch (IOException e) {
-			logger.error("Failed to write " + model.generatedQualifiedName() + ": " + e.getMessage(), (KSNode) origin);
+			logger.error("Failed to write " + qualifiedName + ": " + e.getMessage(), (KSNode) origin);
 		}
+	}
+
+	/** Emits nested {@code @SharedPref} helpers inside the enclosing generated component (APT static nested class). */
+	private void attachNestedPrefs(List<SharedPrefModel> prefModels, List<KSClassDeclaration> origins, List<MvpModel> models) {
+		for (int i = 0; i < prefModels.size(); i++) {
+			SharedPrefModel prefModel = prefModels.get(i);
+			if (!prefModel.isNested()) {
+				continue;
+			}
+			KSClassDeclaration origin = origins.get(i);
+			if (!prefModel.errors.isEmpty()) {
+				for (String error : prefModel.errors) {
+					logger.error("AndroidAnnotations KSP: " + error + " in " + prefModel.qualifiedName(), origin);
+				}
+				continue;
+			}
+			MvpModel outer = findModel(models, prefModel.enclosingQualifiedName);
+			if (outer == null) {
+				logger.error("AndroidAnnotations KSP: enclosing class " + prefModel.enclosingQualifiedName + " of nested @SharedPref " + prefModel.qualifiedName()
+						+ " must be a generated AndroidAnnotations class (annotated, non-abstract)", origin);
+				continue;
+			}
+			prefModel.nestInside(enclosingGeneratedName(outer, models));
+			outer.nestedPrefs.add(prefModel);
+		}
+	}
+
+	private void resolvePrefInjections(MvpModel model, List<SharedPrefModel> prefModels) {
+		if (model == null) {
+			return;
+		}
+		for (MvpModel.PrefInjection injection : model.prefs) {
+			SharedPrefModel match = matchPref(prefModels, injection.typeSimpleName, model.packageName, model.classSuffix);
+			if (match != null) {
+				injection.generatedQualifiedName = match.generatedQualifiedName();
+				continue;
+			}
+			if (injection.typeQualifiedName != null && !injection.typeQualifiedName.isEmpty()) {
+				String qualified = injection.typeQualifiedName;
+				String simple = qualified.substring(qualified.lastIndexOf('.') + 1);
+				if (!simple.endsWith(model.classSuffix)) {
+					qualified = qualified + model.classSuffix;
+				}
+				injection.generatedQualifiedName = qualified;
+				continue;
+			}
+			if (injection.typeSimpleName != null && injection.typeSimpleName.endsWith(model.classSuffix)) {
+				String pkg = model.packageName == null ? "" : model.packageName;
+				injection.generatedQualifiedName = pkg.isEmpty() ? injection.typeSimpleName : pkg + "." + injection.typeSimpleName;
+				continue;
+			}
+			model.errors.add("@Pref property '" + injection.propertyName + "' type " + injection.typeSimpleName + " does not match a generated @SharedPref helper");
+		}
+		for (MvpModel nested : model.nestedModels) {
+			resolvePrefInjections(nested, prefModels);
+		}
+	}
+
+	private static SharedPrefModel matchPref(List<SharedPrefModel> prefModels, String simpleName, String preferredPackage, String suffix) {
+		if (simpleName == null) {
+			return null;
+		}
+		SharedPrefModel match = findPrefBySimple(prefModels, simpleName, preferredPackage);
+		if (match == null && suffix != null && !simpleName.endsWith(suffix)) {
+			match = findPrefBySimple(prefModels, simpleName + suffix, preferredPackage);
+		}
+		return match;
+	}
+
+	private static SharedPrefModel findPrefBySimple(List<SharedPrefModel> prefModels, String generatedSimple, String preferredPackage) {
+		SharedPrefModel fallback = null;
+		for (SharedPrefModel prefModel : prefModels) {
+			if (!prefModel.errors.isEmpty() || !prefModel.generatedSimpleName().equals(generatedSimple)) {
+				continue;
+			}
+			if (preferredPackage != null && preferredPackage.equals(prefModel.packageName)) {
+				return prefModel;
+			}
+			if (fallback == null) {
+				fallback = prefModel;
+			}
+		}
+		return fallback;
+	}
+
+	private MvpModel findModel(List<MvpModel> models, String qualifiedName) {
+		if (models == null || qualifiedName == null) {
+			return null;
+		}
+		for (MvpModel model : models) {
+			if (model == null) {
+				continue;
+			}
+			if (qualifiedName.equals(model.qualifiedName)) {
+				return model;
+			}
+			MvpModel nested = findModel(model.nestedModels, qualifiedName);
+			if (nested != null) {
+				return nested;
+			}
+		}
+		return null;
+	}
+
+	/** Java binary name of a generated component, including static nesting ({@code pkg.Outer_.Inner_}). */
+	private String enclosingGeneratedName(MvpModel model, List<MvpModel> models) {
+		if (model == null) {
+			return "";
+		}
+		if (!model.nested) {
+			return model.generatedQualifiedName();
+		}
+		int dot = model.qualifiedName.lastIndexOf('.');
+		if (dot < 0) {
+			return model.generatedSimpleName();
+		}
+		MvpModel parent = findModel(models, model.qualifiedName.substring(0, dot));
+		if (parent == null) {
+			String pkg = model.packageName == null ? "" : model.packageName;
+			return pkg.isEmpty() ? model.generatedSimpleName() : pkg + "." + model.generatedSimpleName();
+		}
+		return enclosingGeneratedName(parent, models) + "." + model.generatedSimpleName();
 	}
 }
