@@ -75,6 +75,9 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 		classes.addAll(toClassList(resolver.getSymbolsWithAnnotation(AnnotationNames.E_FRAGMENT, false)));
 		classes.addAll(toClassList(resolver.getSymbolsWithAnnotation(AnnotationNames.E_APPLICATION, false)));
 		classes.addAll(toClassList(resolver.getSymbolsWithAnnotation(AnnotationNames.E_SERVICE, false)));
+		classes.addAll(toClassList(resolver.getSymbolsWithAnnotation(AnnotationNames.E_RECEIVER, false)));
+		classes.addAll(toClassList(resolver.getSymbolsWithAnnotation(AnnotationNames.E_INTENT_SERVICE, false)));
+		classes.addAll(toClassList(resolver.getSymbolsWithAnnotation(AnnotationNames.E_PROVIDER, false)));
 		classes.addAll(toClassList(resolver.getSymbolsWithAnnotation(AnnotationNames.E_VIEW, false)));
 		classes.addAll(toClassList(resolver.getSymbolsWithAnnotation(AnnotationNames.E_VIEW_GROUP, false)));
 		List<KSClassDeclaration> prefClasses = toClassList(resolver.getSymbolsWithAnnotation(AnnotationNames.SHARED_PREF, false));
@@ -107,6 +110,7 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 		}
 
 		MvpHandler handler = new MvpHandler();
+		handler.configure(environment.isTrace(), environment.isThreadControl());
 
 		warnUnimplemented(resolver);
 
@@ -183,12 +187,25 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 			if (!written.add(fqcn)) {
 				continue;
 			}
-			if (model.kind == MvpModel.Kind.ACTIVITY || model.kind == MvpModel.Kind.SERVICE) {
+			if (model.kind == MvpModel.Kind.ACTIVITY || model.kind == MvpModel.Kind.SERVICE
+					|| model.kind == MvpModel.Kind.RECEIVER || model.kind == MvpModel.Kind.INTENT_SERVICE
+					|| model.kind == MvpModel.Kind.PROVIDER) {
 				ComponentValidator.componentRegistered(classDeclaration, environment);
 			} else if (model.kind == MvpModel.Kind.APPLICATION) {
 				ComponentValidator.applicationRegistered(classDeclaration, environment);
 			}
 			resolvePrefInjections(model, prefModels);
+			for (String warning : model.warnings) {
+				logger.warn("AndroidAnnotations KSP: " + warning + " in " + model.qualifiedName, classDeclaration);
+			}
+			if (model.usesWakeLock() && !wakeLockPermitted()) {
+				if (environment.isLibrary()) {
+					logger.warn("Your library should require the android.permission.WAKE_LOCK permission.", classDeclaration);
+				} else {
+					logger.error("Your application must require the android.permission.WAKE_LOCK permission.", classDeclaration);
+					continue;
+				}
+			}
 			if (resourcePackage == null && needsResourcePackage(model)) {
 				logger.error("AndroidAnnotations KSP: could not determine the resource package name for " + model.qualifiedName
 						+ ". Set the 'resourcePackageName' KSP argument or provide an AndroidManifest.xml with a package attribute.", classDeclaration);
@@ -243,6 +260,13 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 		return Collections.emptyList();
 	}
 
+	private boolean wakeLockPermitted() {
+		if (environment.getAndroidManifest() == null) {
+			return true;
+		}
+		return environment.getAndroidManifest().getPermissionQualifiedNames().contains("android.permission.WAKE_LOCK");
+	}
+
 	private boolean needsResourcePackage(MvpModel model) {
 		return !model.stringRes.isEmpty() || !model.viewInjections.isEmpty() || model.layoutId != AnnotationNames.RES_DEFAULT
 				|| (model.layoutResName != null && !model.layoutResName.isEmpty()) || !model.fragmentByIds.isEmpty()
@@ -289,6 +313,8 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 		validateViewListeners(canCheckValues, index, model.itemLongClickListeners, errors);
 		validateViewListeners(canCheckValues, index, model.itemSelectListeners, errors);
 		validateViewListeners(canCheckValues, index, model.textWatcherListeners, errors);
+		validateViewListeners(canCheckValues, index, model.seekListeners, errors);
+		validateViewListeners(canCheckValues, index, model.pageListeners, errors);
 		for (MvpModel.FieldInjection stringRes : model.stringRes) {
 			errors.addAll(validateInjection(canCheckValues, index, "string", stringRes));
 		}

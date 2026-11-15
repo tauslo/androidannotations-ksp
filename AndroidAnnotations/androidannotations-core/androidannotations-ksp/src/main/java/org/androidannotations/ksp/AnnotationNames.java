@@ -23,6 +23,28 @@ public final class AnnotationNames {
 	public static final String E_BEAN = "org.androidannotations.annotations.EBean";
 	public static final String E_FRAGMENT = "org.androidannotations.annotations.EFragment";
 	public static final String E_SERVICE = "org.androidannotations.annotations.EService";
+	public static final String E_RECEIVER = "org.androidannotations.annotations.EReceiver";
+	public static final String E_INTENT_SERVICE = "org.androidannotations.annotations.EIntentService";
+	public static final String E_PROVIDER = "org.androidannotations.annotations.EProvider";
+	public static final String RECEIVER_ACTION = "org.androidannotations.annotations.ReceiverAction";
+	public static final String RECEIVER_ACTION_EXTRA = "org.androidannotations.annotations.ReceiverAction.Extra";
+	public static final String SERVICE_ACTION = "org.androidannotations.annotations.ServiceAction";
+	public static final String SEEK_BAR_PROGRESS_CHANGE = "org.androidannotations.annotations.SeekBarProgressChange";
+	public static final String SEEK_BAR_TOUCH_START = "org.androidannotations.annotations.SeekBarTouchStart";
+	public static final String SEEK_BAR_TOUCH_STOP = "org.androidannotations.annotations.SeekBarTouchStop";
+	public static final String PAGE_SELECTED = "org.androidannotations.annotations.PageSelected";
+	public static final String PAGE_SCROLLED = "org.androidannotations.annotations.PageScrolled";
+	public static final String PAGE_SCROLL_STATE_CHANGED = "org.androidannotations.annotations.PageScrollStateChanged";
+	public static final String KEY_DOWN = "org.androidannotations.annotations.KeyDown";
+	public static final String KEY_UP = "org.androidannotations.annotations.KeyUp";
+	public static final String KEY_LONG_PRESS = "org.androidannotations.annotations.KeyLongPress";
+	public static final String KEY_MULTIPLE = "org.androidannotations.annotations.KeyMultiple";
+	public static final String WAKE_LOCK = "org.androidannotations.annotations.WakeLock";
+	public static final String TRACE = "org.androidannotations.annotations.Trace";
+	public static final String SUPPOSE_UI_THREAD = "org.androidannotations.annotations.SupposeUiThread";
+	public static final String SUPPOSE_BACKGROUND = "org.androidannotations.annotations.SupposeBackground";
+	public static final String ROOT_CONTEXT = "org.androidannotations.annotations.RootContext";
+	public static final String ROOT_FRAGMENT = "org.androidannotations.annotations.RootFragment";
 	public static final String FRAGMENT_ARG = "org.androidannotations.annotations.FragmentArg";
 	public static final String FRAGMENT_BY_ID = "org.androidannotations.annotations.FragmentById";
 	public static final String FRAGMENT_BY_TAG = "org.androidannotations.annotations.FragmentByTag";
@@ -89,43 +111,25 @@ public final class AnnotationNames {
 
 	/**
 	 * AA annotations the processor knows about but does not generate yet. Using one produces a KSP warning.
-	 * MovieRes (and the other rare res types here) stayed out of P1; dynamic {@code @Receiver} is implemented,
-	 * {@code @EReceiver} / {@code @ReceiverAction} are not.
+	 * P2 implemented {@code @EReceiver}/{@code @EIntentService}/{@code @EProvider}, SeekBar/ViewPager/Key,
+	 * {@code @WakeLock}/{@code @Trace}/{@code @Suppose*}, and {@code @RootContext}/{@code @RootFragment}.
+	 * Preference screens, DataBinding, and the remaining misc UI annotations stay here.
+	 * {@code @Trace} is implemented but generated only when the {@code trace} option is true (APT default false).
+	 * {@code @Suppose*} is generated only when {@code threadControl} is true (APT default true).
 	 */
 	public static final String[] RECOGNIZED_NOT_IMPLEMENTED = {
 			"org.androidannotations.annotations.DataBound",
 			"org.androidannotations.annotations.BindingObject",
 			"org.androidannotations.annotations.CustomTitle",
-			"org.androidannotations.annotations.EIntentService",
-			"org.androidannotations.annotations.EProvider",
-			"org.androidannotations.annotations.EReceiver",
 			"org.androidannotations.annotations.HierarchyViewerSupport",
 			"org.androidannotations.annotations.HttpsClient",
-			"org.androidannotations.annotations.KeyDown",
-			"org.androidannotations.annotations.KeyLongPress",
-			"org.androidannotations.annotations.KeyMultiple",
-			"org.androidannotations.annotations.KeyUp",
-			"org.androidannotations.annotations.PageScrollStateChanged",
-			"org.androidannotations.annotations.PageScrolled",
-			"org.androidannotations.annotations.PageSelected",
 			"org.androidannotations.annotations.PreferenceByKey",
 			"org.androidannotations.annotations.PreferenceChange",
 			"org.androidannotations.annotations.PreferenceClick",
 			"org.androidannotations.annotations.PreferenceHeaders",
 			"org.androidannotations.annotations.PreferenceScreen",
 			"org.androidannotations.annotations.AfterPreferences",
-			"org.androidannotations.annotations.ReceiverAction",
-			"org.androidannotations.annotations.RootContext",
-			"org.androidannotations.annotations.RootFragment",
-			"org.androidannotations.annotations.SeekBarProgressChange",
-			"org.androidannotations.annotations.SeekBarTouchStart",
-			"org.androidannotations.annotations.SeekBarTouchStop",
-			"org.androidannotations.annotations.ServiceAction",
-			"org.androidannotations.annotations.SupposeBackground",
-			"org.androidannotations.annotations.SupposeUiThread",
-			"org.androidannotations.annotations.Trace",
 			"org.androidannotations.annotations.Transactional",
-			"org.androidannotations.annotations.WakeLock",
 			"org.androidannotations.annotations.res.IntArrayRes",
 			"org.androidannotations.annotations.res.MovieRes"
 	};

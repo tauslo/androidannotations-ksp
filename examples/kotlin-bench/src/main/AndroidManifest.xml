@@ -3,6 +3,8 @@
 
     <uses-sdk android:minSdkVersion="21" />
 
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
     <application
         android:name="org.androidannotations.bench.BenchApp_"
         android:icon="@drawable/icon"
@@ -22,6 +24,21 @@
             android:name="org.androidannotations.bench.BenchReceiverService_" />
         <activity android:name="org.androidannotations.bench.BenchP1Activity_" />
         <activity android:name="org.androidannotations.bench.BenchAndroidXHost_" />
+        <activity android:name="org.androidannotations.bench.BenchSeekKeyActivity_" />
+        <activity android:name="org.androidannotations.bench.BenchThreadsActivity_" />
+        <service android:name="org.androidannotations.bench.BenchIntentWork_" />
+        <receiver
+            android:name="org.androidannotations.bench.BenchBroadcast_"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="org.androidannotations.bench.PING" />
+                <data android:scheme="bench" />
+            </intent-filter>
+        </receiver>
+        <provider
+            android:name="org.androidannotations.bench.BenchProvider_"
+            android:authorities="org.androidannotations.bench.provider"
+            android:exported="false" />
     </application>
 
 </manifest>

@@ -92,6 +92,14 @@ public final class KspEnvironment {
 		return options.isLibrary();
 	}
 
+	public boolean isTrace() {
+		return options.isTrace();
+	}
+
+	public boolean isThreadControl() {
+		return options.isThreadControl();
+	}
+
 	/** Simple name of the resource class to reference, mirroring APT {@code ProjectRClassFinder}. */
 	public String getRClassName() {
 		return options.isUseR2() ? "R2" : "R";

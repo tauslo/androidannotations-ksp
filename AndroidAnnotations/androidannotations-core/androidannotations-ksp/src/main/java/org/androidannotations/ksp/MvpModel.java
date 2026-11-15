@@ -22,14 +22,22 @@ import java.util.List;
 public final class MvpModel {
 
 	public enum Kind {
-		ACTIVITY, APPLICATION, BEAN, FRAGMENT, SERVICE, VIEW, VIEW_GROUP
+		ACTIVITY, APPLICATION, BEAN, FRAGMENT, SERVICE, VIEW, VIEW_GROUP,
+		RECEIVER, INTENT_SERVICE, PROVIDER
 	}
 
 	/** Which view callback a {@link ViewListener} wires. Click and long-click stay on their own lists. */
 	public enum ListenerKind {
 		CLICK, LONG_CLICK, TOUCH, FOCUS_CHANGE, CHECKED_CHANGE, EDITOR_ACTION,
 		ITEM_CLICK, ITEM_LONG_CLICK, ITEM_SELECT,
-		TEXT_CHANGE, BEFORE_TEXT_CHANGE, AFTER_TEXT_CHANGE
+		TEXT_CHANGE, BEFORE_TEXT_CHANGE, AFTER_TEXT_CHANGE,
+		SEEK_PROGRESS, SEEK_START, SEEK_STOP,
+		PAGE_SELECTED, PAGE_SCROLLED, PAGE_SCROLL_STATE
+	}
+
+	/** Which {@code KeyEvent.Callback} method a {@link KeyBinding} contributes a switch case to. */
+	public enum KeyKind {
+		DOWN, UP, LONG_PRESS, MULTIPLE
 	}
 
 	/**
@@ -38,7 +46,8 @@ public final class MvpModel {
 	 */
 	public enum ParamRole {
 		VIEW, MOTION_EVENT, BOOLEAN, TEXT_VIEW, INT, KEY_EVENT, ITEM,
-		CHAR_SEQUENCE, START, COUNT, BEFORE, AFTER, EDITABLE
+		CHAR_SEQUENCE, START, COUNT, BEFORE, AFTER, EDITABLE,
+		SEEK_BAR, PROGRESS, FROM_USER, VIEW_PAGER, POSITION, POSITION_OFFSET, OFFSET_PIXELS, SCROLL_STATE
 	}
 
 	public static final class Param {
@@ -132,6 +141,16 @@ public final class MvpModel {
 			this.reusePropagation = reusePropagation;
 			this.visibility = visibility;
 		}
+
+		/**
+		 * Set when the same method is also {@code @WakeLock}. WakeLockHandler runs before UiThread/Background,
+		 * so the lock wraps the super call inside the posted task.
+		 */
+		public WakeLockSpec wakeLock;
+		/** Set when the same method is also {@code @Trace} and the {@code trace} option is on. Trace is inside WakeLock. */
+		public TraceSpec trace;
+		/** Set when the same method is also {@code @Suppose*}. Suppose runs last, so the check is outside the task. */
+		public SupposeSpec suppose;
 
 		/**
 		 * Set when the same method is also {@code @IgnoreWhen}. UiThread/Background wrap the guard inside the
@@ -575,6 +594,162 @@ public final class MvpModel {
 		}
 	}
 
+	/** APT ReceiverActionHandler: one {@code @ReceiverAction} dispatched from {@code onReceive}. */
+	public static final class ReceiverActionBinding {
+		public final String methodName;
+		public final List<String> actions;
+		public final List<String> dataSchemes;
+		public final List<ReceiverArg> args;
+		public final boolean unchecked;
+		public final String actionsField;
+		public final boolean actionsList;
+		public final String schemesField;
+		public final boolean schemesList;
+
+		public ReceiverActionBinding(String methodName, List<String> actions, List<String> dataSchemes, List<ReceiverArg> args,
+				boolean unchecked, String actionsField, boolean actionsList, String schemesField, boolean schemesList) {
+			this.methodName = methodName;
+			this.actions = actions;
+			this.dataSchemes = dataSchemes;
+			this.args = args;
+			this.unchecked = unchecked;
+			this.actionsField = actionsField;
+			this.actionsList = actionsList;
+			this.schemesField = schemesField;
+			this.schemesList = schemesList;
+		}
+	}
+
+	/** One {@code @ServiceAction} parameter restored from the intent extras and written by the intent builder. */
+	public static final class ServiceActionParam {
+		public final String name;
+		public final String typeName;
+		public final String constantName;
+		public final String readExpr;
+		public final String writeExpr;
+
+		public ServiceActionParam(String name, String typeName, String constantName, String readExpr, String writeExpr) {
+			this.name = name;
+			this.typeName = typeName;
+			this.constantName = constantName;
+			this.readExpr = readExpr;
+			this.writeExpr = writeExpr;
+		}
+	}
+
+	/** APT ServiceActionHandler: one action method plus its intent-builder overload. */
+	public static final class ServiceActionBinding {
+		public final String methodName;
+		public final String actionValue;
+		public final String actionField;
+		public final List<ServiceActionParam> params;
+		public final boolean unchecked;
+
+		public ServiceActionBinding(String methodName, String actionValue, String actionField, List<ServiceActionParam> params, boolean unchecked) {
+			this.methodName = methodName;
+			this.actionValue = actionValue;
+			this.actionField = actionField;
+			this.params = params;
+			this.unchecked = unchecked;
+		}
+	}
+
+	/** One {@code @KeyDown}/{@code @KeyUp}/{@code @KeyLongPress}/{@code @KeyMultiple} method. */
+	public static final class KeyBinding {
+		public final KeyKind kind;
+		public final String methodName;
+		public final boolean returnsBoolean;
+		public final List<Integer> keyCodes;
+		public final List<ParamRole> roles;
+
+		public KeyBinding(KeyKind kind, String methodName, boolean returnsBoolean, List<Integer> keyCodes, List<ParamRole> roles) {
+			this.kind = kind;
+			this.methodName = methodName;
+			this.returnsBoolean = returnsBoolean;
+			this.keyCodes = keyCodes;
+			this.roles = roles;
+		}
+	}
+
+	/** APT WakeLockHandler: level, flags and tag used to build {@code PowerManager.newWakeLock}. */
+	public static final class WakeLockSpec {
+		public final String tag;
+		public final String level;
+		public final List<String> flags;
+
+		public WakeLockSpec(String tag, String level, List<String> flags) {
+			this.tag = tag;
+			this.level = level;
+			this.flags = flags;
+		}
+	}
+
+	/** APT TraceHandler: tag and log level. Generated only when the {@code trace} option is true. */
+	public static final class TraceSpec {
+		public final String tag;
+		public final String logMethod;
+		public final String logConstant;
+		public final String returnType;
+
+		public TraceSpec(String tag, String logMethod, String logConstant, String returnType) {
+			this.tag = tag;
+			this.logMethod = logMethod;
+			this.logConstant = logConstant;
+			this.returnType = returnType;
+		}
+	}
+
+	/** APT Suppose*Handler: a thread check prepended after every other method-body wrapper. */
+	public static final class SupposeSpec {
+		public final boolean uiThread;
+		public final List<String> serial;
+
+		public SupposeSpec(boolean uiThread, List<String> serial) {
+			this.uiThread = uiThread;
+			this.serial = serial;
+		}
+	}
+
+	/**
+	 * A method wrapped by {@code @WakeLock}, {@code @Trace} and/or {@code @Suppose*} that is not also
+	 * {@code @UiThread} or {@code @Background}. Combined methods store the specs on {@link MethodInfo}.
+	 */
+	public static final class WrappedMethod {
+		public final String name;
+		public final List<Param> params;
+		public final String visibility;
+		public final String returnType;
+		public WakeLockSpec wakeLock;
+		public TraceSpec trace;
+		public SupposeSpec suppose;
+
+		public WrappedMethod(String name, List<Param> params, String visibility, String returnType) {
+			this.name = name;
+			this.params = params;
+			this.visibility = visibility;
+			this.returnType = returnType;
+		}
+	}
+
+	/** APT RootContextHandler / RootFragmentHandler: one field (or one-arg method) on an {@code @EBean}. */
+	public static final class RootInjection {
+		public final boolean fragment;
+		public final boolean fieldForm;
+		public final String name;
+		public final boolean jvmField;
+		public final String typeName;
+		public final boolean plainContext;
+
+		public RootInjection(boolean fragment, boolean fieldForm, String name, boolean jvmField, String typeName, boolean plainContext) {
+			this.fragment = fragment;
+			this.fieldForm = fieldForm;
+			this.name = name;
+			this.jvmField = jvmField;
+			this.typeName = typeName;
+			this.plainContext = plainContext;
+		}
+	}
+
 	/** Standalone {@code @IgnoreWhen} (not also {@code @UiThread} / {@code @Background}). */
 	public static final class IgnoreWhenMethod {
 		public final String name;
@@ -616,6 +791,19 @@ public final class MvpModel {
 	public final List<ViewListener> itemSelectListeners = new ArrayList<>();
 	/** @TextChange / @BeforeTextChange / @AfterTextChange in source order. One TextWatcher is shared per view id. */
 	public final List<ViewListener> textWatcherListeners = new ArrayList<>();
+	/** @SeekBar* methods in source order. One OnSeekBarChangeListener is shared per view id. */
+	public final List<ViewListener> seekListeners = new ArrayList<>();
+	/** @Page* methods in source order. One OnPageChangeListener is shared per view id. */
+	public final List<ViewListener> pageListeners = new ArrayList<>();
+	public final List<KeyBinding> keyBindings = new ArrayList<>();
+	public final List<ReceiverActionBinding> receiverActions = new ArrayList<>();
+	public final List<ServiceActionBinding> serviceActions = new ArrayList<>();
+	public final List<WrappedMethod> wrappedMethods = new ArrayList<>();
+	public final List<RootInjection> roots = new ArrayList<>();
+	/** Logged without skipping generation (APT warnings such as PARTIAL_WAKE_LOCK flags). */
+	public final List<String> warnings = new ArrayList<>();
+	/** FQCN of the ViewPager type used for @Page* listeners, androidx preferred over the support library. */
+	public String viewPagerType;
 	public final List<OptionsMenuRef> optionsMenus = new ArrayList<>();
 	public final List<OptionsItem> optionsItems = new ArrayList<>();
 	public final List<MenuInjection> injectMenuInjections = new ArrayList<>();
@@ -677,7 +865,31 @@ public final class MvpModel {
 		return !clickListeners.isEmpty() || !longClickListeners.isEmpty() || !touchListeners.isEmpty()
 				|| !focusChangeListeners.isEmpty() || !checkedChangeListeners.isEmpty() || !editorActionListeners.isEmpty()
 				|| !itemClickListeners.isEmpty() || !itemLongClickListeners.isEmpty() || !itemSelectListeners.isEmpty()
-				|| !textWatcherListeners.isEmpty();
+				|| !textWatcherListeners.isEmpty() || !seekListeners.isEmpty() || !pageListeners.isEmpty();
+	}
+
+	public boolean usesWakeLock() {
+		for (MethodInfo method : uiThreads) {
+			if (method.wakeLock != null) {
+				return true;
+			}
+		}
+		for (MethodInfo method : backgrounds) {
+			if (method.wakeLock != null) {
+				return true;
+			}
+		}
+		for (WrappedMethod method : wrappedMethods) {
+			if (method.wakeLock != null) {
+				return true;
+			}
+		}
+		for (MvpModel nested : nestedModels) {
+			if (nested.usesWakeLock()) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/** True when the generated type must implement view-changed callbacks (views, listeners, fragment lookup, html). */

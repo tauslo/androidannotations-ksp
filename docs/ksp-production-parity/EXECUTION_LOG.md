@@ -1094,3 +1094,55 @@
 1. P2：按目标工程用量挑选 Preference 屏、SeekBar/ViewPager/Key、WakeLock/Trace/Suppose、DataBinding，或 `@EProvider` / `@EReceiver` / `@EIntentService`
 2. 若要补 AndroidX Fragment 上的动态 `@Receiver`，生成 `onAttach(android.content.Context)` 而不是 `onAttach(Activity)`
 
+## Session 2026-11-16 — P2: generating components, listeners, threading
+
+- **Agent**: Cursor Grok
+- **Goal slice**: P2 高价值子集 — Other generating components、SeekBar/ViewPager/Key、Threading extras，以及顺手的 `@RootContext` / `@RootFragment`
+- **Git**: branch=`ksp/main`，local only, not push
+- **Status**: done for the chosen subset（Preference / DataBinding / 其余 misc UI 与插件未做）
+
+### Done
+- `@EReceiver` + `@ReceiverAction`（actions / dataSchemes，单值 `equals`、多值 `List.contains`，参数 `Context` / `Intent` / `@ReceiverAction.Extra`）生成 `BroadcastReceiver_` 的 `onReceive` → `init_` → `super` → 分发
+- `@EIntentService` + `@ServiceAction`：`onCreate`/`init_`、`onHandleIntent`（super、null、action、extras、`super.method`、return）、`intent()` 与 `IntentBuilder_` 的 `action` + `super.extra`
+- `@EProvider`：`onCreate` 先 `init_()` 再 `return super.onCreate()`，context 为 `getContext()`
+- 三类组件走现有 `ComponentValidator.componentRegistered`（library 模式仍跳过）
+- SeekBar 三种注解按 id 合成一个 `OnSeekBarChangeListener`；Page 三种合成一个 `addOnPageChangeListener`（androidx ViewPager 优先）；Key 四种生成 `onKeyDown` / `onKeyUp` / `onKeyLongPress` / `onKeyMultiple` 的 `switch`
+- `@WakeLock`：`powerManager_` 在 `init_` 赋值；缺 `android.permission.WAKE_LOCK` 时应用报 error、library 报 warning；`PARTIAL_WAKE_LOCK` 加 flags 只 warning
+- `@Trace`：option `trace` 默认 false（与 APT `OPTION_TRACE` 一致），开启后包在 WakeLock 之内、UiThread/Background 任务之内
+- `@SupposeUiThread` / `@SupposeBackground`：option `threadControl` 默认 true；检查写在已生成方法最外层，因此排在 UiThread/Background 之后
+- `@RootContext` / `@RootFragment`：仅 `@EBean`，`context_` / `rootFragment_` 的 instanceof 赋值与 Log.w
+- 包装顺序（外→内，对照 `CorePlugin`）：Suppose → UiThread/Background → WakeLock → Trace → IgnoreWhen → super。已写入 PLAYBOOK §2
+
+### Core 覆盖边界
+已覆盖：P0a + P0b + P1，加上本子集（Receiver / IntentService / Provider、SeekBar / ViewPager / Key、WakeLock / Trace / Suppose、RootContext / RootFragment）。
+仍未覆盖（`RECOGNIZED_NOT_IMPLEMENTED`，使用时 KSP warning）：Preference 屏、`@DataBound`、`@BindingObject`、`@CustomTitle`、`@HierarchyViewerSupport`、`@HttpsClient`、`@Transactional`、`@MovieRes`、`@IntArrayRes`。
+插件默认跳过：RoboGuice、Otto、ORMLite、REST-Spring。
+
+### Changed paths
+- `androidannotations-ksp`：`AnnotationNames`、`KeyCodes`、`MvpModel`、`handler/MvpHandler`、`generate/MvpJavaGenerator`、`AndroidAnnotationsSymbolProcessor`、`env/KspOptions`、`env/KspEnvironment`、`KspAnnotationUtils`
+- `examples/kotlin-bench`：`BenchBroadcast`、`BenchIntentWork`、`BenchProvider`、`BenchSeekKeyActivity`、`BenchThreadsActivity`、`BenchRootBean`、`res/layout/bench_seek.xml`、manifest（WAKE_LOCK、receiver/service/provider/activity）、`androidx.viewpager`、KSP `trace=true`
+- `docs/ksp-production-parity`：CHECKLIST_P2、PLAYBOOK、KNOWN_DEVIATIONS、EXECUTION_LOG
+
+### Verify
+- [x] `mvnw -pl androidannotations-core/androidannotations-ksp -am install`（skipTests）BUILD SUCCESS
+- [x] `examples/kotlin-bench assembleDebug -Paa.processor=ksp`：`kspDebugKotlin` 成功，`generated 244 class(es)`（238 + 6）；`:compileDebugKotlin` EXIT=1，仅既有 9 个 `lateinit` 原始类型错误（BenchActivity107×8 + BenchFragment109×1），无新增 Kotlin 错误
+- [x] 生成片段：`BenchBroadcast_` 含 `ACTIONS_ON_PING.equals` + `DATA_SCHEMES_ON_PING.equals`、`ACTIONS_ON_MANY.contains`、`extras_.getString(PAYLOAD_EXTRA)`；`BenchIntentWork_` 含 `ACTION_PING` / `ACTION_NAMED`、`extras.getString` / `getInt`、`IntentBuilder_.ping/named` 的 `action` + `super.extra`；`BenchProvider_` 的 `onCreate` 先 `init_()` 再 `super.onCreate()`，`getInstance_(getContext())`
+- [x] `BenchSeekKeyActivity_`：同一 id 一个 `setOnSeekBarChangeListener`（progress/start/stop）、一个 `addOnPageChangeListener`、四个 KeyEvent switch（`KEYCODE_BACK/VOLUME_UP/MENU/ENTER`）
+- [x] `BenchThreadsActivity_`：`hold()` 直接 acquire/release；`holdOnUi()` 的 WakeLock 在 `runTask` 内部；`tracedBg()` 的 `Log.isLoggable` 在 Background `execute()` 内部；`mustBg()` 的 `checkBgThread("bench")` 在 `execute(...)` 之前；`mustUi()` 为 `checkUiThread()` 后 `super`
+- [x] `BenchRootBean_`：`context_ instanceof Activity` 赋值，否则 `Log.w`；`rootFragment_` 同理
+- 拿掉 9 个既有 `lateinit` 后，Kotlin 编译会先撞上既有 `BenchActivity111` 的 `getWindowManager` accidental override，到不了 javac。新生成类未单独过 javac；内容已按上面片段核对
+
+### Known limitations
+- `@Key*` 的 keyCode 名称来自内置 `KEYCODE_*` 表；表中没有的 int 会报错，而不是去解析 android.jar
+- `@Trace` 与非 void 的 `@WakeLock` 组合按 APT 拒绝；`@Trace` 与 `@UiThread`/`@Background` 组合要求 void
+- `@RootContext` / `@RootFragment` 的方法注入日志文案比字段注入短
+- Page 监听固定 `addOnPageChangeListener`（androidx / support 的现行 API）
+- `@KeyMultiple` 的 `super` 使用本方法的 `keyEvent` 参数（APT `KeyEventCallbackMethodsDelegate` 误传了 `onKeyDown` 的参数）
+
+### Blockers
+- none（assembleDebug 的 EXIT=1 是既有 fixture，见 KNOWN_DEVIATIONS #5）
+
+### Next
+1. 剩余 P2：Preference 屏，或 `@DataBound` / `@BindingObject`（仅当 EActivity content view 路径已经够直）
+2. 若要继续扩 core 边界之外：PERF 增量，或插件边界（ORMLite / REST-Spring 仅当业务依赖存在；RoboGuice / Otto 默认不做）
+

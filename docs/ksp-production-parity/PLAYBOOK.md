@@ -69,6 +69,10 @@ org.androidannotations.ksp/
 
 ## 2. 当前进度（以 EXECUTION_LOG 为准）
 
+**P0a、P0b、P1：已完成。** P2 高价值子集已落地（生成组件、SeekBar/ViewPager/Key、WakeLock/Trace/Suppose、RootContext/RootFragment）。Preference 屏、DataBinding 与其余 misc UI 仍未做。
+
+**方法包装顺序（对照 `CorePlugin`，由外到内）：** `@SupposeUiThread` / `@SupposeBackground`（option `threadControl`，默认 true，最后包在已生成方法最外层）→ `@UiThread` / `@Background` → `@WakeLock`（在 Trace 之后、线程 handler 之前，因此锁在已提交任务内部）→ `@Trace`（option `trace`，默认 false）→ `@IgnoreWhen` → `super`。
+
 **P0a：已完成（exit acceptance done）。** 详见 [`CHECKLIST_P0a.md`](CHECKLIST_P0a.md) / 日志。
 
 已具备（相对最初 MVP 加深后）：
@@ -80,9 +84,7 @@ org.androidannotations.ksp/
 - `examples/kotlin` / `kotlin-bench`；冷全量 vs kapt 约 −22.6%（`BENCHMARK.md`）
 - Bench APT vs KSP 公开 API spot-check：DECL/SIG 0 mismatch（body 允许等价改写）
 
-**下一步：P0b**（[`CHECKLIST_P0b.md`](CHECKLIST_P0b.md)）— Fragment / Click / 常用 Res / Menu / InstanceState / …  
-
-P0a 可选遗留（已转入 P0b Carry-over）：`@ViewById` method-injection、线程包装顺序笔记、Kotlin 字段写入对齐、`@NotNull` 等。
+**下一步：** 剩余 P2（Preference 屏或 DataBinding），或 PERF / 插件边界。P0b 已完成，见 [`CHECKLIST_P0b.md`](CHECKLIST_P0b.md)。
 
 关键源码：
 
@@ -128,9 +130,9 @@ P0a 可选遗留（已转入 P0b Carry-over）：`@ViewById` method-injection、
 
 `@SharedPref`/`@Pref`，更多 View 监听，`@ViewsById`，`@FromHtml`，动态 `@Receiver`（含方法参数 `@Extra`），`@EView`/`@EViewGroup`，`@IgnoreWhen`，`@NonConfigurationInstance`，`@WindowFeature`/`@Fullscreen`，以及 Activity 上 AndroidX `FragmentById`/`FragmentByTag`。未做：`@MovieRes` 等少用 Res、AndroidX Fragment 上的 `onAttach(Context)` 接收器。详见 CHECKLIST_P1。
 
-### P2 — 偏门按需（15–25 人日）
+### P2 — 偏门按需（进行中）
 
-Preference 屏、SeekBar/ViewPager/Key、WakeLock/Trace/Suppose*、DataBinding、Provider/Receiver/IntentService 等。
+已做：`@EReceiver` / `@ReceiverAction`、`@EIntentService` / `@ServiceAction`、`@EProvider`（含 Manifest 注册）、SeekBar / ViewPager / Key、`@WakeLock` / `@Trace` / `@Suppose*`、`@RootContext` / `@RootFragment`。未做：Preference 屏、DataBinding（`@DataBound` / `@BindingObject`）、`@CustomTitle`、`@HierarchyViewerSupport`、`@HttpsClient`、`@Transactional`、`@MovieRes` / `@IntArrayRes`。插件默认跳过。
 
 ### 插件（按依赖存在与否）
 

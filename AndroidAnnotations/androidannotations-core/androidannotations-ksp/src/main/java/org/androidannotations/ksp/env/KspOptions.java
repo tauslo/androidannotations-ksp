@@ -31,6 +31,8 @@ import javax.lang.model.SourceVersion;
  * <li>{@code library} (default {@code false}) - relax component registration validation</li>
  * <li>{@code useR2} (default {@code false}) - reference {@code R2} instead of {@code R}</li>
  * <li>{@code resourcePackageName} (default: manifest application package) - package holding the R class</li>
+ * <li>{@code trace} (default {@code false}) - generate {@code @Trace} timing logs</li>
+ * <li>{@code threadControl} (default {@code true}) - generate {@code @SupposeUiThread} / {@code @SupposeBackground} checks</li>
  * </ul>
  */
 public final class KspOptions {
@@ -40,18 +42,26 @@ public final class KspOptions {
 	public static final String LIBRARY = "library";
 	public static final String USE_R2 = "useR2";
 	public static final String RESOURCE_PACKAGE_NAME = "resourcePackageName";
+	/** APT {@code TraceHandler.OPTION_TRACE}. Default false: {@code @Trace} is ignored until enabled. */
+	public static final String TRACE = "trace";
+	/** APT {@code SupposeThreadHandler.OPTION_THREAD_CONTROL}. Default true. */
+	public static final String THREAD_CONTROL = "threadControl";
 
 	private final String classSuffix;
 	private final boolean library;
 	private final boolean useR2;
+	private final boolean trace;
+	private final boolean threadControl;
 	private final String resourcePackageName;
 	private final String androidManifestFile;
 	private final String initError;
 
-	private KspOptions(String classSuffix, boolean library, boolean useR2, String resourcePackageName, String androidManifestFile, String initError) {
+	private KspOptions(String classSuffix, boolean library, boolean useR2, boolean trace, boolean threadControl, String resourcePackageName, String androidManifestFile, String initError) {
 		this.classSuffix = classSuffix;
 		this.library = library;
 		this.useR2 = useR2;
+		this.trace = trace;
+		this.threadControl = threadControl;
 		this.resourcePackageName = resourcePackageName;
 		this.androidManifestFile = androidManifestFile;
 		this.initError = initError;
@@ -68,8 +78,10 @@ public final class KspOptions {
 		String error = validateClassSuffix(suffix);
 		return new KspOptions(
 				error == null ? suffix : "_",
-				parseBoolean(options.get(LIBRARY)),
-				parseBoolean(options.get(USE_R2)),
+				parseBoolean(options.get(LIBRARY), false),
+				parseBoolean(options.get(USE_R2), false),
+				parseBoolean(options.get(TRACE), false),
+				parseBoolean(options.get(THREAD_CONTROL), true),
 				emptyToNull(options.get(RESOURCE_PACKAGE_NAME)),
 				emptyToNull(options.get(ANDROID_MANIFEST_FILE)),
 				error);
@@ -85,8 +97,11 @@ public final class KspOptions {
 		return null;
 	}
 
-	private static boolean parseBoolean(String value) {
-		return value != null && Boolean.parseBoolean(value.trim());
+	private static boolean parseBoolean(String value, boolean defaultValue) {
+		if (value == null || value.trim().isEmpty()) {
+			return defaultValue;
+		}
+		return Boolean.parseBoolean(value.trim());
 	}
 
 	private static String emptyToNull(String value) {
@@ -123,5 +138,14 @@ public final class KspOptions {
 
 	public String getAndroidManifestFile() {
 		return androidManifestFile;
+	}
+
+	public boolean isTrace() {
+		return trace;
+	}
+
+	/** True unless the KSP argument {@code threadControl} is explicitly {@code false}. */
+	public boolean isThreadControl() {
+		return threadControl;
 	}
 }

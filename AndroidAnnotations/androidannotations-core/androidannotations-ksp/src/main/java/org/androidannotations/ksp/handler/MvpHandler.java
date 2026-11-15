@@ -43,6 +43,7 @@ import kotlin.sequences.Sequence;
 import kotlin.sequences.SequencesKt;
 
 import org.androidannotations.ksp.AnnotationNames;
+import org.androidannotations.ksp.KeyCodes;
 import org.androidannotations.ksp.KspAnnotationUtils;
 import org.androidannotations.ksp.MvpModel;
 import org.androidannotations.ksp.ResCompat;
@@ -53,6 +54,16 @@ import org.androidannotations.ksp.ResCompat;
  * walk stops at java.lang.Object and before any android.* class; interfaces are not followed.
  */
 public final class MvpHandler {
+
+	/** APT {@code trace} option. When false, {@code @Trace} is ignored (handler disabled). */
+	private boolean traceEnabled;
+	/** APT {@code threadControl} option. When false, {@code @Suppose*} is ignored. */
+	private boolean threadControl = true;
+
+	public void configure(boolean traceEnabled, boolean threadControl) {
+		this.traceEnabled = traceEnabled;
+		this.threadControl = threadControl;
+	}
 
 	private static final int MAX_SUPERCLASS_DEPTH = 64;
 
@@ -77,6 +88,9 @@ public final class MvpHandler {
 		KSAnnotation eFragment = KspAnnotationUtils.findAnnotation(classDeclaration.getAnnotations(), AnnotationNames.E_FRAGMENT);
 		KSAnnotation eApplication = KspAnnotationUtils.findAnnotation(classDeclaration.getAnnotations(), AnnotationNames.E_APPLICATION);
 		KSAnnotation eService = KspAnnotationUtils.findAnnotation(classDeclaration.getAnnotations(), AnnotationNames.E_SERVICE);
+		KSAnnotation eReceiver = KspAnnotationUtils.findAnnotation(classDeclaration.getAnnotations(), AnnotationNames.E_RECEIVER);
+		KSAnnotation eIntentService = KspAnnotationUtils.findAnnotation(classDeclaration.getAnnotations(), AnnotationNames.E_INTENT_SERVICE);
+		KSAnnotation eProvider = KspAnnotationUtils.findAnnotation(classDeclaration.getAnnotations(), AnnotationNames.E_PROVIDER);
 		KSAnnotation eViewGroup = KspAnnotationUtils.findAnnotation(classDeclaration.getAnnotations(), AnnotationNames.E_VIEW_GROUP);
 		KSAnnotation eView = KspAnnotationUtils.findAnnotation(classDeclaration.getAnnotations(), AnnotationNames.E_VIEW);
 
@@ -96,6 +110,12 @@ public final class MvpHandler {
 			forceLayoutInjection = KspAnnotationUtils.booleanArg(eFragment, "forceLayoutInjection", false);
 		} else if (eApplication != null) {
 			kind = MvpModel.Kind.APPLICATION;
+		} else if (eReceiver != null) {
+			kind = MvpModel.Kind.RECEIVER;
+		} else if (eIntentService != null) {
+			kind = MvpModel.Kind.INTENT_SERVICE;
+		} else if (eProvider != null) {
+			kind = MvpModel.Kind.PROVIDER;
 		} else if (eService != null) {
 			kind = MvpModel.Kind.SERVICE;
 		} else if (eViewGroup != null) {
@@ -138,6 +158,16 @@ public final class MvpHandler {
 		KSAnnotation optionsMenu = KspAnnotationUtils.findAnnotation(classDeclaration.getAnnotations(), AnnotationNames.OPTIONS_MENU);
 		if (optionsMenu != null) {
 			collectOptionsMenu(optionsMenu, model);
+		}
+
+		if (kind == MvpModel.Kind.RECEIVER && !extendsQualified(classDeclaration, "android.content.BroadcastReceiver")) {
+			model.errors.add("@EReceiver can only be used on a subclass of android.content.BroadcastReceiver");
+		}
+		if (kind == MvpModel.Kind.INTENT_SERVICE && !extendsQualified(classDeclaration, "android.app.IntentService")) {
+			model.errors.add("@EIntentService can only be used on a subclass of android.app.IntentService");
+		}
+		if (kind == MvpModel.Kind.PROVIDER && !extendsQualified(classDeclaration, "android.content.ContentProvider")) {
+			model.errors.add("@EProvider can only be used on a subclass of android.content.ContentProvider");
 		}
 
 		collectMembers(resolver, classDeclaration.getDeclarations(), model);
@@ -310,6 +340,15 @@ public final class MvpHandler {
 			collectPrefField(property, name, jvmField, model);
 		}
 
+		KSAnnotation rootContext = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.ROOT_CONTEXT);
+		if (rootContext != null) {
+			collectRoot(name, true, jvmField, KspAnnotationUtils.fullJavaTypeName(property.getType()), false, model);
+		}
+		KSAnnotation rootFragment = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.ROOT_FRAGMENT);
+		if (rootFragment != null) {
+			collectRoot(name, true, jvmField, KspAnnotationUtils.fullJavaTypeName(property.getType()), true, model);
+		}
+
 		KSAnnotation injectMenu = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.INJECT_MENU);
 		if (injectMenu != null) {
 			collectMenuField(resolver, property, name, false, injectMenu, model);
@@ -467,6 +506,83 @@ public final class MvpHandler {
 		KSAnnotation afterTextChange = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.AFTER_TEXT_CHANGE);
 		if (afterTextChange != null) {
 			collectExtendedListener(resolver, function, name, afterTextChange, MvpModel.ListenerKind.AFTER_TEXT_CHANGE, model);
+		}
+
+		KSAnnotation seekProgress = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.SEEK_BAR_PROGRESS_CHANGE);
+		if (seekProgress != null) {
+			collectSeekOrPage(resolver, function, name, seekProgress, MvpModel.ListenerKind.SEEK_PROGRESS, model);
+		}
+		KSAnnotation seekStart = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.SEEK_BAR_TOUCH_START);
+		if (seekStart != null) {
+			collectSeekOrPage(resolver, function, name, seekStart, MvpModel.ListenerKind.SEEK_START, model);
+		}
+		KSAnnotation seekStop = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.SEEK_BAR_TOUCH_STOP);
+		if (seekStop != null) {
+			collectSeekOrPage(resolver, function, name, seekStop, MvpModel.ListenerKind.SEEK_STOP, model);
+		}
+		KSAnnotation pageSelected = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.PAGE_SELECTED);
+		if (pageSelected != null) {
+			collectSeekOrPage(resolver, function, name, pageSelected, MvpModel.ListenerKind.PAGE_SELECTED, model);
+		}
+		KSAnnotation pageScrolled = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.PAGE_SCROLLED);
+		if (pageScrolled != null) {
+			collectSeekOrPage(resolver, function, name, pageScrolled, MvpModel.ListenerKind.PAGE_SCROLLED, model);
+		}
+		KSAnnotation pageState = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.PAGE_SCROLL_STATE_CHANGED);
+		if (pageState != null) {
+			collectSeekOrPage(resolver, function, name, pageState, MvpModel.ListenerKind.PAGE_SCROLL_STATE, model);
+		}
+		KSAnnotation keyDown = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.KEY_DOWN);
+		if (keyDown != null) {
+			collectKey(function, name, keyDown, MvpModel.KeyKind.DOWN, model);
+		}
+		KSAnnotation keyUp = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.KEY_UP);
+		if (keyUp != null) {
+			collectKey(function, name, keyUp, MvpModel.KeyKind.UP, model);
+		}
+		KSAnnotation keyLong = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.KEY_LONG_PRESS);
+		if (keyLong != null) {
+			collectKey(function, name, keyLong, MvpModel.KeyKind.LONG_PRESS, model);
+		}
+		KSAnnotation keyMultiple = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.KEY_MULTIPLE);
+		if (keyMultiple != null) {
+			collectKey(function, name, keyMultiple, MvpModel.KeyKind.MULTIPLE, model);
+		}
+		KSAnnotation receiverAction = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.RECEIVER_ACTION);
+		if (receiverAction != null) {
+			collectReceiverAction(resolver, function, name, receiverAction, model);
+		}
+		KSAnnotation serviceAction = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.SERVICE_ACTION);
+		if (serviceAction != null) {
+			collectServiceAction(resolver, function, name, serviceAction, model);
+		}
+		KSAnnotation wakeLock = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.WAKE_LOCK);
+		if (wakeLock != null) {
+			collectWakeLock(function, name, wakeLock, model);
+		}
+		if (traceEnabled) {
+			KSAnnotation trace = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.TRACE);
+			if (trace != null) {
+				collectTrace(function, name, trace, model);
+			}
+		}
+		if (threadControl) {
+			KSAnnotation supposeUi = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.SUPPOSE_UI_THREAD);
+			if (supposeUi != null) {
+				attachSuppose(function, name, new MvpModel.SupposeSpec(true, java.util.Collections.<String>emptyList()), model);
+			}
+			KSAnnotation supposeBg = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.SUPPOSE_BACKGROUND);
+			if (supposeBg != null) {
+				attachSuppose(function, name, new MvpModel.SupposeSpec(false, KspAnnotationUtils.stringArrayArg(supposeBg, "serial")), model);
+			}
+		}
+		KSAnnotation rootContextMethod = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.ROOT_CONTEXT);
+		if (rootContextMethod != null) {
+			collectRootMethod(function, name, false, model);
+		}
+		KSAnnotation rootFragmentMethod = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.ROOT_FRAGMENT);
+		if (rootFragmentMethod != null) {
+			collectRootMethod(function, name, true, model);
 		}
 
 		KSAnnotation optionsItem = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.OPTIONS_ITEM);
@@ -866,6 +982,18 @@ public final class MvpHandler {
 			return "@BeforeTextChange";
 		case AFTER_TEXT_CHANGE:
 			return "@AfterTextChange";
+		case SEEK_PROGRESS:
+			return "@SeekBarProgressChange";
+		case SEEK_START:
+			return "@SeekBarTouchStart";
+		case SEEK_STOP:
+			return "@SeekBarTouchStop";
+		case PAGE_SELECTED:
+			return "@PageSelected";
+		case PAGE_SCROLLED:
+			return "@PageScrolled";
+		case PAGE_SCROLL_STATE:
+			return "@PageScrollStateChanged";
 		default:
 			return "@Click";
 		}
@@ -2711,6 +2839,496 @@ public final class MvpHandler {
 			}
 		}
 		return false;
+	}
+
+	private void collectSeekOrPage(Resolver resolver, KSFunctionDeclaration function, String name, KSAnnotation annotation,
+			MvpModel.ListenerKind kind, MvpModel model) {
+		String label = listenerLabel(kind);
+		if (!isViewHost(model.kind)) {
+			model.errors.add(label + " is only supported in @EActivity, @EFragment, @EView or @EViewGroup components: method '" + name + "'");
+			return;
+		}
+		if (function.getModifiers().contains(Modifier.PRIVATE)) {
+			model.errors.add(label + " method '" + name + "' must not be private");
+			return;
+		}
+		if (!"void".equals(functionReturnType(function))) {
+			model.errors.add(label + " method '" + name + "' must return void");
+			return;
+		}
+		boolean page = kind == MvpModel.ListenerKind.PAGE_SELECTED || kind == MvpModel.ListenerKind.PAGE_SCROLLED
+				|| kind == MvpModel.ListenerKind.PAGE_SCROLL_STATE;
+		if (page && model.viewPagerType == null) {
+			model.viewPagerType = viewPagerType(resolver);
+			if (model.viewPagerType == null) {
+				model.errors.add(label + " requires android.support.v4.view.ViewPager or androidx.viewpager.widget.ViewPager on the classpath");
+				return;
+			}
+		}
+		List<MvpModel.Param> params = KspAnnotationUtils.methodParams(function);
+		List<MvpModel.ParamRole> roles = new ArrayList<MvpModel.ParamRole>();
+		if (!seekOrPageRoles(resolver, kind, label, name, params, roles, model.viewPagerType, model)) {
+			return;
+		}
+		ListenerIdRefs ids = listenerIds(annotation, name);
+		List<MvpModel.ViewListener> target = kind == MvpModel.ListenerKind.SEEK_PROGRESS || kind == MvpModel.ListenerKind.SEEK_START
+				|| kind == MvpModel.ListenerKind.SEEK_STOP ? model.seekListeners : model.pageListeners;
+		if (page) {
+			List<MvpModel.ViewListener> sameKind = new ArrayList<MvpModel.ViewListener>();
+			for (MvpModel.ViewListener existing : target) {
+				if (existing.kind == kind) {
+					sameKind.add(existing);
+				}
+			}
+			if (duplicateListenerIds(sameKind, ids)) {
+				model.errors.add(label + " on method '" + name + "' has duplicate resource ids");
+				return;
+			}
+		}
+		target.add(new MvpModel.ViewListener(kind, name, params, roles, false, ids.valueIds, ids.nameIds));
+	}
+
+	private boolean seekOrPageRoles(Resolver resolver, MvpModel.ListenerKind kind, String label, String name,
+			List<MvpModel.Param> params, List<MvpModel.ParamRole> roles, String viewPagerType, MvpModel model) {
+		int ints = 0;
+		boolean sawFloat = false;
+		for (MvpModel.Param param : params) {
+			String type = param.typeName;
+			if ("android.widget.SeekBar".equals(type)) {
+				roles.add(MvpModel.ParamRole.SEEK_BAR);
+			} else if (isViewPagerType(resolver, type, viewPagerType)) {
+				roles.add(MvpModel.ParamRole.VIEW_PAGER);
+			} else if (isIntType(type)) {
+				ints++;
+				if (kind == MvpModel.ListenerKind.SEEK_PROGRESS) {
+					roles.add(MvpModel.ParamRole.PROGRESS);
+				} else if (kind == MvpModel.ListenerKind.PAGE_SCROLLED) {
+					roles.add(!sawFloat && ints == 1 ? MvpModel.ParamRole.POSITION : MvpModel.ParamRole.OFFSET_PIXELS);
+				} else if (kind == MvpModel.ListenerKind.PAGE_SCROLL_STATE) {
+					roles.add(MvpModel.ParamRole.SCROLL_STATE);
+				} else {
+					roles.add(MvpModel.ParamRole.POSITION);
+				}
+			} else if (isFloatType(type)) {
+				sawFloat = true;
+				roles.add(MvpModel.ParamRole.POSITION_OFFSET);
+			} else if (isBooleanType(type)) {
+				roles.add(MvpModel.ParamRole.FROM_USER);
+			} else {
+				model.errors.add(label + " method '" + name + "' parameter '" + param.name + "' has unsupported type " + type);
+				return false;
+			}
+		}
+		if (kind == MvpModel.ListenerKind.SEEK_START || kind == MvpModel.ListenerKind.SEEK_STOP) {
+			for (MvpModel.ParamRole role : roles) {
+				if (role != MvpModel.ParamRole.SEEK_BAR) {
+					model.errors.add(label + " method '" + name + "' only accepts an optional SeekBar parameter");
+					return false;
+				}
+			}
+		}
+		if (kind == MvpModel.ListenerKind.PAGE_SELECTED || kind == MvpModel.ListenerKind.PAGE_SCROLL_STATE) {
+			if (ints > 1) {
+				model.errors.add(label + " method '" + name + "' accepts at most one int parameter");
+				return false;
+			}
+		}
+		return true;
+	}
+
+	private boolean isViewPagerType(Resolver resolver, String typeName, String viewPagerType) {
+		if (typeName == null) {
+			return false;
+		}
+		if ("androidx.viewpager.widget.ViewPager".equals(typeName) || "android.support.v4.view.ViewPager".equals(typeName)) {
+			return true;
+		}
+		if (viewPagerType != null && (typeName.equals(viewPagerType) || isViewSubtype(resolver, typeName) && implementsInterface(resolveClassDeclaration(resolver, typeName), viewPagerType))) {
+			return true;
+		}
+		KSClassDeclaration declaration = resolveClassDeclaration(resolver, typeName);
+		return declaration != null && (implementsInterface(declaration, "androidx.viewpager.widget.ViewPager")
+				|| implementsInterface(declaration, "android.support.v4.view.ViewPager"));
+	}
+
+	private static boolean isFloatType(String typeName) {
+		return "float".equals(typeName) || "java.lang.Float".equals(typeName);
+	}
+
+	private String viewPagerType(Resolver resolver) {
+		if (classPresent(resolver, "androidx.viewpager.widget.ViewPager")) {
+			return "androidx.viewpager.widget.ViewPager";
+		}
+		if (classPresent(resolver, "android.support.v4.view.ViewPager")) {
+			return "android.support.v4.view.ViewPager";
+		}
+		return null;
+	}
+
+	private void collectKey(KSFunctionDeclaration function, String name, KSAnnotation annotation, MvpModel.KeyKind kind, MvpModel model) {
+		String label = keyLabel(kind);
+		if (model.kind != MvpModel.Kind.ACTIVITY && model.kind != MvpModel.Kind.VIEW && model.kind != MvpModel.Kind.VIEW_GROUP) {
+			model.errors.add(label + " can only be used in a component that implements android.view.KeyEvent.Callback (@EActivity, @EView, @EViewGroup)");
+			return;
+		}
+		if (function.getModifiers().contains(Modifier.PRIVATE)) {
+			model.errors.add(label + " method '" + name + "' must not be private");
+			return;
+		}
+		String returnType = functionReturnType(function);
+		boolean returnsBoolean = "boolean".equals(returnType) || "java.lang.Boolean".equals(returnType);
+		if (!"void".equals(returnType) && !returnsBoolean) {
+			model.errors.add(label + " method '" + name + "' must return void or boolean");
+			return;
+		}
+		List<MvpModel.Param> params = KspAnnotationUtils.methodParams(function);
+		List<MvpModel.ParamRole> roles = new ArrayList<MvpModel.ParamRole>();
+		int events = 0;
+		int ints = 0;
+		for (MvpModel.Param param : params) {
+			if ("android.view.KeyEvent".equals(param.typeName)) {
+				events++;
+				roles.add(MvpModel.ParamRole.KEY_EVENT);
+			} else if (kind == MvpModel.KeyKind.MULTIPLE && isIntType(param.typeName)) {
+				ints++;
+				roles.add(MvpModel.ParamRole.INT);
+			} else {
+				model.errors.add(label + " method '" + name + "' parameter '" + param.name + "' has unsupported type " + param.typeName);
+				return;
+			}
+		}
+		if (kind == MvpModel.KeyKind.MULTIPLE) {
+			if (events > 1 || ints > 1) {
+				model.errors.add(label + " method '" + name + "' accepts at most one KeyEvent and one int");
+				return;
+			}
+		} else if (events > 1 || ints > 0 || params.size() > 1) {
+			model.errors.add(label + " method '" + name + "' accepts at most one KeyEvent parameter");
+			return;
+		}
+		List<Integer> codes = new ArrayList<Integer>();
+		for (Integer value : KspAnnotationUtils.intArrayArg(annotation, "value")) {
+			if (value != null) {
+				codes.add(value);
+			}
+		}
+		if (codes.isEmpty()) {
+			int fromName = KeyCodes.fromMethodName(name);
+			if (fromName == KeyCodes.NOT_FOUND) {
+				model.errors.add(label + " method '" + name + "' does not declare a keyCode and the method name does not match a KEYCODE_* constant");
+				return;
+			}
+			codes.add(fromName);
+		}
+		for (Integer code : codes) {
+			if (KeyCodes.nameForCode(code.intValue()) == null) {
+				model.errors.add(label + " method '" + name + "' uses unknown keyCode " + code);
+				return;
+			}
+			for (MvpModel.KeyBinding existing : model.keyBindings) {
+				if (existing.kind == kind && existing.keyCodes.contains(code)) {
+					model.errors.add(label + " " + name + " keyCode is not unique");
+					return;
+				}
+			}
+		}
+		model.keyBindings.add(new MvpModel.KeyBinding(kind, name, returnsBoolean, codes, roles));
+	}
+
+	private static String keyLabel(MvpModel.KeyKind kind) {
+		switch (kind) {
+		case UP:
+			return "@KeyUp";
+		case LONG_PRESS:
+			return "@KeyLongPress";
+		case MULTIPLE:
+			return "@KeyMultiple";
+		default:
+			return "@KeyDown";
+		}
+	}
+
+	private void collectReceiverAction(Resolver resolver, KSFunctionDeclaration function, String name, KSAnnotation annotation, MvpModel model) {
+		if (model.kind != MvpModel.Kind.RECEIVER) {
+			model.errors.add("@ReceiverAction can only be used in an @EReceiver: method '" + name + "'");
+			return;
+		}
+		if (function.getModifiers().contains(Modifier.PRIVATE)) {
+			model.errors.add("@ReceiverAction method '" + name + "' must not be private");
+			return;
+		}
+		if (!"void".equals(functionReturnType(function))) {
+			model.errors.add("@ReceiverAction can only be used on a method with a void return type");
+			return;
+		}
+		List<String> actions = new ArrayList<String>();
+		for (String action : KspAnnotationUtils.stringArrayArg(annotation, "actions")) {
+			if (action != null && !action.isEmpty()) {
+				actions.add(action);
+			}
+		}
+		if (actions.isEmpty()) {
+			model.errors.add("@ReceiverAction method '" + name + "' must declare at least one action");
+			return;
+		}
+		List<String> schemes = new ArrayList<String>();
+		for (String scheme : KspAnnotationUtils.stringArrayArg(annotation, "dataSchemes")) {
+			if (scheme != null && !scheme.isEmpty()) {
+				schemes.add(scheme);
+			}
+		}
+		List<MvpModel.ReceiverArg> args = new ArrayList<MvpModel.ReceiverArg>();
+		boolean unchecked = false;
+		for (KSValueParameter param : function.getParameters()) {
+			String paramName = param.getName().asString();
+			String typeName = KspAnnotationUtils.fullJavaTypeName(param.getType());
+			KSAnnotation extra = findParamAnnotation(param, AnnotationNames.RECEIVER_ACTION_EXTRA);
+			if (extra != null) {
+				String key = KspAnnotationUtils.stringArg(extra, "value", "");
+				if (key == null || key.isEmpty()) {
+					key = paramName;
+				}
+				String constant = KspAnnotationUtils.extraKeyConstant(key);
+				addReceiverExtraConstant(model, constant, key);
+				boolean previous = model.activityResultUnchecked;
+				String read = bundleReadExpr(resolver, model, typeName, constant);
+				if (!previous) {
+					unchecked |= model.activityResultUnchecked;
+					model.activityResultUnchecked = false;
+				} else {
+					unchecked |= typeName.contains("<");
+				}
+				args.add(new MvpModel.ReceiverArg(MvpModel.ReceiverArg.Role.EXTRA, paramName, typeName, read));
+			} else if ("android.content.Context".equals(typeName)) {
+				args.add(new MvpModel.ReceiverArg(MvpModel.ReceiverArg.Role.CONTEXT, paramName, typeName, null));
+			} else if ("android.content.Intent".equals(typeName)) {
+				args.add(new MvpModel.ReceiverArg(MvpModel.ReceiverArg.Role.INTENT, paramName, typeName, null));
+			} else {
+				model.errors.add("@ReceiverAction method '" + name + "' parameter '" + paramName + "' must be a Context, an Intent, or annotated with @ReceiverAction.Extra");
+				return;
+			}
+		}
+		String actionsField = KspAnnotationUtils.upperSnake("actions", name, null);
+		String schemesField = schemes.isEmpty() ? null : KspAnnotationUtils.upperSnake("dataSchemes", name, null);
+		model.receiverActions.add(new MvpModel.ReceiverActionBinding(name, actions, schemes, args, unchecked, actionsField, actions.size() > 1,
+				schemesField, schemes.size() > 1));
+	}
+
+	private void collectServiceAction(Resolver resolver, KSFunctionDeclaration function, String name, KSAnnotation annotation, MvpModel model) {
+		if (model.kind != MvpModel.Kind.INTENT_SERVICE) {
+			model.errors.add("@ServiceAction can only be used in an @EIntentService: method '" + name + "'");
+			return;
+		}
+		if (function.getModifiers().contains(Modifier.PRIVATE)) {
+			model.errors.add("@ServiceAction method '" + name + "' must not be private");
+			return;
+		}
+		if (!"void".equals(functionReturnType(function))) {
+			model.errors.add("@ServiceAction can only be used on a method with a void return type");
+			return;
+		}
+		for (MvpModel.ServiceActionBinding existing : model.serviceActions) {
+			if (existing.methodName.equals(name)) {
+				model.errors.add("@ServiceAction annotated method must have a unique name even if the signature is not the same: '" + name + "'");
+				return;
+			}
+		}
+		String actionValue = KspAnnotationUtils.stringArg(annotation, "value", "");
+		if (actionValue == null || actionValue.isEmpty()) {
+			actionValue = name;
+		}
+		List<MvpModel.ServiceActionParam> params = new ArrayList<MvpModel.ServiceActionParam>();
+		boolean unchecked = false;
+		for (KSValueParameter param : function.getParameters()) {
+			String paramName = param.getName().asString();
+			String typeName = KspAnnotationUtils.fullJavaTypeName(param.getType());
+			String constant = KspAnnotationUtils.extraKeyConstant(paramName);
+			ExtraTemplates templates = templatesFor(resolver, typeName, "extras");
+			unchecked |= templates.unchecked;
+			params.add(new MvpModel.ServiceActionParam(paramName, typeName, constant,
+					templates.read.replace("{key}", constant), templates.write));
+		}
+		model.serviceActions.add(new MvpModel.ServiceActionBinding(name, actionValue, KspAnnotationUtils.upperSnake("action", name, null), params, unchecked));
+	}
+
+	private void collectWakeLock(KSFunctionDeclaration function, String name, KSAnnotation annotation, MvpModel model) {
+		if (!enhancedComponent(model.kind)) {
+			model.errors.add("@WakeLock can only be used in an AndroidAnnotations enhanced component: method '" + name + "'");
+			return;
+		}
+		if (function.getModifiers().contains(Modifier.PRIVATE)) {
+			model.errors.add("@WakeLock method '" + name + "' must not be private");
+			return;
+		}
+		String level = KspAnnotationUtils.enumArg(annotation, "level", "PARTIAL_WAKE_LOCK");
+		List<String> flags = KspAnnotationUtils.enumArrayArg(annotation, "flags");
+		if ("PARTIAL_WAKE_LOCK".equals(level) && !flags.isEmpty()) {
+			model.warnings.add("Flags have no effect when combined with a PARTIAL_WAKE_LOCK on '" + name + "'");
+		}
+		String tag = KspAnnotationUtils.stringArg(annotation, "tag", "NO_TAG");
+		if (tag == null || tag.isEmpty() || "NO_TAG".equals(tag)) {
+			tag = model.simpleName + "." + name;
+		}
+		MvpModel.WakeLockSpec spec = new MvpModel.WakeLockSpec(tag, level, flags);
+		MvpModel.MethodInfo threaded = findThreaded(model, name, function.getParameters().size());
+		if (threaded != null) {
+			threaded.wakeLock = spec;
+			return;
+		}
+		wrapped(function, name, model).wakeLock = spec;
+	}
+
+	private void collectTrace(KSFunctionDeclaration function, String name, KSAnnotation annotation, MvpModel model) {
+		if (!enhancedComponent(model.kind)) {
+			model.errors.add("@Trace can only be used in an AndroidAnnotations enhanced component: method '" + name + "'");
+			return;
+		}
+		if (function.getModifiers().contains(Modifier.PRIVATE)) {
+			model.errors.add("@Trace method '" + name + "' must not be private");
+			return;
+		}
+		int level = KspAnnotationUtils.intArg(annotation, "level", 4);
+		String[] log = traceLog(level);
+		if (log == null) {
+			model.errors.add("@Trace method '" + name + "' has an invalid log level " + level);
+			return;
+		}
+		String returnType = functionReturnType(function);
+		if ("kotlin.Unit".equals(returnType)) {
+			returnType = "void";
+		}
+		MvpModel.MethodInfo threaded = findThreaded(model, name, function.getParameters().size());
+		MvpModel.WakeLockSpec wake = threaded != null ? threaded.wakeLock : existingWrapped(model, name, function.getParameters().size()) != null
+				? existingWrapped(model, name, function.getParameters().size()).wakeLock : null;
+		if (wake != null && !"void".equals(returnType)) {
+			model.errors.add("@WakeLock annotated methods with a return value are not supported by @Trace");
+			return;
+		}
+		if (threaded != null && !"void".equals(returnType)) {
+			model.errors.add("@Trace combined with @UiThread or @Background must return void: method '" + name + "'");
+			return;
+		}
+		String tag = KspAnnotationUtils.stringArg(annotation, "tag", "NO_TAG");
+		if (tag == null || tag.isEmpty() || "NO_TAG".equals(tag)) {
+			tag = model.simpleName;
+		}
+		if (tag.length() > 23) {
+			tag = tag.substring(0, 23);
+		}
+		MvpModel.TraceSpec spec = new MvpModel.TraceSpec(tag, log[0], log[1], returnType);
+		if (threaded != null) {
+			threaded.trace = spec;
+			return;
+		}
+		wrapped(function, name, model).trace = spec;
+	}
+
+	private static String[] traceLog(int level) {
+		switch (level) {
+		case 2:
+			return new String[] { "v", "VERBOSE" };
+		case 3:
+			return new String[] { "d", "DEBUG" };
+		case 4:
+			return new String[] { "i", "INFO" };
+		case 5:
+			return new String[] { "w", "WARN" };
+		case 6:
+			return new String[] { "e", "ERROR" };
+		default:
+			return null;
+		}
+	}
+
+	private void attachSuppose(KSFunctionDeclaration function, String name, MvpModel.SupposeSpec spec, MvpModel model) {
+		String label = spec.uiThread ? "@SupposeUiThread" : "@SupposeBackground";
+		if (!enhancedComponent(model.kind)) {
+			model.errors.add(label + " can only be used in an AndroidAnnotations enhanced component: method '" + name + "'");
+			return;
+		}
+		if (function.getModifiers().contains(Modifier.PRIVATE)) {
+			model.errors.add(label + " method '" + name + "' must not be private");
+			return;
+		}
+		MvpModel.MethodInfo threaded = findThreaded(model, name, function.getParameters().size());
+		if (threaded != null) {
+			threaded.suppose = spec;
+			return;
+		}
+		wrapped(function, name, model).suppose = spec;
+	}
+
+	private void collectRoot(String name, boolean fieldForm, boolean jvmField, String typeName, boolean fragment, MvpModel model) {
+		String label = fragment ? "@RootFragment" : "@RootContext";
+		if (model.kind != MvpModel.Kind.BEAN) {
+			model.errors.add(label + " can only be used in an @EBean");
+			return;
+		}
+		if (typeName == null || typeName.isEmpty()) {
+			model.errors.add(label + " on '" + name + "' has no type");
+			return;
+		}
+		boolean plain = !fragment && "android.content.Context".equals(typeName);
+		model.roots.add(new MvpModel.RootInjection(fragment, fieldForm, name, jvmField, typeName, plain));
+	}
+
+	private void collectRootMethod(KSFunctionDeclaration function, String name, boolean fragment, MvpModel model) {
+		String label = fragment ? "@RootFragment" : "@RootContext";
+		if (function.getParameters().size() != 1) {
+			model.errors.add(label + " method '" + name + "' must have exactly one parameter");
+			return;
+		}
+		if (function.getModifiers().contains(Modifier.PRIVATE)) {
+			model.errors.add(label + " method '" + name + "' must not be private");
+			return;
+		}
+		KSValueParameter param = function.getParameters().get(0);
+		collectRoot(name, false, false, KspAnnotationUtils.fullJavaTypeName(param.getType()), fragment, model);
+	}
+
+	private static boolean enhancedComponent(MvpModel.Kind kind) {
+		return kind == MvpModel.Kind.ACTIVITY || kind == MvpModel.Kind.FRAGMENT || kind == MvpModel.Kind.APPLICATION
+				|| kind == MvpModel.Kind.SERVICE || kind == MvpModel.Kind.BEAN || kind == MvpModel.Kind.VIEW
+				|| kind == MvpModel.Kind.VIEW_GROUP || kind == MvpModel.Kind.RECEIVER || kind == MvpModel.Kind.INTENT_SERVICE
+				|| kind == MvpModel.Kind.PROVIDER;
+	}
+
+	private static MvpModel.MethodInfo findThreaded(MvpModel model, String name, int paramCount) {
+		for (MvpModel.MethodInfo method : model.uiThreads) {
+			if (method.name.equals(name) && method.params.size() == paramCount) {
+				return method;
+			}
+		}
+		for (MvpModel.MethodInfo method : model.backgrounds) {
+			if (method.name.equals(name) && method.params.size() == paramCount) {
+				return method;
+			}
+		}
+		return null;
+	}
+
+	private static MvpModel.WrappedMethod existingWrapped(MvpModel model, String name, int paramCount) {
+		for (MvpModel.WrappedMethod method : model.wrappedMethods) {
+			if (method.name.equals(name) && method.params.size() == paramCount) {
+				return method;
+			}
+		}
+		return null;
+	}
+
+	private MvpModel.WrappedMethod wrapped(KSFunctionDeclaration function, String name, MvpModel model) {
+		int count = function.getParameters().size();
+		MvpModel.WrappedMethod existing = existingWrapped(model, name, count);
+		if (existing != null) {
+			return existing;
+		}
+		String returnType = functionReturnType(function);
+		if ("kotlin.Unit".equals(returnType)) {
+			returnType = "void";
+		}
+		MvpModel.WrappedMethod created = new MvpModel.WrappedMethod(name, KspAnnotationUtils.methodParams(function), methodVisibility(function), returnType);
+		model.wrappedMethods.add(created);
+		return created;
 	}
 
 	private KSClassDeclaration superclassOf(KSClassDeclaration declaration) {

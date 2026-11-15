@@ -26,6 +26,7 @@ import java.util.regex.Pattern;
 
 import com.google.devtools.ksp.symbol.KSAnnotation;
 import com.google.devtools.ksp.symbol.KSClassDeclaration;
+import com.google.devtools.ksp.symbol.KSDeclaration;
 import com.google.devtools.ksp.symbol.KSFile;
 import com.google.devtools.ksp.symbol.KSFunctionDeclaration;
 import com.google.devtools.ksp.symbol.KSNode;
@@ -164,6 +165,53 @@ public final class KspAnnotationUtils {
 			}
 		}
 		return out;
+	}
+
+	/** Enum-array annotation argument. Each entry is a KSType, a KSTypeReference, or an enum-like string. */
+	public static List<String> enumArrayArg(KSAnnotation annotation, String name) {
+		List<String> out = new ArrayList<>();
+		Object value = argValue(annotation, name);
+		if (value instanceof List) {
+			for (Object item : (List<?>) value) {
+				String enumName = enumSimpleName(item);
+				if (enumName != null && !enumName.isEmpty()) {
+					out.add(enumName);
+				}
+			}
+		} else if (value instanceof Object[]) {
+			for (Object item : (Object[]) value) {
+				String enumName = enumSimpleName(item);
+				if (enumName != null && !enumName.isEmpty()) {
+					out.add(enumName);
+				}
+			}
+		}
+		return out;
+	}
+
+	private static String enumSimpleName(Object value) {
+		if (value instanceof KSType) {
+			KSDeclaration declaration = ((KSType) value).getDeclaration();
+			if (declaration != null && declaration.getSimpleName() != null) {
+				return declaration.getSimpleName().asString();
+			}
+		}
+		if (value instanceof KSTypeReference) {
+			try {
+				KSType type = ((KSTypeReference) value).resolve();
+				if (type.getDeclaration() != null && type.getDeclaration().getSimpleName() != null) {
+					return type.getDeclaration().getSimpleName().asString();
+				}
+			} catch (Exception ignored) {
+				// fall through
+			}
+		}
+		if (value == null) {
+			return null;
+		}
+		String text = value.toString();
+		int dot = text.lastIndexOf('.');
+		return dot >= 0 ? text.substring(dot + 1) : text;
 	}
 
 	/** Enum-typed annotation argument: KSP exposes it as a KSTypeReference to the enum entry. */
@@ -472,6 +520,21 @@ public final class KspAnnotationUtils {
 			return "set" + propertyName.toUpperCase(Locale.US);
 		}
 		return "set" + Character.toUpperCase(propertyName.charAt(0)) + propertyName.substring(1);
+	}
+
+	/**
+	 * Mirrors APT {@code CaseHelper.camelCaseToUpperSnakeCase(prefix, camelCase, suffix)}.
+	 * A null prefix or suffix is omitted. An empty suffix does not append, because every name ends with {@code ""}.
+	 */
+	public static String upperSnake(String prefix, String camelCase, String suffix) {
+		String name = camelCase == null ? "" : camelCase;
+		if (prefix != null && !name.startsWith(prefix)) {
+			name = prefix + "_" + name;
+		}
+		if (suffix != null && !suffix.isEmpty() && !name.toLowerCase(Locale.ROOT).endsWith(suffix.toLowerCase(Locale.ROOT))) {
+			name = name + "_" + suffix;
+		}
+		return camelCaseToSnake(name).toUpperCase(Locale.ROOT);
 	}
 
 	public static String extraKeyConstant(String fieldName) {

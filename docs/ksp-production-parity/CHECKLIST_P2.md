@@ -10,6 +10,8 @@
 
 ## Preference screens（旧 PreferenceActivity）
 
+未做。目标工程未要求 PreferenceActivity / PreferenceFragment，留到下一波。
+
 - [ ] `@PreferenceScreen`
 - [ ] `@PreferenceHeaders`
 - [ ] `@PreferenceByKey`
@@ -21,18 +23,18 @@
 
 ## SeekBar / ViewPager / Key
 
-- [ ] `@SeekBarProgressChange` `@SeekBarTouchStart` `@SeekBarTouchStop`
-- [ ] `@PageSelected` `@PageScrolled` `@PageScrollStateChanged`
-- [ ] `@KeyDown` `@KeyUp` `@KeyLongPress` `@KeyMultiple`
+- [x] `@SeekBarProgressChange` `@SeekBarTouchStart` `@SeekBarTouchStop`
+- [x] `@PageSelected` `@PageScrolled` `@PageScrollStateChanged`
+- [x] `@KeyDown` `@KeyUp` `@KeyLongPress` `@KeyMultiple`
 
 ---
 
 ## Threading extras / diagnostics
 
-- [ ] `@WakeLock`（含 Manifest 权限检查）
-- [ ] `@Trace`（option `trace`）
-- [ ] `@SupposeUiThread` `@SupposeBackground`（option `threadControl`；**必须排在包装 handler 之后**）
-- [ ] 更新 handler 执行顺序文档（对照 `CorePlugin`）
+- [x] `@WakeLock`（含 Manifest 权限检查）
+- [x] `@Trace`（option `trace`）
+- [x] `@SupposeUiThread` `@SupposeBackground`（option `threadControl`；**必须排在包装 handler 之后**）
+- [x] 更新 handler 执行顺序文档（对照 `CorePlugin`）
 
 ---
 
@@ -44,16 +46,16 @@
 - [ ] `@HierarchyViewerSupport`
 - [ ] `@HttpsClient`
 - [ ] `@Transactional`
-- [ ] `@RootContext` `@RootFragment`（若 P0/P1 未完全覆盖）
+- [x] `@RootContext` `@RootFragment`（若 P0/P1 未完全覆盖）
 
 ---
 
 ## Other generating components
 
-- [ ] `@EProvider`（ContentProvider_）
-- [ ] `@EReceiver` + `@ReceiverAction`（清单 Receiver；参数 `@Extra`）
-- [ ] `@EIntentService` + `@ServiceAction`
-- [ ] 各组件 Manifest 注册校验
+- [x] `@EProvider`（ContentProvider_）
+- [x] `@EReceiver` + `@ReceiverAction`（清单 Receiver；参数 `@Extra`）
+- [x] `@EIntentService` + `@ServiceAction`
+- [x] 各组件 Manifest 注册校验
 
 ---
 
@@ -67,10 +69,12 @@
 
 ## Acceptance for P2 exit（按所选子集）
 
-- [ ] 所选子集均有 demo 或回归 fixture
-- [ ] 对应 APT handler 行为抽查通过
-- [ ] `EXECUTION_LOG` 记录「本仓库宣称的 core 覆盖边界」
-- [ ] Push `ksp/main`（若需要）
+- [x] 所选子集均有 demo 或回归 fixture
+- [x] 对应 APT handler 行为抽查通过
+- [x] `EXECUTION_LOG` 记录「本仓库宣称的 core 覆盖边界」
+- [ ] Push `ksp/main`（本次不 push）
+
+Preference 屏、`@DataBound` / `@BindingObject`、`@CustomTitle`、`@HierarchyViewerSupport`、`@HttpsClient`、`@Transactional` 未做（按需第二波，见 EXECUTION_LOG）。RoboGuice / Otto / ORMLite / REST-Spring 继续默认跳过。
 
 ## Default skip unless demanded
 

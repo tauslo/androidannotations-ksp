@@ -24,7 +24,7 @@
 4. **cast 渲染**：jcodemodel cast 为双括号 `((T) x)`；KSP 与 GT 逐字符一致（门禁不忽略括号数量）。
 5. **既有 fixture 编译错误**：kotlin-bench 存在 9 个既有 Kotlin 错误（BenchActivity107×8、BenchFragment109×1）；kapt/KSP 构建均 EXIT=1 但代码生成完整、门禁不受影响——fixture 问题，非 processor 偏差。
 6. **AndroidX Fragment 查找**：Activity / View 宿主上，字段类型是 `android.app.Fragment`（或其子类）时走 `getFragmentManager()`；否则走 `getSupportFragmentManager()`（View 宿主先把 `getContext()` cast 成 `androidx.fragment.app.FragmentActivity`）。Fragment 宿主仍用 `getFragmentManager()` / `getChildFragmentManager()`。kotlin-bench 为这条路径打开了 `android.useAndroidX=true` 并依赖 `androidx.fragment:fragment`。
-7. **P1 之后仍未实现**（→ P2/插件）：`@MovieRes`、`@IntArrayRes`、Preference 屏、SeekBar/ViewPager/Key、WakeLock/Trace/Suppose、DataBinding、`@EProvider` / `@EIntentService` / `@EReceiver`、REST/ORMLite/RoboGuice/Otto。使用这些注解会得到 KSP warning（`RECOGNIZED_NOT_IMPLEMENTED`）。
+7. **P2 已做子集之外仍未实现**：`@MovieRes`、`@IntArrayRes`、Preference 屏、DataBinding（`@DataBound` / `@BindingObject`）、`@CustomTitle`、`@HierarchyViewerSupport`、`@HttpsClient`、`@Transactional`、REST/ORMLite/RoboGuice/Otto。使用这些注解会得到 KSP warning（`RECOGNIZED_NOT_IMPLEMENTED`）。`@Trace` 已实现，但与 APT 一样默认关闭（KSP 参数 `trace=false`）。`@Suppose*` 默认开启（`threadControl=true`）。
 8. **动态 `@Receiver` 与 APT 一样不写 permission / `RECEIVER_EXPORTED`**：生成的是两参数 `registerReceiver(receiver, filter)`。`targetSdk` 33+ 时平台要求导出标志，这是 APT 与 KSP 共同的限制。`androidx.fragment.app.Fragment` 上的 `@Receiver(registerAt = OnAttachOnDetach)` 仍生成 `onAttach(android.app.Activity)`，不会覆盖 AndroidX 的 `onAttach(Context)`；bench 这条路径用的是 framework `android.app.Fragment`。
 
 ## 流程约束
