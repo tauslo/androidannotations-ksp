@@ -1197,3 +1197,63 @@
 2. PERF：热全量与「改 1 文件」各做 ≥3 次中位数；补 `Dependencies` 的父类与 `@Bean` originating files，并回归负例
 3. ORMLite / REST-Spring 仅在业务确认依赖后另开一期。RoboGuice / Otto 不再排期
 
+## Session 2026-11-16 — Preference screens and remaining Res
+
+- **Agent**: Cursor Grok
+- **Goal slice**: Preference 六注解的 coherent 子集，加上 `@IntArrayRes` / `@MovieRes`。不 push
+- **Git**: branch=`ksp/main`，local only, not push
+- **Status**: done
+
+### Done
+- `@PreferenceScreen`：Activity 的 `onCreate` 末尾、Fragment 的 `super.onCreate` 之后调用 `addPreferencesFromResource(R.xml.*)`
+- `@PreferenceHeaders`：只在 `android.preference.PreferenceActivity` 上生成 `onBuildHeaders`（`loadHeadersFromResource` 然后 `super`）。编译类路径没有 `android.preference.PreferenceFragment` 时报错（APT 的 API 11 检查）
+- `@PreferenceByKey`：字段、单参数方法、全参数注解三种形态。重写 `addPreferencesFromResource`，`findPreference(getString(R.string.*))`，子类型加 cast
+- `@PreferenceChange` / `@PreferenceClick`：同一 key 共用一次 find，`if (ref != null)` 里挂 listener。void 方法 `return true`，boolean 方法返回调用结果。数字 newValue 走 `Integer/Long/Float.valueOf((String) newValue)`。无 res 值时去掉 `PreferenceChanged` / `PreferenceClicked` 后缀
+- `@AfterPreferences`：注入块之后调用
+- 宿主类型：AndroidX `PreferenceFragment(Compat)` → `androidx.preference.Preference`；support-v7 / v14 → support Preference；其余（含 `PreferenceActivity`）→ framework Preference
+- `@IntArrayRes`：`resources_.getIntArray`，允许 `int[]`。`@MovieRes`：`resources_.getMovie`，允许 `android.graphics.Movie`。二者都从 `RECOGNIZED_NOT_IMPLEMENTED` 移除
+- `RECOGNIZED_NOT_IMPLEMENTED` 现只剩 `@HierarchyViewerSupport`
+
+### Skipped
+- `@HierarchyViewerSupport`：Hierarchy Viewer 已从平台移除。仍留在未实现列表
+- `@MovieRes` 的 bench fixture：aapt2 不接受 `res/movie`，没有 `R.movie`。生成路径与其他 Res 字段相同，但当前 AGP 编不过使用点
+- RoboGuice、Otto：N/A
+- ORMLite、REST-Spring：默认跳过
+- 不 push
+
+### Core 覆盖边界
+已覆盖：P0a + P0b + P1 + P2（含 Preference 屏、`@IntArrayRes`、`@MovieRes` 的生成）。
+仍未覆盖：`@HierarchyViewerSupport`（使用时 warning，或 `unimplementedIsError=true` 时 error）。`@MovieRes` 在当前 aapt2 上没有 `R.movie`，不能当成可编译能力。
+插件不在 core jar：RoboGuice / Otto 明确不做；ORMLite / REST-Spring 默认跳过直到业务确认。
+因此「生产替换」对 AA core 注解（含仍在用 PreferenceActivity / PreferenceFragment(Compat) 的界面，以及 `@IntArrayRes`）可以视为 **core ready**。线上若还要 `@MovieRes`（当前工具链）、`@HierarchyViewerSupport`、ORMLite 或 REST-Spring，这些边界仍然挡着，不能算全量替换。
+
+### PERF
+本轮没有重测冷/热/增量。CHECKLIST_PERF 的测量项、`Dependencies` 负例、空第二轮都保持开放。kotlin-bench 增加了 Preference 与 int-array fixture，corpus 勾选仍不开（没有生成脚本，也没有可重复的注解种类清点）。
+
+### Changed paths
+- `androidannotations-ksp`：`AnnotationNames`、`ResCompat`、`MvpModel`、`handler/MvpHandler`、`generate/MvpJavaGenerator`、`AndroidAnnotationsSymbolProcessor`
+- `examples/kotlin-bench`：`BenchPreferenceActivity`、`BenchPreferenceHeadersActivity`、`BenchActivity103`（`@IntArrayRes`）、`res/xml/bench_prefs.xml`、`res/xml/bench_headers.xml`、`res/values/bench_prefs.xml`、`res/values/bench_res_103.xml`、manifest
+- docs：CHECKLIST_P2、CHECKLIST_PERF、KNOWN_DEVIATIONS、PLAYBOOK、EXECUTION_LOG；根 README
+
+### Verify
+- [x] `mvnw -pl androidannotations-core/androidannotations-ksp -am install -DskipTests -Dmaven.javadoc.skip=true` BUILD SUCCESS。不跳过 javadoc 时，`androidannotations-api` 的既有 HTML（`<tt>`、table `summary`）在当前 JDK 的 javadoc 下失败，与本次改动无关；KSP 模块本身 `javac` 通过
+- [x] `examples/kotlin-bench` `kspDebugKotlin -Paa.processor=ksp`：全量日志 `generated 251 class(es)`；随后只改 `BenchActivity103` 时 `generated 1`，空第二轮 `generated 0`。工作区里另有未纳入本次提交的 `BenchActivity113.java`，251 含它
+- [x] `:compileDebugKotlin` EXIT=1，仅既有 9 个 `lateinit` 原始类型错误（BenchActivity107×8 + BenchFragment109×1），无新增 Kotlin 错误
+- [x] `BenchPreferenceActivity_`：`onCreate` 末尾 `addPreferencesFromResource(R.xml.bench_prefs)`；重写里 `this.listPref = findPreference(...)`、`CheckBoxPreference` cast、`preference_benchEditKey` 方法注入、同一 key 的 change+click 包在一个 `if != null`、`Integer.valueOf(((String) newValue))`、boolean click `return`、最后 `afterPreferences()`
+- [x] `BenchPreferenceHeadersActivity_`：`onBuildHeaders` 先 `loadHeadersFromResource(R.xml.bench_headers, target)` 再 `super`
+- [x] `BenchActivity103_`：`setBenchInts(resources_.getIntArray(R.array.benchInts))`
+
+### Known limitations
+- 注入不覆盖只调用 `setPreferencesFromResource` 的写法
+- `@PreferenceHeaders` 不是 AndroidX Preference headers API
+- `@MovieRes` 依赖已经不存在的 `R.movie`
+- 数字 `@PreferenceChange` 参数假定 `newValue` 是 String，与 APT 相同
+
+### Blockers
+- none（`compileDebugKotlin` 的 EXIT=1 是既有 fixture，见 KNOWN_DEVIATIONS #5）
+
+### Next
+1. PERF：热全量与「改 1 文件」各做 ≥3 次中位数；补 `Dependencies` 的父类与 `@Bean` originating files，并回归负例
+2. ORMLite / REST-Spring 仅在业务确认依赖后另开一期。RoboGuice / Otto 不再排期
+3. `@HierarchyViewerSupport` 保持不做
+

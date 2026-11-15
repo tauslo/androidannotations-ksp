@@ -37,7 +37,7 @@
 
 ## Corpus
 
-- [ ] 保持 / 扩展 `examples/kotlin-bench`（≥200 注解类型）
+- [ ] 保持 / 扩展 `examples/kotlin-bench`（≥200 注解类型）。2026-11-16 加了 Preference 与 `@IntArrayRes` fixture，但没有入库生成脚本，也没有把注解种类做成可重复清点，所以本项仍开放
 - [ ] 可选：生成脚本入库，避免手改 200 文件
 - [ ] Fragment / Click 进入 P0b 后，bench 可按比例加入（勿只测 Activity）
 

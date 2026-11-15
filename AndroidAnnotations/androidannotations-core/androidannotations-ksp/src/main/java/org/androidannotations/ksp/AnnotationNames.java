@@ -111,27 +111,24 @@ public final class AnnotationNames {
 	public static final String CUSTOM_TITLE = "org.androidannotations.annotations.CustomTitle";
 	public static final String HTTPS_CLIENT = "org.androidannotations.annotations.HttpsClient";
 	public static final String TRANSACTIONAL = "org.androidannotations.annotations.Transactional";
+	public static final String PREFERENCE_SCREEN = "org.androidannotations.annotations.PreferenceScreen";
+	public static final String PREFERENCE_HEADERS = "org.androidannotations.annotations.PreferenceHeaders";
+	public static final String PREFERENCE_BY_KEY = "org.androidannotations.annotations.PreferenceByKey";
+	public static final String PREFERENCE_CHANGE = "org.androidannotations.annotations.PreferenceChange";
+	public static final String PREFERENCE_CLICK = "org.androidannotations.annotations.PreferenceClick";
+	public static final String AFTER_PREFERENCES = "org.androidannotations.annotations.AfterPreferences";
 
 	public static final int RES_DEFAULT = -1;
 
 	/**
 	 * AA annotations the processor knows about but does not generate yet. Using one produces a KSP warning,
 	 * or an error when the {@code unimplementedIsError} option is true.
-	 * Still open: Preference screens (no coherent fixture this slice), obsolete {@code @HierarchyViewerSupport},
-	 * and the two unused resource annotations {@code @MovieRes} / {@code @IntArrayRes}.
+	 * Still open: obsolete {@code @HierarchyViewerSupport} (Hierarchy Viewer was removed from the platform).
 	 * {@code @Trace} is implemented but generated only when the {@code trace} option is true (APT default false).
 	 * {@code @Suppose*} is generated only when {@code threadControl} is true (APT default true).
 	 */
 	public static final String[] RECOGNIZED_NOT_IMPLEMENTED = {
-			"org.androidannotations.annotations.HierarchyViewerSupport",
-			"org.androidannotations.annotations.PreferenceByKey",
-			"org.androidannotations.annotations.PreferenceChange",
-			"org.androidannotations.annotations.PreferenceClick",
-			"org.androidannotations.annotations.PreferenceHeaders",
-			"org.androidannotations.annotations.PreferenceScreen",
-			"org.androidannotations.annotations.AfterPreferences",
-			"org.androidannotations.annotations.res.IntArrayRes",
-			"org.androidannotations.annotations.res.MovieRes"
+			"org.androidannotations.annotations.HierarchyViewerSupport"
 	};
 
 	private AnnotationNames() {

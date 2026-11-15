@@ -271,7 +271,8 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 		return !model.stringRes.isEmpty() || !model.viewInjections.isEmpty() || model.layoutId != AnnotationNames.RES_DEFAULT
 				|| (model.layoutResName != null && !model.layoutResName.isEmpty()) || !model.fragmentByIds.isEmpty()
 				|| model.hasViewListeners() || !model.resFields.isEmpty() || !model.viewsByIds.isEmpty() || !model.fromHtml.isEmpty()
-				|| model.hasCustomTitle() || model.dataBound || httpsNeedsResources(model);
+				|| model.hasCustomTitle() || model.dataBound || httpsNeedsResources(model)
+				|| model.hasPreferenceScreen || model.hasPreferenceHeaders || model.hasPreferenceInjection();
 	}
 
 	private static boolean httpsNeedsResources(MvpModel model) {
@@ -378,6 +379,22 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 				}
 			}
 		}
+		validatePreferenceListeners(canCheckValues, index, model.preferenceChanges, "@PreferenceChange", errors);
+		validatePreferenceListeners(canCheckValues, index, model.preferenceClicks, "@PreferenceClick", errors);
+		for (MvpModel.PreferenceField field : model.preferenceFields) {
+			errors.addAll(validateInjection(canCheckValues, index, "string", field.elementKey, field.resId, field.resName));
+		}
+		for (MvpModel.PreferenceMethod method : model.preferenceMethods) {
+			for (MvpModel.PreferenceParam param : method.params) {
+				errors.addAll(validateInjection(canCheckValues, index, "string", param.fallbackName, param.resId, param.resName));
+			}
+		}
+		if (model.hasPreferenceScreen) {
+			errors.addAll(validateRequiredRes(canCheckValues, index, "xml", model.preferenceScreenResId, model.preferenceScreenResName, "@PreferenceScreen"));
+		}
+		if (model.hasPreferenceHeaders) {
+			errors.addAll(validateRequiredRes(canCheckValues, index, "xml", model.preferenceHeadersResId, model.preferenceHeadersResName, "@PreferenceHeaders"));
+		}
 		for (MvpModel.MenuInjection injection : model.optionsMenuItemInjections) {
 			if (injection.fieldForm) {
 				errors.addAll(validateInjection(canCheckValues, index, "id", injection.name, injection.resId, injection.resName));
@@ -393,6 +410,51 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 					}
 				}
 			}
+		}
+		return errors;
+	}
+
+	/** Mirrors APT {@code uniqueResourceId} for {@code @PreferenceChange} / {@code @PreferenceClick}, plus R.string existence. */
+	private void validatePreferenceListeners(boolean canCheckValues, RClassIndex index, List<MvpModel.PreferenceListener> listeners,
+			String annotation, List<String> errors) {
+		Set<String> seen = new LinkedHashSet<>();
+		for (MvpModel.PreferenceListener listener : listeners) {
+			List<String> keys = new ArrayList<>();
+			for (Integer resId : listener.valueIds) {
+				if (canCheckValues && !index.containsIdValue("string", resId)) {
+					errors.add("Resource id value not found in R.string: " + resId);
+				}
+				String name = index.fieldNameForValue("string", resId);
+				keys.add(name != null ? name : ("v" + resId));
+			}
+			for (String resName : listener.nameIds) {
+				if (!index.containsField("string", resName)) {
+					errors.add("Resource name not found in R.string: " + resName);
+				}
+				String resolved = index.resolveFieldName("string", resName);
+				keys.add(resolved != null ? resolved : resName);
+			}
+			for (String key : keys) {
+				if (!seen.add(key)) {
+					errors.add("The resource id " + key + " is already used on the following " + annotation + " method: " + listener.methodName);
+				}
+			}
+		}
+	}
+
+	/** NEED_RES_ID: a value or a name is required, and it must exist in {@code R.resType}. */
+	private List<String> validateRequiredRes(boolean canCheckValues, RClassIndex index, String resType, int resId, String resName, String label) {
+		List<String> errors = new ArrayList<>();
+		if (resId != AnnotationNames.RES_DEFAULT) {
+			if (canCheckValues && !index.containsIdValue(resType, resId)) {
+				errors.add(label + " resource id value not found in R." + resType + ": " + resId);
+			}
+		} else if (resName != null && !resName.isEmpty()) {
+			if (!index.containsField(resType, resName)) {
+				errors.add(label + " resource name not found in R." + resType + ": " + resName);
+			}
+		} else {
+			errors.add(label + " needs an annotation value");
 		}
 		return errors;
 	}

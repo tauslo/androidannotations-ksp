@@ -9,7 +9,7 @@
 
 - 组件：`@EActivity` / `@EFragment`（framework）/ `@EService` / `@EApplication` / `@EBean`
 - View 注入：`@ViewById`（field form / 单参数 method form / param form）、`@Click`、`@LongClick`
-- 资源：`@StringRes` `@TextRes` `@ColorRes` `@DrawableRes` `@LayoutRes` `@DimensionRes`(+`PixelSize`/`Offset`) `@BooleanRes` `@IntegerRes` `@HtmlRes` `@ColorStateListRes` `@StringArrayRes` `@AnimationRes`
+- 资源：`@StringRes` `@TextRes` `@ColorRes` `@DrawableRes` `@LayoutRes` `@DimensionRes`(+`PixelSize`/`Offset`) `@BooleanRes` `@IntegerRes` `@IntArrayRes` `@HtmlRes` `@ColorStateListRes` `@StringArrayRes` `@AnimationRes`
 - Menu：`@InjectMenu` + `@OptionsMenu` / `@OptionsItems` / `@OptionMenuItem`
 - 状态与生命周期：`@InstanceState`、`@AfterViews` / `@AfterInject`、`@Bean`、intent overloads（含 Fragment options）
 - 线程注解：`@Background` / `@UiThread`
@@ -24,8 +24,14 @@
 4. **cast 渲染**：jcodemodel cast 为双括号 `((T) x)`；KSP 与 GT 逐字符一致（门禁不忽略括号数量）。
 5. **既有 fixture 编译错误**：kotlin-bench 存在 9 个既有 Kotlin 错误（BenchActivity107×8、BenchFragment109×1）；kapt/KSP 构建均 EXIT=1 但代码生成完整、门禁不受影响——fixture 问题，非 processor 偏差。
 6. **AndroidX Fragment 查找**：Activity / View 宿主上，字段类型是 `android.app.Fragment`（或其子类）时走 `getFragmentManager()`；否则走 `getSupportFragmentManager()`（View 宿主先把 `getContext()` cast 成 `androidx.fragment.app.FragmentActivity`）。Fragment 宿主仍用 `getFragmentManager()` / `getChildFragmentManager()`。kotlin-bench 为这条路径打开了 `android.useAndroidX=true` 并依赖 `androidx.fragment:fragment`。
-7. **core 覆盖边界之外仍未实现**：`@MovieRes`、`@IntArrayRes`、Preference 屏（`@PreferenceScreen` / `@PreferenceHeaders` / `@PreferenceByKey` / `@PreferenceChange` / `@PreferenceClick` / `@AfterPreferences`）、`@HierarchyViewerSupport`。使用这些注解默认得到 KSP warning；把 KSP 参数 `unimplementedIsError` 设为 `true` 时改为 error。`@DataBound` / `@BindingObject` / `@CustomTitle` / `@HttpsClient` / `@Transactional` 已实现。`@Transactional` 不与 `@UiThread` / `@Background` / `@WakeLock` / `@Trace` / `@Suppose*` / `@IgnoreWhen` 组合（组合会报错）。`@HttpsClient` 的 keystore 路径用外层组件的 context（bean 上是 `context_`）取 raw 资源。`@Trace` 已实现，但与 APT 一样默认关闭（KSP 参数 `trace=false`）。`@Suppose*` 默认开启（`threadControl=true`）。插件 REST / ORMLite / RoboGuice / Otto 不在 core 处理器里。
+7. **core 里仍未实现的只有过时的 `@HierarchyViewerSupport`**。使用它默认得到 KSP warning；把 KSP 参数 `unimplementedIsError` 设为 `true` 时改为 error。Preference 六注解、`@IntArrayRes`、`@MovieRes` 已实现（边界见第 9 条）。`@DataBound` / `@BindingObject` / `@CustomTitle` / `@HttpsClient` / `@Transactional` 已实现。`@Transactional` 不与 `@UiThread` / `@Background` / `@WakeLock` / `@Trace` / `@Suppose*` / `@IgnoreWhen` 组合（组合会报错）。`@HttpsClient` 的 keystore 路径用外层组件的 context（bean 上是 `context_`）取 raw 资源。`@Trace` 已实现，但与 APT 一样默认关闭（KSP 参数 `trace=false`）。`@Suppose*` 默认开启（`threadControl=true`）。插件 REST / ORMLite / RoboGuice / Otto 不在 core 处理器里。
 8. **动态 `@Receiver` 与 APT 一样不写 permission / `RECEIVER_EXPORTED`**：生成的是两参数 `registerReceiver(receiver, filter)`。`targetSdk` 33+ 时平台要求导出标志，这是 APT 与 KSP 共同的限制。`androidx.fragment.app.Fragment` 上的 `@Receiver(registerAt = OnAttachOnDetach)` 仍生成 `onAttach(android.app.Activity)`，不会覆盖 AndroidX 的 `onAttach(Context)`；bench 这条路径用的是 framework `android.app.Fragment`。
+9. **Preference 与 `@MovieRes` 的 API 边界**：
+   - `@PreferenceScreen` / `@PreferenceByKey` / `@PreferenceChange` / `@PreferenceClick` / `@AfterPreferences` 可用于 `PreferenceActivity`，以及 framework / support / AndroidX 的 `PreferenceFragment(Compat)`。宿主类型决定生成的 Preference 类：AndroidX fragment 优先，其次 support-v7 / v14，否则 framework `android.preference.Preference`。
+   - `@PreferenceHeaders` 只接受 `android.preference.PreferenceActivity`，并且 `android.preference.PreferenceFragment` 必须在编译类路径上（APT 的 API 11 检查）。
+   - ByKey、Click、Change、AfterPreferences 写在重写的 `addPreferencesFromResource` 里。只调用 `setPreferencesFromResource` 的 `PreferenceFragmentCompat` 不会触发这些注入。`@PreferenceScreen` 生成的调用是 `addPreferencesFromResource`；Compat 实现了这个方法，所以这条路径在 androidx.preference 在类路径上时可用。kotlin-bench 用的是 framework `PreferenceActivity`，没有加 preference 依赖。
+   - 无 res 值时，Click / Change 的 R.string 名会去掉后缀 `PreferenceClicked` / `PreferenceChanged`（与 APT `extractElementName` 相同）。
+   - `@IntArrayRes` 生成 `resources_.getIntArray`。`@MovieRes` 生成 `resources_.getMovie(R.movie.*)`。当前 AGP / aapt2 没有 `res/movie`，编不出 `R.movie`，所以 `@MovieRes` 没有可编译的 bench fixture。
 
 ## 流程约束
 

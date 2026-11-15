@@ -10,14 +10,14 @@
 
 ## Preference screens（旧 PreferenceActivity）
 
-未做，本轮明确跳过。`@PreferenceScreen` / `@PreferenceHeaders` / `@PreferenceByKey` / `@PreferenceChange` / `@PreferenceClick` / `@AfterPreferences` 是一整套 PreferenceActivity / PreferenceFragment 生命周期，只做其中一两个注解没有可编译的 coherent fixture。kotlin-bench 也没有 Preference 用例。使用这些注解仍走 `RECOGNIZED_NOT_IMPLEMENTED`（默认 warning，`unimplementedIsError=true` 时 error）。
+- [x] `@PreferenceScreen`
+- [x] `@PreferenceHeaders`
+- [x] `@PreferenceByKey`
+- [x] `@PreferenceChange` `@PreferenceClick`
+- [x] `@AfterPreferences`
+- [x] kotlin-bench：`BenchPreferenceActivity`（Screen + ByKey + Click/Change + AfterPreferences）、`BenchPreferenceHeadersActivity`（Headers）
 
-- [ ] `@PreferenceScreen`
-- [ ] `@PreferenceHeaders`
-- [ ] `@PreferenceByKey`
-- [ ] `@PreferenceChange` `@PreferenceClick`
-- [ ] `@AfterPreferences`
-- [ ] 仅当工程仍用 PreferenceActivity / PreferenceFragment 时开启
+`@PreferenceHeaders` 只用于 `android.preference.PreferenceActivity`，并且编译类路径上要有 `android.preference.PreferenceFragment`（APT 的 API 11 检查）。ByKey / Click / Change / AfterPreferences 写在重写的 `addPreferencesFromResource` 里，不挂 `setPreferencesFromResource`。宿主是 AndroidX 或 support 的 `PreferenceFragment(Compat)` 时，生成对应的 Preference 类型；bench 走 framework `PreferenceActivity`，没有额外依赖。
 
 ---
 
@@ -74,7 +74,7 @@
 - [x] `EXECUTION_LOG` 记录「本仓库宣称的 core 覆盖边界」
 - [ ] Push `ksp/main`（本次不 push）
 
-本轮所选子集已勾选。仍开放：Preference 屏（整套才做）、`@HierarchyViewerSupport`（过时）、`@MovieRes` / `@IntArrayRes`、增量依赖图回归、APT/KSP golden 脚本。RoboGuice / Otto 记为 N/A。ORMLite / REST-Spring 继续默认跳过，直到业务确认。
+Preference 六注解与 `@IntArrayRes` 已勾上。`@MovieRes` 走同一 Res 字段路径（`resources_.getMovie`），但当前 aapt2 不产出 `R.movie`，kotlin-bench 没有可编译 fixture。仍开放：`@HierarchyViewerSupport`（过时）、增量依赖图回归、APT/KSP golden 脚本。RoboGuice / Otto 记为 N/A。ORMLite / REST-Spring 继续默认跳过，直到业务确认。
 
 ## Default skip unless demanded
 

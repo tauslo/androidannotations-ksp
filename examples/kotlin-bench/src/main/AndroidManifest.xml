@@ -27,6 +27,8 @@
         <activity android:name="org.androidannotations.bench.BenchSeekKeyActivity_" />
         <activity android:name="org.androidannotations.bench.BenchThreadsActivity_" />
         <activity android:name="org.androidannotations.bench.BenchDataActivity_" />
+        <activity android:name="org.androidannotations.bench.BenchPreferenceActivity_" />
+        <activity android:name="org.androidannotations.bench.BenchPreferenceHeadersActivity_" />
         <service android:name="org.androidannotations.bench.BenchIntentWork_" />
         <receiver
             android:name="org.androidannotations.bench.BenchBroadcast_"

@@ -98,12 +98,14 @@ public final class ResCompat {
 		list.add(Type.of(RES_PKG + "DimensionPixelSizeRes", "dimen", "getDimensionPixelSize", Arrays.asList("java.lang.Integer", "int")));
 		list.add(Type.compatOf(RES_PKG + "DrawableRes", "drawable", "getDrawable", Arrays.asList("android.graphics.drawable.Drawable"), 21, "LOLLIPOP"));
 		list.add(Type.of(RES_PKG + "IntegerRes", "integer", "getInteger", Arrays.asList("java.lang.Integer", "int")));
+		list.add(Type.of(RES_PKG + "IntArrayRes", "array", "getIntArray", Arrays.asList("int[]")));
 		list.add(Type.of(RES_PKG + "StringArrayRes", "array", "getStringArray", Arrays.asList("java.lang.String[]")));
 		list.add(Type.of(RES_PKG + "TextRes", "string", "getText", Arrays.asList("java.lang.CharSequence")));
 		list.add(Type.of(RES_PKG + "TextArrayRes", "array", "getTextArray", Arrays.asList("java.lang.CharSequence")));
 		list.add(Type.animationOf(RES_PKG + "AnimationRes", Arrays.asList("android.content.res.XmlResourceParser", "android.view.animation.Animation")));
 		list.add(Type.htmlOf(RES_PKG + "HtmlRes", Arrays.asList("java.lang.CharSequence", "android.text.Spanned")));
 		list.add(Type.of(RES_PKG + "LayoutRes", "layout", "getLayout", Arrays.asList("android.content.res.XmlResourceParser")));
+		list.add(Type.of(RES_PKG + "MovieRes", "movie", "getMovie", Arrays.asList("android.graphics.Movie")));
 		ALL = Collections.unmodifiableList(list);
 	}
 

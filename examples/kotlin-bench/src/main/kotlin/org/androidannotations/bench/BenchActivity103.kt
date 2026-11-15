@@ -6,6 +6,7 @@ import android.view.animation.Animation
 import org.androidannotations.annotations.EActivity
 import org.androidannotations.annotations.res.AnimationRes
 import org.androidannotations.annotations.res.HtmlRes
+import org.androidannotations.annotations.res.IntArrayRes
 import org.androidannotations.annotations.res.LayoutRes
 import org.androidannotations.gradle.R
 
@@ -20,4 +21,7 @@ class BenchActivity103 : Activity() {
 
     @LayoutRes(R.layout.bench_activity_103)
     protected lateinit var benchLayout: XmlResourceParser
+
+    @IntArrayRes(R.array.benchInts)
+    var benchInts: IntArray = IntArray(0)
 }

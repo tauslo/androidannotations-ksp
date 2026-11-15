@@ -827,6 +827,86 @@ public final class MvpModel {
 		}
 	}
 
+	/**
+	 * Which Preference type the enclosing screen uses. Mirrors {@code PreferencesDelegate}:
+	 * AndroidX fragment, then support-v7 / v14, otherwise the framework {@code android.preference.Preference}.
+	 */
+	public enum PreferenceFlavor {
+		FRAMEWORK, SUPPORT, ANDROIDX
+	}
+
+	/** One {@code @PreferenceByKey} field. {@code elementKey} is the R.string fallback (element name, suffix stripped). */
+	public static final class PreferenceField {
+		public final String propertyName;
+		public final String typeName;
+		public final boolean jvmField;
+		public final int resId;
+		public final String resName;
+		public final String elementKey;
+
+		public PreferenceField(String propertyName, String typeName, boolean jvmField, int resId, String resName, String elementKey) {
+			this.propertyName = propertyName;
+			this.typeName = typeName;
+			this.jvmField = jvmField;
+			this.resId = resId;
+			this.resName = resName;
+			this.elementKey = elementKey;
+		}
+	}
+
+	/** One parameter of a {@code @PreferenceByKey} method or parameter injection. */
+	public static final class PreferenceParam {
+		public final String name;
+		public final String typeName;
+		public final int resId;
+		public final String resName;
+		public final String fallbackName;
+
+		public PreferenceParam(String name, String typeName, int resId, String resName, String fallbackName) {
+			this.name = name;
+			this.typeName = typeName;
+			this.resId = resId;
+			this.resName = resName;
+			this.fallbackName = fallbackName;
+		}
+	}
+
+	/** APT InjectHelper method/param form for {@code @PreferenceByKey}. */
+	public static final class PreferenceMethod {
+		public final String methodName;
+		public final List<PreferenceParam> params;
+
+		public PreferenceMethod(String methodName, List<PreferenceParam> params) {
+			this.methodName = methodName;
+			this.params = params;
+		}
+	}
+
+	/**
+	 * One {@code @PreferenceChange} or {@code @PreferenceClick} method.
+	 * {@code argKinds} is parallel to the user parameters: PREFERENCE, OBJECT, INT, LONG, FLOAT, CAST.
+	 */
+	public static final class PreferenceListener {
+		public final String methodName;
+		public final boolean returnsBoolean;
+		public final boolean unchecked;
+		public final List<Integer> valueIds;
+		public final List<String> nameIds;
+		public final List<String> argKinds;
+		public final List<String> argTypes;
+
+		public PreferenceListener(String methodName, boolean returnsBoolean, boolean unchecked, List<Integer> valueIds,
+				List<String> nameIds, List<String> argKinds, List<String> argTypes) {
+			this.methodName = methodName;
+			this.returnsBoolean = returnsBoolean;
+			this.unchecked = unchecked;
+			this.valueIds = valueIds;
+			this.nameIds = nameIds;
+			this.argKinds = argKinds;
+			this.argTypes = argTypes;
+		}
+	}
+
 	/** Standalone {@code @IgnoreWhen} (not also {@code @UiThread} / {@code @Background}). */
 	public static final class IgnoreWhenMethod {
 		public final String name;
@@ -935,6 +1015,22 @@ public final class MvpModel {
 	public int customTitleLayoutId = AnnotationNames.RES_DEFAULT;
 	public final List<BindingObjectInjection> bindingObjects = new ArrayList<>();
 	public final List<HttpsClientInjection> httpsClients = new ArrayList<>();
+	/** Enclosing type is a PreferenceActivity or one of the PreferenceFragment types APT accepts. */
+	public boolean preferenceHost;
+	/** Enclosing type extends {@code android.preference.PreferenceActivity} ({@code @PreferenceHeaders} only). */
+	public boolean preferenceActivity;
+	public PreferenceFlavor preferenceFlavor = PreferenceFlavor.FRAMEWORK;
+	public boolean hasPreferenceScreen;
+	public int preferenceScreenResId = AnnotationNames.RES_DEFAULT;
+	public String preferenceScreenResName = "";
+	public boolean hasPreferenceHeaders;
+	public int preferenceHeadersResId = AnnotationNames.RES_DEFAULT;
+	public String preferenceHeadersResName = "";
+	public final List<PreferenceField> preferenceFields = new ArrayList<>();
+	public final List<PreferenceMethod> preferenceMethods = new ArrayList<>();
+	public final List<PreferenceListener> preferenceChanges = new ArrayList<>();
+	public final List<PreferenceListener> preferenceClicks = new ArrayList<>();
+	public final List<String> afterPreferences = new ArrayList<>();
 
 	public MvpModel(Kind kind, String packageName, String simpleName, String qualifiedName, String classSuffix, int layoutId, String layoutResName, boolean nested, String scope) {
 		this.kind = kind;
@@ -989,6 +1085,30 @@ public final class MvpModel {
 
 	public boolean hasCustomTitle() {
 		return customTitleLayoutId != AnnotationNames.RES_DEFAULT;
+	}
+
+	/** True when {@code addPreferencesFromResource} must be overridden to inject keys, listeners, or {@code @AfterPreferences}. */
+	public boolean hasPreferenceInjection() {
+		return !preferenceFields.isEmpty() || !preferenceMethods.isEmpty() || !preferenceChanges.isEmpty()
+				|| !preferenceClicks.isEmpty() || !afterPreferences.isEmpty();
+	}
+
+	public String preferenceBaseClass() {
+		if (preferenceFlavor == PreferenceFlavor.ANDROIDX) {
+			return "androidx.preference.Preference";
+		}
+		if (preferenceFlavor == PreferenceFlavor.SUPPORT) {
+			return "android.support.v7.preference.Preference";
+		}
+		return "android.preference.Preference";
+	}
+
+	public String preferenceChangeListener() {
+		return preferenceBaseClass() + ".OnPreferenceChangeListener";
+	}
+
+	public String preferenceClickListener() {
+		return preferenceBaseClass() + ".OnPreferenceClickListener";
 	}
 
 	public String generatedSimpleName() {

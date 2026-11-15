@@ -161,6 +161,15 @@ public final class MvpHandler {
 		if (optionsMenu != null) {
 			collectOptionsMenu(optionsMenu, model);
 		}
+		applyPreferenceHost(classDeclaration, model);
+		KSAnnotation preferenceScreen = KspAnnotationUtils.findAnnotation(classDeclaration.getAnnotations(), AnnotationNames.PREFERENCE_SCREEN);
+		if (preferenceScreen != null) {
+			collectPreferenceScreen(preferenceScreen, model);
+		}
+		KSAnnotation preferenceHeaders = KspAnnotationUtils.findAnnotation(classDeclaration.getAnnotations(), AnnotationNames.PREFERENCE_HEADERS);
+		if (preferenceHeaders != null) {
+			collectPreferenceHeaders(resolver, preferenceHeaders, model);
+		}
 
 		if (kind == MvpModel.Kind.RECEIVER && !extendsQualified(classDeclaration, "android.content.BroadcastReceiver")) {
 			model.errors.add("@EReceiver can only be used on a subclass of android.content.BroadcastReceiver");
@@ -359,6 +368,11 @@ public final class MvpHandler {
 		KSAnnotation httpsClient = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.HTTPS_CLIENT);
 		if (httpsClient != null) {
 			collectHttpsField(property, name, jvmField, httpsClient, model);
+		}
+
+		KSAnnotation preferenceByKey = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.PREFERENCE_BY_KEY);
+		if (preferenceByKey != null) {
+			collectPreferenceField(resolver, property, name, jvmField, preferenceByKey, model);
 		}
 
 		KSAnnotation injectMenu = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.INJECT_MENU);
@@ -647,6 +661,25 @@ public final class MvpHandler {
 		// APT parity: the method form and the parameter form are validated independently per element.
 		if (hasViewByIdParam(function)) {
 			collectViewByIdParams(resolver, function, name, model);
+		}
+
+		KSAnnotation afterPreferences = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.AFTER_PREFERENCES);
+		if (afterPreferences != null) {
+			collectAfterPreferences(function, name, model);
+		}
+		KSAnnotation preferenceChange = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.PREFERENCE_CHANGE);
+		if (preferenceChange != null) {
+			collectPreferenceListener(resolver, function, name, preferenceChange, true, model);
+		}
+		KSAnnotation preferenceClick = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.PREFERENCE_CLICK);
+		if (preferenceClick != null) {
+			collectPreferenceListener(resolver, function, name, preferenceClick, false, model);
+		}
+		KSAnnotation preferenceByKeyMethod = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.PREFERENCE_BY_KEY);
+		if (preferenceByKeyMethod != null) {
+			collectPreferenceMethod(resolver, function, name, preferenceByKeyMethod, model);
+		} else if (hasParamAnnotation(function, AnnotationNames.PREFERENCE_BY_KEY)) {
+			collectPreferenceParams(resolver, function, name, model);
 		}
 	}
 
@@ -3590,6 +3623,314 @@ public final class MvpHandler {
 			}
 		}
 		return false;
+	}
+
+	private static final String[] PREFERENCE_HOSTS = {
+			"android.preference.PreferenceActivity",
+			"android.preference.PreferenceFragment",
+			"android.support.v4.preference.PreferenceFragment",
+			"com.github.machinarius.preferencefragment.PreferenceFragment",
+			"android.support.v7.preference.PreferenceFragmentCompat",
+			"android.support.v14.preference.PreferenceFragment",
+			"androidx.preference.PreferenceFragment",
+			"androidx.preference.PreferenceFragmentCompat"
+	};
+
+	/** APT {@code PreferencesDelegate} flavor plus the host types accepted by {@code ValidatorHelper}. */
+	private void applyPreferenceHost(KSClassDeclaration declaration, MvpModel model) {
+		if (model.kind != MvpModel.Kind.ACTIVITY && model.kind != MvpModel.Kind.FRAGMENT) {
+			return;
+		}
+		model.preferenceActivity = extendsQualified(declaration, "android.preference.PreferenceActivity");
+		if (extendsQualified(declaration, "androidx.preference.PreferenceFragmentCompat")
+				|| extendsQualified(declaration, "androidx.preference.PreferenceFragment")) {
+			model.preferenceFlavor = MvpModel.PreferenceFlavor.ANDROIDX;
+			model.preferenceHost = true;
+		} else if (extendsQualified(declaration, "android.support.v7.preference.PreferenceFragmentCompat")
+				|| extendsQualified(declaration, "android.support.v14.preference.PreferenceFragment")) {
+			model.preferenceFlavor = MvpModel.PreferenceFlavor.SUPPORT;
+			model.preferenceHost = true;
+		} else if (model.preferenceActivity
+				|| extendsQualified(declaration, "android.preference.PreferenceFragment")
+				|| extendsQualified(declaration, "android.support.v4.preference.PreferenceFragment")
+				|| extendsQualified(declaration, "com.github.machinarius.preferencefragment.PreferenceFragment")) {
+			model.preferenceFlavor = MvpModel.PreferenceFlavor.FRAMEWORK;
+			model.preferenceHost = true;
+		}
+	}
+
+	private void requirePreferenceHost(MvpModel model, String label, String where) {
+		if (model.kind != MvpModel.Kind.ACTIVITY && model.kind != MvpModel.Kind.FRAGMENT) {
+			model.errors.add(label + " is only supported in @EActivity or @EFragment components" + where);
+			return;
+		}
+		if (!model.preferenceHost) {
+			model.errors.add(label + " can only be used on an element that extends one of: " + java.util.Arrays.toString(PREFERENCE_HOSTS) + where);
+		}
+	}
+
+	private void collectPreferenceScreen(KSAnnotation annotation, MvpModel model) {
+		requirePreferenceHost(model, "@PreferenceScreen", "");
+		if (!model.preferenceHost) {
+			return;
+		}
+		int resId = KspAnnotationUtils.intArg(annotation, "value", AnnotationNames.RES_DEFAULT);
+		String resName = KspAnnotationUtils.stringArg(annotation, "resName", "");
+		if (resId == AnnotationNames.RES_DEFAULT && (resName == null || resName.isEmpty())) {
+			model.errors.add("@PreferenceScreen needs an annotation value");
+			return;
+		}
+		model.hasPreferenceScreen = true;
+		model.preferenceScreenResId = resId;
+		model.preferenceScreenResName = resName == null ? "" : resName;
+	}
+
+	private void collectPreferenceHeaders(Resolver resolver, KSAnnotation annotation, MvpModel model) {
+		if (!model.preferenceActivity) {
+			model.errors.add("@PreferenceHeaders can only be used on an element that extends android.preference.PreferenceActivity");
+			return;
+		}
+		if (resolver.getClassDeclarationByName(resolver.getKSNameFromString("android.preference.PreferenceFragment")) == null) {
+			model.errors.add("The class android.preference.PreferenceFragment cannot be found. You have to use at least API 11");
+			return;
+		}
+		int resId = KspAnnotationUtils.intArg(annotation, "value", AnnotationNames.RES_DEFAULT);
+		String resName = KspAnnotationUtils.stringArg(annotation, "resName", "");
+		if (resId == AnnotationNames.RES_DEFAULT && (resName == null || resName.isEmpty())) {
+			model.errors.add("@PreferenceHeaders needs an annotation value");
+			return;
+		}
+		model.hasPreferenceHeaders = true;
+		model.preferenceHeadersResId = resId;
+		model.preferenceHeadersResName = resName == null ? "" : resName;
+	}
+
+	private void collectPreferenceField(Resolver resolver, KSPropertyDeclaration property, String name, boolean jvmField,
+			KSAnnotation annotation, MvpModel model) {
+		requirePreferenceHost(model, "@PreferenceByKey", ": property '" + name + "'");
+		if (!model.preferenceHost) {
+			return;
+		}
+		if (property.getModifiers().contains(Modifier.PRIVATE)) {
+			model.errors.add("@PreferenceByKey property '" + name + "' must not be private");
+			return;
+		}
+		if (!property.isMutable()) {
+			model.errors.add("@PreferenceByKey cannot be used on a final element");
+			return;
+		}
+		String javaType = KspAnnotationUtils.fullJavaTypeName(property.getType());
+		if (!isPreferenceType(resolver, javaType)) {
+			model.errors.add("@PreferenceByKey can only be used on a Preference, not " + javaType);
+			return;
+		}
+		model.preferenceFields.add(new MvpModel.PreferenceField(name, javaType, jvmField,
+				KspAnnotationUtils.intArg(annotation, "value", AnnotationNames.RES_DEFAULT),
+				KspAnnotationUtils.stringArg(annotation, "resName", ""),
+				preferenceFallbackName("PreferenceByKey", name)));
+	}
+
+	private void collectPreferenceMethod(Resolver resolver, KSFunctionDeclaration function, String name, KSAnnotation annotation, MvpModel model) {
+		requirePreferenceHost(model, "@PreferenceByKey", ": method '" + name + "'");
+		if (!model.preferenceHost) {
+			return;
+		}
+		if (function.getModifiers().contains(Modifier.PRIVATE)) {
+			model.errors.add("@PreferenceByKey method '" + name + "' must not be private");
+			return;
+		}
+		List<KSValueParameter> params = function.getParameters();
+		if (params.size() != 1) {
+			model.errors.add("@PreferenceByKey method '" + name + "' must have exactly one parameter");
+			return;
+		}
+		if (hasParamAnnotation(function, AnnotationNames.PREFERENCE_BY_KEY)) {
+			model.errors.add("@PreferenceByKey method '" + name + "' cannot also annotate its parameters");
+			return;
+		}
+		KSValueParameter param = params.get(0);
+		String javaType = KspAnnotationUtils.fullJavaTypeName(param.getType());
+		if (!isPreferenceType(resolver, javaType)) {
+			model.errors.add("@PreferenceByKey can only be used on a Preference, not " + javaType);
+			return;
+		}
+		MvpModel.PreferenceParam target = new MvpModel.PreferenceParam(param.getName().asString(), javaType,
+				KspAnnotationUtils.intArg(annotation, "value", AnnotationNames.RES_DEFAULT),
+				KspAnnotationUtils.stringArg(annotation, "resName", ""),
+				preferenceFallbackName("PreferenceByKey", name));
+		model.preferenceMethods.add(new MvpModel.PreferenceMethod(name, Collections.singletonList(target)));
+	}
+
+	private void collectPreferenceParams(Resolver resolver, KSFunctionDeclaration function, String name, MvpModel model) {
+		requirePreferenceHost(model, "@PreferenceByKey", ": method '" + name + "'");
+		if (!model.preferenceHost) {
+			return;
+		}
+		if (function.getModifiers().contains(Modifier.PRIVATE)) {
+			model.errors.add("@PreferenceByKey method '" + name + "' must not be private");
+			return;
+		}
+		List<KSValueParameter> params = function.getParameters();
+		if (params.isEmpty()) {
+			model.errors.add("@PreferenceByKey method '" + name + "' must have parameters annotated with @PreferenceByKey");
+			return;
+		}
+		List<MvpModel.PreferenceParam> targets = new ArrayList<>();
+		for (KSValueParameter param : params) {
+			KSAnnotation annotation = KspAnnotationUtils.findAnnotation(param.getAnnotations(), AnnotationNames.PREFERENCE_BY_KEY);
+			if (annotation == null) {
+				model.errors.add("@PreferenceByKey method '" + name + "' can only have parameters annotated with @PreferenceByKey");
+				return;
+			}
+			String javaType = KspAnnotationUtils.fullJavaTypeName(param.getType());
+			if (!isPreferenceType(resolver, javaType)) {
+				model.errors.add("@PreferenceByKey can only be used on a Preference, not " + javaType);
+				return;
+			}
+			String paramName = param.getName() != null ? param.getName().asString() : "param";
+			targets.add(new MvpModel.PreferenceParam(paramName, javaType,
+					KspAnnotationUtils.intArg(annotation, "value", AnnotationNames.RES_DEFAULT),
+					KspAnnotationUtils.stringArg(annotation, "resName", ""),
+					preferenceFallbackName("PreferenceByKey", paramName)));
+		}
+		model.preferenceMethods.add(new MvpModel.PreferenceMethod(name, targets));
+	}
+
+	private void collectAfterPreferences(KSFunctionDeclaration function, String name, MvpModel model) {
+		requirePreferenceHost(model, "@AfterPreferences", ": method '" + name + "'");
+		if (!model.preferenceHost) {
+			return;
+		}
+		if (!function.getParameters().isEmpty()) {
+			model.errors.add("@AfterPreferences method '" + name + "' cannot have any parameters");
+			return;
+		}
+		if (function.getModifiers().contains(Modifier.PRIVATE)) {
+			model.errors.add("@AfterPreferences method '" + name + "' must not be private");
+			return;
+		}
+		if (!"void".equals(functionReturnType(function))) {
+			model.errors.add("@AfterPreferences can only be used on a method with a void return type");
+			return;
+		}
+		model.afterPreferences.add(name);
+	}
+
+	private void collectPreferenceListener(Resolver resolver, KSFunctionDeclaration function, String name, KSAnnotation annotation,
+			boolean change, MvpModel model) {
+		String label = change ? "@PreferenceChange" : "@PreferenceClick";
+		requirePreferenceHost(model, label, ": method '" + name + "'");
+		if (!model.preferenceHost) {
+			return;
+		}
+		if (function.getModifiers().contains(Modifier.PRIVATE)) {
+			model.errors.add(label + " method '" + name + "' must not be private");
+			return;
+		}
+		String returnType = functionReturnType(function);
+		boolean returnsBoolean;
+		if ("void".equals(returnType)) {
+			returnsBoolean = false;
+		} else if ("boolean".equals(returnType) || "java.lang.Boolean".equals(returnType)) {
+			returnsBoolean = true;
+		} else {
+			model.errors.add(label + " method '" + name + "' must return void or boolean");
+			return;
+		}
+		List<String> kinds = new ArrayList<>();
+		List<String> types = new ArrayList<>();
+		int preferenceCount = 0;
+		int valueCount = 0;
+		boolean unchecked = false;
+		for (KSValueParameter param : function.getParameters()) {
+			String javaType = KspAnnotationUtils.fullJavaTypeName(param.getType());
+			if (isPreferenceType(resolver, javaType)) {
+				preferenceCount++;
+				kinds.add("PREFERENCE");
+				types.add(javaType);
+			} else if (change && preferenceNumberKind(javaType) != null) {
+				valueCount++;
+				kinds.add(preferenceNumberKind(javaType));
+				types.add(javaType);
+			} else if (change && isPreferenceValueType(javaType)) {
+				valueCount++;
+				if ("java.lang.Object".equals(javaType)) {
+					kinds.add("OBJECT");
+				} else {
+					kinds.add("CAST");
+					if (javaType.startsWith("java.util.Set")) {
+						unchecked = true;
+					}
+				}
+				types.add(javaType);
+			} else {
+				model.errors.add(label + " method '" + name + "' has an unsupported parameter type " + javaType);
+				return;
+			}
+		}
+		if (preferenceCount > 1 || valueCount > 1 || (!change && valueCount > 0)) {
+			model.errors.add(label + " method '" + name + "' has too many parameters");
+			return;
+		}
+		List<Integer> valueIds = new ArrayList<>();
+		List<String> nameIds = new ArrayList<>();
+		readViewIds(annotation, valueIds, nameIds);
+		if (valueIds.isEmpty() && nameIds.isEmpty()) {
+			nameIds.add(preferenceFallbackName(change ? "PreferenceChange" : "PreferenceClick", name));
+		}
+		MvpModel.PreferenceListener listener = new MvpModel.PreferenceListener(name, returnsBoolean, unchecked, valueIds, nameIds, kinds, types);
+		if (change) {
+			model.preferenceChanges.add(listener);
+		} else {
+			model.preferenceClicks.add(listener);
+		}
+	}
+
+	private boolean isPreferenceType(Resolver resolver, String typeName) {
+		return isSubtypeOf(resolver, typeName, "android.preference.Preference")
+				|| isSubtypeOf(resolver, typeName, "android.support.v7.preference.Preference")
+				|| isSubtypeOf(resolver, typeName, "androidx.preference.Preference");
+	}
+
+	private static boolean isPreferenceValueType(String typeName) {
+		return "java.lang.Object".equals(typeName)
+				|| "java.lang.String".equals(typeName)
+				|| "java.lang.Boolean".equals(typeName)
+				|| "boolean".equals(typeName)
+				|| "java.util.Set<java.lang.String>".equals(typeName);
+	}
+
+	/** INT / LONG / FLOAT, or null when the type is not a numeric preference newValue. */
+	private static String preferenceNumberKind(String typeName) {
+		if ("int".equals(typeName) || "java.lang.Integer".equals(typeName)) {
+			return "INT";
+		}
+		if ("long".equals(typeName) || "java.lang.Long".equals(typeName)) {
+			return "LONG";
+		}
+		if ("float".equals(typeName) || "java.lang.Float".equals(typeName)) {
+			return "FLOAT";
+		}
+		return null;
+	}
+
+	/** APT {@code AnnotationHelper.extractElementName}: strip the action suffix ({@code PreferenceChanged}, ...). */
+	private static String preferenceFallbackName(String annotationSimple, String elementName) {
+		String suffix;
+		if ("PreferenceChange".equals(annotationSimple)) {
+			suffix = "PreferenceChanged";
+		} else if ("PreferenceClick".equals(annotationSimple)) {
+			suffix = "PreferenceClicked";
+		} else if ("PreferenceByKey".equals(annotationSimple)) {
+			suffix = "PreferenceByKeyed";
+		} else {
+			suffix = annotationSimple.endsWith("e") ? annotationSimple + "d" : annotationSimple + "ed";
+		}
+		int last = elementName.lastIndexOf(suffix);
+		if (last != -1) {
+			return elementName.substring(0, last);
+		}
+		return elementName;
 	}
 
 	private KSClassDeclaration superclassOf(KSClassDeclaration declaration) {

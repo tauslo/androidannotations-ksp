@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="benchHtml">Hello &lt;b&gt;world&lt;/b&gt;</string>
+    <integer-array name="benchInts">
+        <item>1</item>
+        <item>2</item>
+    </integer-array>
 </resources>
