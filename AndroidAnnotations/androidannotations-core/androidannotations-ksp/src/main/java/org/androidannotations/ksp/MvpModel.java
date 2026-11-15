@@ -22,7 +22,7 @@ import java.util.List;
 public final class MvpModel {
 
 	public enum Kind {
-		ACTIVITY, APPLICATION, BEAN, FRAGMENT, SERVICE
+		ACTIVITY, APPLICATION, BEAN, FRAGMENT, SERVICE, VIEW, VIEW_GROUP
 	}
 
 	/** Which view callback a {@link ViewListener} wires. Click and long-click stay on their own lists. */
@@ -132,6 +132,12 @@ public final class MvpModel {
 			this.reusePropagation = reusePropagation;
 			this.visibility = visibility;
 		}
+
+		/**
+		 * Set when the same method is also {@code @IgnoreWhen}. UiThread/Background wrap the guard inside the
+		 * posted task (APT runs IgnoreWhenHandler before those handlers).
+		 */
+		public String ignoreWhenState;
 	}
 
 	public static final class BeanTarget {
@@ -167,6 +173,11 @@ public final class MvpModel {
 			this.jvmField = jvmField;
 			this.targets = targets;
 		}
+
+		/** APT BeanHandler: a field that is also {@code @NonConfigurationInstance} is assigned only when still null. */
+		public boolean assignOnlyIfNull;
+		/** Generated {@code @EBean} type used for {@code rebind} when restoring a non-singleton bean. */
+		public String rebindGeneratedName;
 	}
 
 	/** APT ViewByIdHandler parity (method-injection form): one injected parameter of a @ViewById method. */
@@ -300,6 +311,9 @@ public final class MvpModel {
 			this.propertyName = propertyName; this.typeName = typeName; this.resId = resId;
 			this.resName = resName; this.childFragment = childFragment;
 		}
+
+		/** False when the field type is an AndroidX or support-v4 Fragment rather than {@code android.app.Fragment}. */
+		public boolean nativeFragment = true;
 	}
 
 	/** APT InstanceStateHandler parity: one @InstanceState property with its pre-built save/restore statements. */
@@ -450,6 +464,132 @@ public final class MvpModel {
 		}
 	}
 
+	/** APT ViewsByIdHandler parity: one List (or array) of views filled in {@code onViewChanged}. */
+	public static final class ViewsByIdInjection {
+		public enum Form {
+			FIELD, METHOD
+		}
+
+		public final Form form;
+		public final String name;
+		public final boolean jvmField;
+		/** Element type of the list or array, for example {@code android.widget.TextView}. */
+		public final String viewType;
+		/** True when the declared type is an array rather than a {@code List}. */
+		public final boolean array;
+		public final List<Integer> valueIds;
+		public final List<String> nameIds;
+
+		public ViewsByIdInjection(Form form, String name, boolean jvmField, String viewType, boolean array,
+				List<Integer> valueIds, List<String> nameIds) {
+			this.form = form;
+			this.name = name;
+			this.jvmField = jvmField;
+			this.viewType = viewType;
+			this.array = array;
+			this.valueIds = valueIds;
+			this.nameIds = nameIds;
+		}
+	}
+
+	/** APT FromHtmlHandler parity: {@code setText(Html.fromHtml(context.getString(R.string.*)))} after view injection. */
+	public static final class FromHtmlField {
+		public final String propertyName;
+		public final int resId;
+		public final String resName;
+
+		public FromHtmlField(String propertyName, int resId, String resName) {
+			this.propertyName = propertyName;
+			this.resId = resId;
+			this.resName = resName;
+		}
+	}
+
+	/** APT NonConfigurationInstanceHandler parity: one retained activity field. */
+	public static final class NonConfigField {
+		public final String propertyName;
+		public final String typeName;
+		public final boolean jvmField;
+		/** Generated bean class for {@code rebind}, or null when the field is not a non-singleton {@code @Bean}. */
+		public final String rebindGeneratedName;
+
+		public NonConfigField(String propertyName, String typeName, boolean jvmField, String rebindGeneratedName) {
+			this.propertyName = propertyName;
+			this.typeName = typeName;
+			this.jvmField = jvmField;
+			this.rebindGeneratedName = rebindGeneratedName;
+		}
+	}
+
+	/** One user constructor copied onto an {@code @EView} / {@code @EViewGroup} subclass. */
+	public static final class ViewCtor {
+		public final List<Param> params;
+
+		public ViewCtor(List<Param> params) {
+			this.params = params;
+		}
+	}
+
+	/** APT ReceiverHandler parity: one {@code @Receiver} method and the arguments forwarded from {@code onReceive}. */
+	public static final class ReceiverArg {
+		public enum Role {
+			CONTEXT, INTENT, EXTRA
+		}
+
+		public final Role role;
+		public final String name;
+		public final String typeName;
+		/** EXTRA only: expression that reads the value from {@code extras_}. */
+		public final String readExpr;
+
+		public ReceiverArg(Role role, String name, String typeName, String readExpr) {
+			this.role = role;
+			this.name = name;
+			this.typeName = typeName;
+			this.readExpr = readExpr;
+		}
+	}
+
+	public static final class ReceiverBinding {
+		public final String methodName;
+		/** {@code OnCreateOnDestroy} / {@code OnStartOnStop} / {@code OnResumeOnPause} / {@code OnAttachOnDetach}. */
+		public final String registerAt;
+		public final boolean local;
+		/** FQCN of LocalBroadcastManager when {@code local} is true. */
+		public final String localManager;
+		public final List<String> actions;
+		public final List<String> dataSchemes;
+		public final List<ReceiverArg> args;
+		public final boolean unchecked;
+
+		public ReceiverBinding(String methodName, String registerAt, boolean local, String localManager,
+				List<String> actions, List<String> dataSchemes, List<ReceiverArg> args, boolean unchecked) {
+			this.methodName = methodName;
+			this.registerAt = registerAt;
+			this.local = local;
+			this.localManager = localManager;
+			this.actions = actions;
+			this.dataSchemes = dataSchemes;
+			this.args = args;
+			this.unchecked = unchecked;
+		}
+	}
+
+	/** Standalone {@code @IgnoreWhen} (not also {@code @UiThread} / {@code @Background}). */
+	public static final class IgnoreWhenMethod {
+		public final String name;
+		public final String state;
+		public final List<Param> params;
+		public final String visibility;
+
+		public IgnoreWhenMethod(String name, String state, List<Param> params, String visibility) {
+			this.name = name;
+			this.state = state;
+			this.params = params;
+			this.visibility = visibility;
+		}
+	}
+
 	public final Kind kind;
 	public final String packageName;
 	public final String simpleName;
@@ -505,6 +645,21 @@ public final class MvpModel {
 	public final String scope;
 	/** True when @EFragment(forceLayoutInjection=true): onCreateView inflates even if the host already created a view. */
 	public boolean forceLayoutInjection = false;
+	public final List<ViewsByIdInjection> viewsByIds = new ArrayList<>();
+	public final List<FromHtmlField> fromHtml = new ArrayList<>();
+	public final List<NonConfigField> nonConfigFields = new ArrayList<>();
+	public final List<Integer> windowFeatures = new ArrayList<>();
+	public boolean fullscreen;
+	/** Activity extends AppCompat / ActionBarActivity, so window features use {@code supportRequestWindowFeature}. */
+	public boolean appCompatWindow;
+	/** Activity extends FragmentActivity, so retain/restore use the custom non-configuration methods. */
+	public boolean customNonConfiguration;
+	public final List<ViewCtor> viewConstructors = new ArrayList<>();
+	public final List<ReceiverBinding> receivers = new ArrayList<>();
+	public final List<ExtraConstant> receiverExtraConstants = new ArrayList<>();
+	public final List<IgnoreWhenMethod> ignoreWhens = new ArrayList<>();
+	/** Any {@code @IgnoreWhen(VIEW_DESTROYED)} needs the volatile {@code viewDestroyed_} flag. */
+	public boolean needsViewDestroyed;
 
 	public MvpModel(Kind kind, String packageName, String simpleName, String qualifiedName, String classSuffix, int layoutId, String layoutResName, boolean nested, String scope) {
 		this.kind = kind;
@@ -523,6 +678,13 @@ public final class MvpModel {
 				|| !focusChangeListeners.isEmpty() || !checkedChangeListeners.isEmpty() || !editorActionListeners.isEmpty()
 				|| !itemClickListeners.isEmpty() || !itemLongClickListeners.isEmpty() || !itemSelectListeners.isEmpty()
 				|| !textWatcherListeners.isEmpty();
+	}
+
+	/** True when the generated type must implement view-changed callbacks (views, listeners, fragment lookup, html). */
+	public boolean hasViewSupport() {
+		return !viewInjections.isEmpty() || !afterViews.isEmpty() || hasViewListeners()
+				|| !viewsByIds.isEmpty() || !fromHtml.isEmpty()
+				|| !fragmentByIds.isEmpty() || !fragmentByTags.isEmpty();
 	}
 
 	public String generatedSimpleName() {

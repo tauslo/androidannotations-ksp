@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="benchP1Html">Hello &lt;b&gt;P1&lt;/b&gt;</string>
+</resources>

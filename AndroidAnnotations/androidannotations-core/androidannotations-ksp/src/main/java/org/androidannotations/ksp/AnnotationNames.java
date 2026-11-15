@@ -74,11 +74,61 @@ public final class AnnotationNames {
 	public static final String JVM_FIELD = "kotlin.jvm.JvmField";
 	public static final String SHARED_PREF = "org.androidannotations.annotations.sharedpreferences.SharedPref";
 	public static final String PREF = "org.androidannotations.annotations.sharedpreferences.Pref";
+	public static final String E_VIEW = "org.androidannotations.annotations.EView";
+	public static final String E_VIEW_GROUP = "org.androidannotations.annotations.EViewGroup";
+	public static final String VIEWS_BY_ID = "org.androidannotations.annotations.ViewsById";
+	public static final String FROM_HTML = "org.androidannotations.annotations.FromHtml";
+	public static final String RECEIVER = "org.androidannotations.annotations.Receiver";
+	public static final String RECEIVER_EXTRA = "org.androidannotations.annotations.Receiver.Extra";
+	public static final String IGNORE_WHEN = "org.androidannotations.annotations.IgnoreWhen";
+	public static final String NON_CONFIGURATION_INSTANCE = "org.androidannotations.annotations.NonConfigurationInstance";
+	public static final String WINDOW_FEATURE = "org.androidannotations.annotations.WindowFeature";
+	public static final String FULLSCREEN = "org.androidannotations.annotations.Fullscreen";
 
 	public static final int RES_DEFAULT = -1;
 
-	/** AA annotations recognized by the KSP processor but not implemented yet; their use is reported with a warning. */
-	public static final String[] RECOGNIZED_NOT_IMPLEMENTED = new String[0];
+	/**
+	 * AA annotations the processor knows about but does not generate yet. Using one produces a KSP warning.
+	 * MovieRes (and the other rare res types here) stayed out of P1; dynamic {@code @Receiver} is implemented,
+	 * {@code @EReceiver} / {@code @ReceiverAction} are not.
+	 */
+	public static final String[] RECOGNIZED_NOT_IMPLEMENTED = {
+			"org.androidannotations.annotations.DataBound",
+			"org.androidannotations.annotations.BindingObject",
+			"org.androidannotations.annotations.CustomTitle",
+			"org.androidannotations.annotations.EIntentService",
+			"org.androidannotations.annotations.EProvider",
+			"org.androidannotations.annotations.EReceiver",
+			"org.androidannotations.annotations.HierarchyViewerSupport",
+			"org.androidannotations.annotations.HttpsClient",
+			"org.androidannotations.annotations.KeyDown",
+			"org.androidannotations.annotations.KeyLongPress",
+			"org.androidannotations.annotations.KeyMultiple",
+			"org.androidannotations.annotations.KeyUp",
+			"org.androidannotations.annotations.PageScrollStateChanged",
+			"org.androidannotations.annotations.PageScrolled",
+			"org.androidannotations.annotations.PageSelected",
+			"org.androidannotations.annotations.PreferenceByKey",
+			"org.androidannotations.annotations.PreferenceChange",
+			"org.androidannotations.annotations.PreferenceClick",
+			"org.androidannotations.annotations.PreferenceHeaders",
+			"org.androidannotations.annotations.PreferenceScreen",
+			"org.androidannotations.annotations.AfterPreferences",
+			"org.androidannotations.annotations.ReceiverAction",
+			"org.androidannotations.annotations.RootContext",
+			"org.androidannotations.annotations.RootFragment",
+			"org.androidannotations.annotations.SeekBarProgressChange",
+			"org.androidannotations.annotations.SeekBarTouchStart",
+			"org.androidannotations.annotations.SeekBarTouchStop",
+			"org.androidannotations.annotations.ServiceAction",
+			"org.androidannotations.annotations.SupposeBackground",
+			"org.androidannotations.annotations.SupposeUiThread",
+			"org.androidannotations.annotations.Trace",
+			"org.androidannotations.annotations.Transactional",
+			"org.androidannotations.annotations.WakeLock",
+			"org.androidannotations.annotations.res.IntArrayRes",
+			"org.androidannotations.annotations.res.MovieRes"
+	};
 
 	private AnnotationNames() {
 	}

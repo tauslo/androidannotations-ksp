@@ -124,9 +124,9 @@ P0a 可选遗留（已转入 P0b Carry-over）：`@ViewById` method-injection、
 
 **验收：** 新建 `examples/kotlin-parity`（或扩 kotlin），用 kapt 与 ksp 各编一次，对比生成类公开 API（intent/builder/关键方法）一致；样例 App 可卸 kapt。
 
-### P1 — 常见旧工程（20–30 人日）
+### P1 — 常见旧工程（20–30 人日）— 主路径已落地
 
-`@SharedPref`/`@Pref`，更多 View 监听，`@Receiver`，`@EView`/`@EViewGroup`，`@IgnoreWhen`，`@ViewsById`，`@FromHtml`，`@NonConfigurationInstance` 等。
+`@SharedPref`/`@Pref`，更多 View 监听，`@ViewsById`，`@FromHtml`，动态 `@Receiver`（含方法参数 `@Extra`），`@EView`/`@EViewGroup`，`@IgnoreWhen`，`@NonConfigurationInstance`，`@WindowFeature`/`@Fullscreen`，以及 Activity 上 AndroidX `FragmentById`/`FragmentByTag`。未做：`@MovieRes` 等少用 Res、AndroidX Fragment 上的 `onAttach(Context)` 接收器。详见 CHECKLIST_P1。
 
 ### P2 — 偏门按需（15–25 人日）
 
@@ -234,9 +234,9 @@ git push ksp HEAD:main
 
 - [`EXECUTION_LOG.md`](EXECUTION_LOG.md) — 执行日记（续跑依据）
 - [`CHECKLIST_P0a.md`](CHECKLIST_P0a.md) — P0a（已完成主路径）
-- [`CHECKLIST_P0b.md`](CHECKLIST_P0b.md) — **当前主线**
-- [`CHECKLIST_P1.md`](CHECKLIST_P1.md) — 常见旧工程
-- [`CHECKLIST_P2.md`](CHECKLIST_P2.md) — 偏门按需
+- [`CHECKLIST_P0b.md`](CHECKLIST_P0b.md) — 典型界面（已完成）
+- [`CHECKLIST_P1.md`](CHECKLIST_P1.md) — 常见旧工程（主路径已完成；`@MovieRes` 与 push 仍开）
+- [`CHECKLIST_P2.md`](CHECKLIST_P2.md) — **当前主线**（偏门按需）
 - [`CHECKLIST_PLUGINS.md`](CHECKLIST_PLUGINS.md) — ORMLite / REST 等
 - [`CHECKLIST_PERF.md`](CHECKLIST_PERF.md) — 增量与测速（可并行）
 - [`../../BENCHMARK.md`](../../BENCHMARK.md) — 已有测速

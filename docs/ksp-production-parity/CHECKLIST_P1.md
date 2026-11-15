@@ -33,56 +33,56 @@
 
 ## Views helpers
 
-- [ ] `@ViewsById`（List/数组注入）
-- [ ] `@FromHtml`
-- [ ] （若 P0b 未做）补齐剩余少用 Res：`@MovieRes` 等
+- [x] `@ViewsById`（List/数组注入）
+- [x] `@FromHtml`
+- [ ] （若 P0b 未做）补齐剩余少用 Res：`@MovieRes` 等（P1 跳过，见 KNOWN_DEVIATIONS）
 
 ---
 
 ## Receiver（动态）
 
-- [ ] `@Receiver` on Activity/Fragment/Service/View（动态注册 / 生命周期挂钩）
-- [ ] 参数级 `@Extra` on receiver methods（对照 `ReceiverHandler.ExtraHandler`）
-- [ ] 权限 / exported / 注册时机对齐 APT（抽查）
+- [x] `@Receiver` on Activity/Fragment/Service/View（动态注册 / 生命周期挂钩）
+- [x] 参数级 `@Extra` on receiver methods（对照 `ReceiverHandler.ExtraHandler`）
+- [x] 权限 / exported / 注册时机对齐 APT（抽查）
 
 ---
 
 ## Custom views
 
-- [ ] `@EView`
-- [ ] `@EViewGroup`（layout inflate）
-- [ ] View 上的 `@ViewById` / `@Click` / `@AfterViews` / `@Bean` 复用
+- [x] `@EView`
+- [x] `@EViewGroup`（layout inflate）
+- [x] View 上的 `@ViewById` / `@Click` / `@AfterViews` / `@Bean` 复用
 
 ---
 
 ## Fragment / Activity extras
 
-- [ ] `@IgnoreWhen`（主要 Fragment；对照 `IgnoreWhenHandler` + 与 UiThread/Background 包装顺序）
-- [ ] `@NonConfigurationInstance`（与 `@Bean` 共存：非 null 跳过注入）
-- [ ] `@WindowFeature` `@Fullscreen`（若目标工程仍用）
+- [x] `@IgnoreWhen`（主要 Fragment；对照 `IgnoreWhenHandler` + 与 UiThread/Background 包装顺序）
+- [x] `@NonConfigurationInstance`（与 `@Bean` 共存：非 null 跳过注入）
+- [x] `@WindowFeature` `@Fullscreen`（若目标工程仍用）
 
 ---
 
 ## Support / AndroidX Fragment path
 
-- [ ] 若 P0b 只做了 framework Fragment：补 AndroidX `Fragment` / `FragmentManager` 分支
-- [ ] `FragmentById`/`ByTag` 双路径探测
+- [x] 若 P0b 只做了 framework Fragment：补 AndroidX `Fragment` / `FragmentManager` 分支
+- [x] `FragmentById`/`ByTag` 双路径探测
 
 ---
 
 ## Unimplemented warnings & docs
 
-- [ ] 更新 `RECOGNIZED_NOT_IMPLEMENTED`
-- [ ] PLAYBOOK / README 注明 P1 覆盖范围
+- [x] 更新 `RECOGNIZED_NOT_IMPLEMENTED`
+- [x] PLAYBOOK / README 注明 P1 覆盖范围
 
 ---
 
 ## Acceptance for P1 exit
 
-- [ ] 至少一个 prefs + 一组监听 +（可选）Receiver 的可编译 demo
-- [ ] APT/KSP 公开 API spot-check（至少 SharedPref + 1 个 listener）
-- [ ] `EXECUTION_LOG`：P1 done，`Next` = P2 或插件（视业务依赖）
-- [ ] Push `ksp/main`（若需要）
+- [x] 至少一个 prefs + 一组监听 +（可选）Receiver 的可编译 demo
+- [x] APT/KSP 公开 API spot-check（至少 SharedPref + 1 个 listener）
+- [x] `EXECUTION_LOG`：P1 done，`Next` = P2 或插件（视业务依赖）
+- [ ] Push `ksp/main`（若需要）— 本阶段仅本地 commit，不 push
 
 ## Out of scope for P1
 

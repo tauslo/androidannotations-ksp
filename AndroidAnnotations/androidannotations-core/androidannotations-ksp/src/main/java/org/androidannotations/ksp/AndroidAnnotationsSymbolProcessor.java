@@ -75,6 +75,8 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 		classes.addAll(toClassList(resolver.getSymbolsWithAnnotation(AnnotationNames.E_FRAGMENT, false)));
 		classes.addAll(toClassList(resolver.getSymbolsWithAnnotation(AnnotationNames.E_APPLICATION, false)));
 		classes.addAll(toClassList(resolver.getSymbolsWithAnnotation(AnnotationNames.E_SERVICE, false)));
+		classes.addAll(toClassList(resolver.getSymbolsWithAnnotation(AnnotationNames.E_VIEW, false)));
+		classes.addAll(toClassList(resolver.getSymbolsWithAnnotation(AnnotationNames.E_VIEW_GROUP, false)));
 		List<KSClassDeclaration> prefClasses = toClassList(resolver.getSymbolsWithAnnotation(AnnotationNames.SHARED_PREF, false));
 
 		List<KSClassDeclaration> environmentSources = new ArrayList<KSClassDeclaration>(classes);
@@ -244,7 +246,7 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 	private boolean needsResourcePackage(MvpModel model) {
 		return !model.stringRes.isEmpty() || !model.viewInjections.isEmpty() || model.layoutId != AnnotationNames.RES_DEFAULT
 				|| (model.layoutResName != null && !model.layoutResName.isEmpty()) || !model.fragmentByIds.isEmpty()
-				|| model.hasViewListeners() || !model.resFields.isEmpty();
+				|| model.hasViewListeners() || !model.resFields.isEmpty() || !model.viewsByIds.isEmpty() || !model.fromHtml.isEmpty();
 	}
 
 	/**
@@ -295,6 +297,21 @@ public class AndroidAnnotationsSymbolProcessor implements SymbolProcessor {
 		}
 		for (MvpModel.FragmentInjection byId : model.fragmentByIds) {
 			errors.addAll(validateFragmentById(canCheckValues, index, byId));
+		}
+		for (MvpModel.ViewsByIdInjection views : model.viewsByIds) {
+			for (Integer resId : views.valueIds) {
+				if (canCheckValues && !index.containsIdValue("id", resId)) {
+					errors.add("Resource id value not found in R.id: " + resId);
+				}
+			}
+			for (String resName : views.nameIds) {
+				if (!index.containsField("id", resName)) {
+					errors.add("Resource name not found in R.id: " + resName);
+				}
+			}
+		}
+		for (MvpModel.FromHtmlField fromHtml : model.fromHtml) {
+			errors.addAll(validateInjection(canCheckValues, index, "string", fromHtml.propertyName, fromHtml.resId, fromHtml.resName));
 		}
 		for (MvpModel.OptionsMenuRef menu : model.optionsMenus) {
 			errors.addAll(validateInjection(canCheckValues, index, "menu", "", menu.resId, menu.resName));

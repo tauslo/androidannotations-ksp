@@ -77,6 +77,8 @@ public final class MvpHandler {
 		KSAnnotation eFragment = KspAnnotationUtils.findAnnotation(classDeclaration.getAnnotations(), AnnotationNames.E_FRAGMENT);
 		KSAnnotation eApplication = KspAnnotationUtils.findAnnotation(classDeclaration.getAnnotations(), AnnotationNames.E_APPLICATION);
 		KSAnnotation eService = KspAnnotationUtils.findAnnotation(classDeclaration.getAnnotations(), AnnotationNames.E_SERVICE);
+		KSAnnotation eViewGroup = KspAnnotationUtils.findAnnotation(classDeclaration.getAnnotations(), AnnotationNames.E_VIEW_GROUP);
+		KSAnnotation eView = KspAnnotationUtils.findAnnotation(classDeclaration.getAnnotations(), AnnotationNames.E_VIEW);
 
 		MvpModel.Kind kind;
 		int layoutId = AnnotationNames.RES_DEFAULT;
@@ -96,6 +98,12 @@ public final class MvpHandler {
 			kind = MvpModel.Kind.APPLICATION;
 		} else if (eService != null) {
 			kind = MvpModel.Kind.SERVICE;
+		} else if (eViewGroup != null) {
+			kind = MvpModel.Kind.VIEW_GROUP;
+			layoutId = KspAnnotationUtils.intArg(eViewGroup, "value", AnnotationNames.RES_DEFAULT);
+			layoutResName = KspAnnotationUtils.stringArg(eViewGroup, "resName", "");
+		} else if (eView != null) {
+			kind = MvpModel.Kind.VIEW;
 		} else if (eBean != null) {
 			kind = MvpModel.Kind.BEAN;
 			scope = KspAnnotationUtils.enumArg(eBean, "scope", "Default");
@@ -105,6 +113,27 @@ public final class MvpHandler {
 
 		MvpModel model = new MvpModel(kind, packageName, simpleName, qualifiedName, classSuffix, layoutId, layoutResName, nested, scope);
 		model.forceLayoutInjection = forceLayoutInjection;
+		if (kind == MvpModel.Kind.ACTIVITY) {
+			model.appCompatWindow = extendsQualified(classDeclaration, "androidx.appcompat.app.AppCompatActivity")
+					|| extendsQualified(classDeclaration, "android.support.v7.app.AppCompatActivity")
+					|| extendsQualified(classDeclaration, "android.support.v7.app.ActionBarActivity");
+			model.customNonConfiguration = extendsQualified(classDeclaration, "androidx.fragment.app.FragmentActivity")
+					|| extendsQualified(classDeclaration, "android.support.v4.app.FragmentActivity");
+			KSAnnotation windowFeature = KspAnnotationUtils.findAnnotation(classDeclaration.getAnnotations(), AnnotationNames.WINDOW_FEATURE);
+			if (windowFeature != null) {
+				model.windowFeatures.addAll(KspAnnotationUtils.intArrayArg(windowFeature, "value"));
+			}
+			if (KspAnnotationUtils.findAnnotation(classDeclaration.getAnnotations(), AnnotationNames.FULLSCREEN) != null) {
+				model.fullscreen = true;
+			}
+		} else {
+			if (KspAnnotationUtils.findAnnotation(classDeclaration.getAnnotations(), AnnotationNames.WINDOW_FEATURE) != null) {
+				model.errors.add("@WindowFeature can only be used on an @EActivity");
+			}
+			if (KspAnnotationUtils.findAnnotation(classDeclaration.getAnnotations(), AnnotationNames.FULLSCREEN) != null) {
+				model.errors.add("@Fullscreen can only be used on an @EActivity");
+			}
+		}
 
 		KSAnnotation optionsMenu = KspAnnotationUtils.findAnnotation(classDeclaration.getAnnotations(), AnnotationNames.OPTIONS_MENU);
 		if (optionsMenu != null) {
@@ -114,6 +143,9 @@ public final class MvpHandler {
 		collectMembers(resolver, classDeclaration.getDeclarations(), model);
 		for (KSClassDeclaration ancestor : superclasses(classDeclaration)) {
 			collectMembers(resolver, ancestor.getDeclarations(), model);
+		}
+		if ((kind == MvpModel.Kind.VIEW || kind == MvpModel.Kind.VIEW_GROUP) && model.viewConstructors.isEmpty()) {
+			model.errors.add(model.simpleName + " must declare at least one non-private constructor so the generated subclass can call super");
 		}
 		return model;
 	}
@@ -225,18 +257,37 @@ public final class MvpHandler {
 
 		KSAnnotation fragmentById = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.FRAGMENT_BY_ID);
 		if (fragmentById != null) {
-			model.fragmentByIds.add(new MvpModel.FragmentInjection(name, typeName,
+			MvpModel.FragmentInjection injection = new MvpModel.FragmentInjection(name, typeName,
 					KspAnnotationUtils.intArg(fragmentById, "value", AnnotationNames.RES_DEFAULT),
 					KspAnnotationUtils.stringArg(fragmentById, "resName", ""),
-					KspAnnotationUtils.booleanArg(fragmentById, "childFragment", false)));
+					KspAnnotationUtils.booleanArg(fragmentById, "childFragment", false));
+			injection.nativeFragment = isNativeFragmentType(resolver, typeName);
+			model.fragmentByIds.add(injection);
 		}
 
 		KSAnnotation fragmentByTag = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.FRAGMENT_BY_TAG);
 		if (fragmentByTag != null) {
-			model.fragmentByTags.add(new MvpModel.FragmentInjection(name, typeName,
+			MvpModel.FragmentInjection injection = new MvpModel.FragmentInjection(name, typeName,
 					AnnotationNames.RES_DEFAULT,
 					KspAnnotationUtils.stringArg(fragmentByTag, "value", ""),
-					KspAnnotationUtils.booleanArg(fragmentByTag, "childFragment", false)));
+					KspAnnotationUtils.booleanArg(fragmentByTag, "childFragment", false));
+			injection.nativeFragment = isNativeFragmentType(resolver, typeName);
+			model.fragmentByTags.add(injection);
+		}
+
+		KSAnnotation viewsById = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.VIEWS_BY_ID);
+		if (viewsById != null) {
+			collectViewsByIdField(resolver, property, name, jvmField, viewsById, model);
+		}
+
+		KSAnnotation fromHtml = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.FROM_HTML);
+		if (fromHtml != null) {
+			collectFromHtml(resolver, property, name, fromHtml, viewById != null, model);
+		}
+
+		KSAnnotation nonConfig = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.NON_CONFIGURATION_INSTANCE);
+		if (nonConfig != null) {
+			collectNonConfiguration(resolver, property, name, jvmField, model);
 		}
 
 		KSAnnotation bean = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.BEAN);
@@ -273,6 +324,15 @@ public final class MvpHandler {
 	private void collectFunction(Resolver resolver, KSFunctionDeclaration function, MvpModel model) {
 		String name = function.getSimpleName().asString();
 		if ("<init>".equals(name)) {
+			if ((model.kind == MvpModel.Kind.VIEW || model.kind == MvpModel.Kind.VIEW_GROUP)
+					&& !function.getModifiers().contains(Modifier.PRIVATE)
+					&& function.getParent() instanceof KSClassDeclaration) {
+				KSClassDeclaration owner = (KSClassDeclaration) function.getParent();
+				String ownerName = owner.getQualifiedName() != null ? owner.getQualifiedName().asString() : "";
+				if (ownerName.equals(model.qualifiedName)) {
+					model.viewConstructors.add(new MvpModel.ViewCtor(KspAnnotationUtils.methodParams(function)));
+				}
+			}
 			return;
 		}
 
@@ -320,6 +380,21 @@ public final class MvpHandler {
 					KspAnnotationUtils.longArg(uiThread, "delay", 0L),
 					"",
 					reuse, methodVisibility(function)));
+		}
+
+		KSAnnotation ignoreWhen = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.IGNORE_WHEN);
+		if (ignoreWhen != null) {
+			collectIgnoreWhen(function, name, ignoreWhen, model);
+		}
+
+		KSAnnotation receiver = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.RECEIVER);
+		if (receiver != null) {
+			collectReceiver(resolver, function, name, receiver, model);
+		}
+
+		KSAnnotation viewsByIdMethod = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.VIEWS_BY_ID);
+		if (viewsByIdMethod != null) {
+			collectViewsByIdMethod(resolver, function, name, viewsByIdMethod, model);
 		}
 
 		KSAnnotation bean = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.BEAN);
@@ -458,8 +533,8 @@ public final class MvpHandler {
 	private void collectViewListener(Resolver resolver, KSFunctionDeclaration function, String name,
 		KSAnnotation annotation, boolean longClick, MvpModel model) {
 		String label = longClick ? "@LongClick" : "@Click";
-		if (model.kind != MvpModel.Kind.ACTIVITY && model.kind != MvpModel.Kind.FRAGMENT) {
-			model.errors.add(label + " is only supported in @EActivity or @EFragment components: method \'" + name + "\'");
+		if (!isViewHost(model.kind)) {
+			model.errors.add(label + " is only supported in @EActivity, @EFragment, @EView or @EViewGroup components: method \'" + name + "\'");
 			return;
 		}
 		List<MvpModel.Param> params = KspAnnotationUtils.methodParams(function);
@@ -532,8 +607,8 @@ public final class MvpHandler {
 	private void collectExtendedListener(Resolver resolver, KSFunctionDeclaration function, String name,
 			KSAnnotation annotation, MvpModel.ListenerKind kind, MvpModel model) {
 		String label = listenerLabel(kind);
-		if (model.kind != MvpModel.Kind.ACTIVITY && model.kind != MvpModel.Kind.FRAGMENT) {
-			model.errors.add(label + " is only supported in @EActivity or @EFragment components: method '" + name + "'");
+		if (!isViewHost(model.kind)) {
+			model.errors.add(label + " is only supported in @EActivity, @EFragment, @EView or @EViewGroup components: method '" + name + "'");
 			return;
 		}
 		List<MvpModel.Param> params = KspAnnotationUtils.methodParams(function);
@@ -1185,8 +1260,15 @@ public final class MvpHandler {
 		KSAnnotation bean = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.BEAN);
 		MvpModel.BeanTarget target = resolveBeanTarget(resolver, property.getType(), bean, name, model);
 		if (target != null) {
-			model.beans.add(new MvpModel.BeanInjection(MvpModel.BeanInjection.Form.FIELD, name, jvmField,
-					Collections.singletonList(target)));
+			MvpModel.BeanInjection injection = new MvpModel.BeanInjection(MvpModel.BeanInjection.Form.FIELD, name, jvmField,
+					Collections.singletonList(target));
+			if (KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.NON_CONFIGURATION_INSTANCE) != null) {
+				injection.assignOnlyIfNull = true;
+				if (!"Singleton".equals(beanScope(resolver, property.getType(), bean))) {
+					injection.rebindGeneratedName = target.beanGeneratedQualifiedName;
+				}
+			}
+			model.beans.add(injection);
 		}
 	}
 
@@ -2216,6 +2298,386 @@ public final class MvpHandler {
 			}
 		}
 		return -1;
+	}
+
+	private static boolean isViewHost(MvpModel.Kind kind) {
+		return kind == MvpModel.Kind.ACTIVITY || kind == MvpModel.Kind.FRAGMENT
+				|| kind == MvpModel.Kind.VIEW || kind == MvpModel.Kind.VIEW_GROUP;
+	}
+
+	private boolean extendsQualified(KSClassDeclaration declaration, String qualifiedName) {
+		return implementsInterface(declaration, qualifiedName);
+	}
+
+	private boolean isNativeFragmentType(Resolver resolver, String typeName) {
+		if (typeName == null) {
+			return true;
+		}
+		String base = typeName;
+		int lt = base.indexOf('<');
+		if (lt > 0) {
+			base = base.substring(0, lt);
+		}
+		if ("android.app.Fragment".equals(base)) {
+			return true;
+		}
+		KSClassDeclaration declaration = resolveClassDeclaration(resolver, base);
+		return declaration != null && implementsInterface(declaration, "android.app.Fragment");
+	}
+
+	private void collectViewsByIdField(Resolver resolver, KSPropertyDeclaration property, String name, boolean jvmField,
+			KSAnnotation annotation, MvpModel model) {
+		if (!isViewHost(model.kind) && model.kind != MvpModel.Kind.BEAN) {
+			model.errors.add("@ViewsById is only supported on an enhanced view component: property '" + name + "'");
+			return;
+		}
+		if (property.getModifiers().contains(Modifier.PRIVATE)) {
+			model.errors.add("@ViewsById property '" + name + "' must not be private");
+			return;
+		}
+		ViewCollectionType collection = viewCollectionType(resolver, property.getType(), model, "@ViewsById");
+		if (collection == null) {
+			return;
+		}
+		List<Integer> values = new ArrayList<>();
+		List<String> names = new ArrayList<>();
+		readViewIds(annotation, values, names);
+		if (values.isEmpty() && names.isEmpty()) {
+			model.errors.add("@ViewsById on '" + name + "' needs at least one R.id value or resName");
+			return;
+		}
+		model.viewsByIds.add(new MvpModel.ViewsByIdInjection(MvpModel.ViewsByIdInjection.Form.FIELD, name, jvmField,
+				collection.viewType, collection.array, values, names));
+	}
+
+	private void collectViewsByIdMethod(Resolver resolver, KSFunctionDeclaration function, String name, KSAnnotation annotation, MvpModel model) {
+		if (!isViewHost(model.kind) && model.kind != MvpModel.Kind.BEAN) {
+			model.errors.add("@ViewsById is only supported on an enhanced view component: method '" + name + "'");
+			return;
+		}
+		if (function.getParameters().size() != 1) {
+			model.errors.add("@ViewsById method '" + name + "' must have exactly one parameter");
+			return;
+		}
+		KSValueParameter param = function.getParameters().get(0);
+		ViewCollectionType collection = viewCollectionType(resolver, param.getType(), model, "@ViewsById");
+		if (collection == null) {
+			return;
+		}
+		List<Integer> values = new ArrayList<>();
+		List<String> names = new ArrayList<>();
+		readViewIds(annotation, values, names);
+		if (values.isEmpty() && names.isEmpty()) {
+			model.errors.add("@ViewsById on '" + name + "' needs at least one R.id value or resName");
+			return;
+		}
+		model.viewsByIds.add(new MvpModel.ViewsByIdInjection(MvpModel.ViewsByIdInjection.Form.METHOD, name, false,
+				collection.viewType, collection.array, values, names));
+	}
+
+	private void collectFromHtml(Resolver resolver, KSPropertyDeclaration property, String name, KSAnnotation annotation, boolean hasViewById, MvpModel model) {
+		if (!isViewHost(model.kind) && model.kind != MvpModel.Kind.BEAN) {
+			model.errors.add("@FromHtml is only supported on an enhanced view component: property '" + name + "'");
+			return;
+		}
+		if (!hasViewById) {
+			model.errors.add("@FromHtml on '" + name + "' must also be annotated with @ViewById");
+			return;
+		}
+		String typeName = KspAnnotationUtils.fullJavaTypeName(property.getType());
+		if (!isSubtypeOf(resolver, typeName, "android.widget.TextView") && !"android.widget.TextView".equals(typeName)) {
+			model.errors.add("@FromHtml can only be used on a TextView, not " + typeName);
+			return;
+		}
+		int resId = KspAnnotationUtils.intArg(annotation, "value", AnnotationNames.RES_DEFAULT);
+		String resName = KspAnnotationUtils.stringArg(annotation, "resName", "");
+		if (resId == AnnotationNames.RES_DEFAULT && (resName == null || resName.isEmpty())) {
+			resName = name;
+		}
+		model.fromHtml.add(new MvpModel.FromHtmlField(name, resId, resName));
+	}
+
+	private void collectNonConfiguration(Resolver resolver, KSPropertyDeclaration property, String name, boolean jvmField, MvpModel model) {
+		if (model.kind != MvpModel.Kind.ACTIVITY) {
+			model.errors.add("@NonConfigurationInstance can only be used in an @EActivity: property '" + name + "'");
+			return;
+		}
+		if (property.getModifiers().contains(Modifier.PRIVATE)) {
+			model.errors.add("@NonConfigurationInstance property '" + name + "' must not be private");
+			return;
+		}
+		if (!property.isMutable()) {
+			model.errors.add("@NonConfigurationInstance cannot be used on a final element");
+			return;
+		}
+		String rebind = null;
+		KSAnnotation bean = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.BEAN);
+		if (bean != null) {
+			String scope = beanScope(resolver, property.getType(), bean);
+			if (scope != null && !"Singleton".equals(scope)) {
+				MvpModel.BeanTarget target = resolveBeanTarget(resolver, property.getType(), bean, name, model);
+				if (target != null) {
+					rebind = target.beanGeneratedQualifiedName;
+				}
+			}
+		}
+		String typeName = KspAnnotationUtils.fullJavaTypeName(property.getType());
+		model.nonConfigFields.add(new MvpModel.NonConfigField(name, typeName, jvmField, rebind));
+	}
+
+	private void collectIgnoreWhen(KSFunctionDeclaration function, String name, KSAnnotation annotation, MvpModel model) {
+		if (model.kind != MvpModel.Kind.FRAGMENT) {
+			model.errors.add("@IgnoreWhen can only be used in an @EFragment: method '" + name + "'");
+			return;
+		}
+		if (function.getModifiers().contains(Modifier.PRIVATE)) {
+			model.errors.add("@IgnoreWhen method '" + name + "' must not be private");
+			return;
+		}
+		if (function.getModifiers().contains(Modifier.FINAL)) {
+			model.errors.add("@IgnoreWhen method '" + name + "' must not be final");
+			return;
+		}
+		if (!"void".equals(functionReturnType(function))) {
+			model.errors.add("@IgnoreWhen can only be used on a method with a void return type");
+			return;
+		}
+		String state = KspAnnotationUtils.enumArg(annotation, "value", "DETACHED");
+		if ("VIEW_DESTROYED".equals(state)) {
+			model.needsViewDestroyed = true;
+		}
+		boolean wrapped = false;
+		for (MvpModel.MethodInfo method : model.uiThreads) {
+			if (method.name.equals(name)) {
+				method.ignoreWhenState = state;
+				wrapped = true;
+			}
+		}
+		for (MvpModel.MethodInfo method : model.backgrounds) {
+			if (method.name.equals(name)) {
+				method.ignoreWhenState = state;
+				wrapped = true;
+			}
+		}
+		if (!wrapped) {
+			model.ignoreWhens.add(new MvpModel.IgnoreWhenMethod(name, state, KspAnnotationUtils.methodParams(function), methodVisibility(function)));
+		}
+	}
+
+	private void collectReceiver(Resolver resolver, KSFunctionDeclaration function, String name, KSAnnotation annotation, MvpModel model) {
+		if (model.kind != MvpModel.Kind.ACTIVITY && model.kind != MvpModel.Kind.FRAGMENT && model.kind != MvpModel.Kind.SERVICE
+				&& model.kind != MvpModel.Kind.VIEW && model.kind != MvpModel.Kind.VIEW_GROUP) {
+			model.errors.add("@Receiver can only be used in an @EActivity, @EFragment, @EService, @EView or @EViewGroup: method '" + name + "'");
+			return;
+		}
+		if (function.getModifiers().contains(Modifier.PRIVATE)) {
+			model.errors.add("@Receiver method '" + name + "' must not be private");
+			return;
+		}
+		if (!"void".equals(functionReturnType(function))) {
+			model.errors.add("@Receiver can only be used on a method with a void return type");
+			return;
+		}
+		for (MvpModel.ReceiverBinding existing : model.receivers) {
+			if (existing.methodName.equals(name)) {
+				model.errors.add("@Receiver method '" + name + "' is declared more than once");
+				return;
+			}
+		}
+		String registerAt = KspAnnotationUtils.enumArg(annotation, "registerAt", "OnCreateOnDestroy");
+		if (!validRegisterAt(model.kind, registerAt)) {
+			model.errors.add("The parameter registerAt of @Receiver in " + model.kind + " can only be one of the values allowed for that component, not " + registerAt);
+			return;
+		}
+		List<String> actions = new ArrayList<>();
+		for (String action : KspAnnotationUtils.stringArrayArg(annotation, "actions")) {
+			if (action != null && !action.isEmpty()) {
+				actions.add(action);
+			}
+		}
+		if (actions.isEmpty()) {
+			model.errors.add("@Receiver method '" + name + "' must declare at least one action");
+			return;
+		}
+		List<String> schemes = new ArrayList<>();
+		for (String scheme : KspAnnotationUtils.stringArrayArg(annotation, "dataSchemes")) {
+			if (scheme != null && !scheme.isEmpty()) {
+				schemes.add(scheme);
+			}
+		}
+		boolean local = KspAnnotationUtils.booleanArg(annotation, "local", false);
+		String localManager = null;
+		if (local) {
+			localManager = localBroadcastManager(resolver);
+			if (localManager == null) {
+				model.errors.add("@Receiver(local = true) on '" + name + "' requires LocalBroadcastManager on the classpath");
+				return;
+			}
+		}
+		List<MvpModel.ReceiverArg> args = new ArrayList<>();
+		boolean unchecked = false;
+		for (KSValueParameter param : function.getParameters()) {
+			String paramName = param.getName().asString();
+			String typeName = KspAnnotationUtils.fullJavaTypeName(param.getType());
+			KSAnnotation extra = findParamAnnotation(param, AnnotationNames.RECEIVER_EXTRA);
+			if (extra != null) {
+				String key = KspAnnotationUtils.stringArg(extra, "value", "");
+				if (key == null || key.isEmpty()) {
+					key = paramName;
+				}
+				String constant = KspAnnotationUtils.extraKeyConstant(key);
+				addReceiverExtraConstant(model, constant, key);
+				boolean previous = model.activityResultUnchecked;
+				String read = bundleReadExpr(resolver, model, typeName, constant);
+				if (!previous) {
+					unchecked |= model.activityResultUnchecked;
+					model.activityResultUnchecked = false;
+				} else {
+					unchecked |= typeName.contains("<");
+				}
+				args.add(new MvpModel.ReceiverArg(MvpModel.ReceiverArg.Role.EXTRA, paramName, typeName, read));
+			} else if ("android.content.Context".equals(typeName)) {
+				args.add(new MvpModel.ReceiverArg(MvpModel.ReceiverArg.Role.CONTEXT, paramName, typeName, null));
+			} else if ("android.content.Intent".equals(typeName)) {
+				args.add(new MvpModel.ReceiverArg(MvpModel.ReceiverArg.Role.INTENT, paramName, typeName, null));
+			} else {
+				model.errors.add("@Receiver method '" + name + "' parameter '" + paramName + "' must be a Context, an Intent, or annotated with @Receiver.Extra");
+				return;
+			}
+		}
+		model.receivers.add(new MvpModel.ReceiverBinding(name, registerAt, local, localManager, actions, schemes, args, unchecked));
+	}
+
+	private static boolean validRegisterAt(MvpModel.Kind kind, String registerAt) {
+		if (kind == MvpModel.Kind.VIEW || kind == MvpModel.Kind.VIEW_GROUP) {
+			return "OnAttachOnDetach".equals(registerAt);
+		}
+		if (kind == MvpModel.Kind.SERVICE) {
+			return "OnCreateOnDestroy".equals(registerAt);
+		}
+		if (kind == MvpModel.Kind.FRAGMENT) {
+			return "OnCreateOnDestroy".equals(registerAt) || "OnStartOnStop".equals(registerAt)
+					|| "OnResumeOnPause".equals(registerAt) || "OnAttachOnDetach".equals(registerAt);
+		}
+		return "OnCreateOnDestroy".equals(registerAt) || "OnStartOnStop".equals(registerAt) || "OnResumeOnPause".equals(registerAt);
+	}
+
+	private String localBroadcastManager(Resolver resolver) {
+		if (classPresent(resolver, "androidx.localbroadcastmanager.content.LocalBroadcastManager")) {
+			return "androidx.localbroadcastmanager.content.LocalBroadcastManager";
+		}
+		if (classPresent(resolver, "android.support.v4.content.LocalBroadcastManager")) {
+			return "android.support.v4.content.LocalBroadcastManager";
+		}
+		return null;
+	}
+
+	private boolean classPresent(Resolver resolver, String qualifiedName) {
+		try {
+			return resolver.getClassDeclarationByName(resolver.getKSNameFromString(qualifiedName)) != null;
+		} catch (Exception e) {
+			return false;
+		}
+	}
+
+	private void addReceiverExtraConstant(MvpModel model, String constantName, String key) {
+		for (MvpModel.ExtraConstant existing : model.receiverExtraConstants) {
+			if (existing.constantName.equals(constantName)) {
+				return;
+			}
+		}
+		for (MvpModel.ExtraConstant existing : model.oarExtraConstants) {
+			if (existing.constantName.equals(constantName)) {
+				return;
+			}
+		}
+		for (MvpModel.FieldInjection extra : model.extras) {
+			if (KspAnnotationUtils.extraKeyConstant(extra.propertyName).equals(constantName)) {
+				return;
+			}
+		}
+		model.receiverExtraConstants.add(new MvpModel.ExtraConstant(constantName, key));
+	}
+
+	private static KSAnnotation findParamAnnotation(KSValueParameter param, String qualifiedName) {
+		for (KSAnnotation annotation : SequencesKt.toList(param.getAnnotations())) {
+			if (qualifiedName.equals(KspAnnotationUtils.safeQualifiedName(annotation))) {
+				return annotation;
+			}
+		}
+		return null;
+	}
+
+	private String beanScope(Resolver resolver, KSTypeReference elementType, KSAnnotation bean) {
+		KSClassDeclaration beanDecl = null;
+		Object value = bean != null ? KspAnnotationUtils.argValue(bean, "value") : null;
+		if (value instanceof KSTypeReference) {
+			try {
+				KSType type = ((KSTypeReference) value).resolve();
+				if (type.getDeclaration() instanceof KSClassDeclaration) {
+					beanDecl = (KSClassDeclaration) type.getDeclaration();
+				}
+			} catch (Exception ignored) {
+				beanDecl = null;
+			}
+		}
+		if (beanDecl == null) {
+			beanDecl = resolveClassDeclaration(resolver, KspAnnotationUtils.typeName(elementType));
+		}
+		if (beanDecl == null) {
+			return null;
+		}
+		KSAnnotation eBean = KspAnnotationUtils.findAnnotation(beanDecl.getAnnotations(), AnnotationNames.E_BEAN);
+		if (eBean == null) {
+			return null;
+		}
+		return KspAnnotationUtils.enumArg(eBean, "scope", "Default");
+	}
+
+	private ViewCollectionType viewCollectionType(Resolver resolver, KSTypeReference typeRef, MvpModel model, String label) {
+		String full = KspAnnotationUtils.fullJavaTypeName(typeRef);
+		boolean array = full.endsWith("[]");
+		String viewType;
+		if (array) {
+			viewType = full.substring(0, full.length() - 2);
+		} else {
+			String raw = KspAnnotationUtils.typeName(typeRef);
+			if (!"java.util.List".equals(raw) && !"java.util.ArrayList".equals(raw) && !"java.util.Collection".equals(raw)) {
+				model.errors.add(label + " can only be used on a java.util.List of Views or a View array, not " + full);
+				return null;
+			}
+			int lt = full.indexOf('<');
+			int gt = full.lastIndexOf('>');
+			viewType = lt >= 0 && gt > lt ? full.substring(lt + 1, gt).trim() : "android.view.View";
+		}
+		if (!"android.view.View".equals(viewType) && !isViewSubtype(resolver, viewType)) {
+			model.errors.add(label + " element type must extend android.view.View, not " + viewType);
+			return null;
+		}
+		return new ViewCollectionType(viewType, array);
+	}
+
+	private static void readViewIds(KSAnnotation annotation, List<Integer> values, List<String> names) {
+		for (Integer id : KspAnnotationUtils.intArrayArg(annotation, "value")) {
+			if (id != null && id.intValue() != AnnotationNames.RES_DEFAULT) {
+				values.add(id);
+			}
+		}
+		for (String resName : KspAnnotationUtils.stringArrayArg(annotation, "resName")) {
+			if (resName != null && !resName.isEmpty()) {
+				names.add(resName);
+			}
+		}
+	}
+
+	private static final class ViewCollectionType {
+		final String viewType;
+		final boolean array;
+
+		ViewCollectionType(String viewType, boolean array) {
+			this.viewType = viewType;
+			this.array = array;
+		}
 	}
 
 	private KSClassDeclaration resolveClassDeclaration(Resolver resolver, String typeName) {

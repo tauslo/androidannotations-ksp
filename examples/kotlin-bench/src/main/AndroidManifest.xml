@@ -18,6 +18,10 @@
         </activity>
         <service
             android:name=".bench.BenchService_" />
+        <service
+            android:name="org.androidannotations.bench.BenchReceiverService_" />
+        <activity android:name="org.androidannotations.bench.BenchP1Activity_" />
+        <activity android:name="org.androidannotations.bench.BenchAndroidXHost_" />
     </application>
 
 </manifest>

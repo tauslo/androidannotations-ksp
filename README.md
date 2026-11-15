@@ -17,7 +17,7 @@ Goal: replace production APT/kapt AA. Long-running work — **resume from the di
 
 - Playbook: [`docs/ksp-production-parity/PLAYBOOK.md`](docs/ksp-production-parity/PLAYBOOK.md)
 - Execution log (read `Next` first): [`docs/ksp-production-parity/EXECUTION_LOG.md`](docs/ksp-production-parity/EXECUTION_LOG.md)
-- Checklists: [P0a](docs/ksp-production-parity/CHECKLIST_P0a.md) (done) · [P0b](docs/ksp-production-parity/CHECKLIST_P0b.md) (current) · [P1](docs/ksp-production-parity/CHECKLIST_P1.md) · [P2](docs/ksp-production-parity/CHECKLIST_P2.md) · [Plugins](docs/ksp-production-parity/CHECKLIST_PLUGINS.md) · [Perf](docs/ksp-production-parity/CHECKLIST_PERF.md)
+- Checklists: [P0a](docs/ksp-production-parity/CHECKLIST_P0a.md) (done) · [P0b](docs/ksp-production-parity/CHECKLIST_P0b.md) (done) · [P1](docs/ksp-production-parity/CHECKLIST_P1.md) (prefs, listeners, ViewsById, FromHtml, dynamic Receiver, EView/EViewGroup, IgnoreWhen, NonConfigurationInstance, WindowFeature/Fullscreen, AndroidX fragment lookup; MovieRes still open) · [P2](docs/ksp-production-parity/CHECKLIST_P2.md) (current) · [Plugins](docs/ksp-production-parity/CHECKLIST_PLUGINS.md) · [Perf](docs/ksp-production-parity/CHECKLIST_PERF.md)
 
 Upstream project status (unchanged from original):
 

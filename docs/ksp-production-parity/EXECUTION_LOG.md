@@ -1053,3 +1053,44 @@
 
 ### Next
 1. P1：`@ViewsById`、`@FromHtml`、动态 `@Receiver`（及 receiver 方法上的 `@Extra`）
+
+## Session 2026-11-16 — P1 remaining: views, receiver, custom views
+
+- **Agent**: Cursor Grok
+- **Goal slice**: P1 剩余项 — `@ViewsById`、`@FromHtml`、`@EView`/`@EViewGroup`、`@IgnoreWhen`、`@NonConfigurationInstance`、动态 `@Receiver`、`@WindowFeature`/`@Fullscreen`、AndroidX Fragment 查找
+- **Git**: branch=`ksp/main`，local only, not push
+- **Status**: done（`@MovieRes` 明确跳过；不 push）
+
+### Done
+- `@ViewsById`：`List`/`ArrayList`/`Collection` 注入 `ArrayList`，数组走 `toArray`；Activity/Fragment/Bean/`@EView` 可用
+- `@FromHtml`：同一字段已有 `@ViewById` 且是 `TextView` 时，注入后 `setText(Html.fromHtml(context.getString(...)))`
+- `@EView` / `@EViewGroup`：`Kind.VIEW` / `VIEW_GROUP`；拷贝非 private 构造器，`init_` + `onFinishInflate` + 静态 `build`；ViewGroup 在 `alreadyInflated_` 里 `inflate(getContext(), layout, this)`。View 上复用 `@Click` / `@AfterViews` / `@Bean`，ViewGroup 上复用 `@ViewById` / `@AfterViews`
+- `@IgnoreWhen`：仅 Fragment。单独方法生成守卫；与 `@UiThread` / `@Background` 同方法时，守卫包在已提交任务内部的 `super` 调用外（与 APT handler 顺序一致）
+- `@NonConfigurationInstance`：`init_` 里先从 holder 恢复，再注入 `@Bean`；非 null 跳过；非 Singleton `@Bean` 调用 `rebind`。`getLastNonConfigurationInstance` / `onRetainNonConfigurationInstance`（FragmentActivity 用 Custom 变体）
+- `@WindowFeature` / `@Fullscreen`：`init_` 开头 `FLAG_FULLSCREEN` 与 `requestWindowFeature`（AppCompat 用 `supportRequestWindowFeature`）
+- 动态 `@Receiver`：Activity OnCreate 前注册 / onDestroy 前反注册；OnResume 在 super 之后；Fragment OnAttach 在 super 之后；Service onCreate 在 super 之后；View `onAttachedToWindow` 在 super 之后。参数 `@Receiver.Extra` 读 extras。无 permission、无 exported 标志（与 APT 相同）
+- AndroidX：字段类型不是 `android.app.Fragment` 时，Activity 用 `getSupportFragmentManager()`。`RECOGNIZED_NOT_IMPLEMENTED` 填入仍未实现的注解（含 `@MovieRes`）
+
+### Changed paths
+- `androidannotations-ksp`：`AnnotationNames`、`MvpModel`、`handler/MvpHandler`、`generate/MvpJavaGenerator`、`AndroidAnnotationsSymbolProcessor`
+- `examples/kotlin-bench`：`BenchP1Activity`、`BenchIgnoreFragment`、`BenchCustomView`、`BenchCustomGroup`、`BenchReceiverService`、`BenchAndroidXHost`、布局 `bench_p1.xml` / `bench_row.xml`、`values/bench_p1.xml`、manifest、`androidx.fragment`、`android.useAndroidX=true`
+- `docs/ksp-production-parity`：CHECKLIST_P1、KNOWN_DEVIATIONS、PLAYBOOK、EXECUTION_LOG；根 `README.md`
+
+### Verify
+- [x] `mvnw -pl androidannotations-core/androidannotations-ksp -am install`（skipTests）BUILD SUCCESS（含构造器 FQN 修正后的第二次安装）
+- [x] `examples/kotlin-bench assembleDebug -Paa.processor=ksp`：`kspDebugKotlin` 成功，`generated 238 class(es)`（232 + 6）；`:compileDebugKotlin` EXIT=1，仅既有 9 个 `lateinit` 原始类型错误，无新增 Kotlin 错误
+- [x] 临时拿掉这 9 个错误后 `:compileDebugJavaWithJavac` 对新建的 6 个生成类零错误（随后已把 fixture 改回）。同一次 javac 还报出既有 `BenchActivity113_` setter 与 `BenchBean101_` 未限定 `OnViewChangedNotifier`，它们在 Kotlin 失败时到不了 javac，不是本切片引入的
+- [x] 生成片段：`BenchP1Activity_` 含 `ArrayList` + `toArray`、`Html.fromHtml`、`FLAG_FULLSCREEN`、`requestWindowFeature(1)`、`NonConfigurationInstancesHolder`、`if (this.keptBean == null)`、`rebind`、`registerReceiver` / `unregisterReceiver`、`getInt(STATE_EXTRA)`、`getFragmentManager()`
+- [x] `BenchIgnoreFragment_`：`@UiThread` runnable 内 `if (!viewDestroyed_)`，`@Background` 内 `getActivity() != null`，`onAttach` 里 `addAction` + `registerReceiver`
+- [x] `BenchCustomView_`：`init_`、`onFinishInflate`、`build`、`setOnClickListener`、`getInstance_(getContext()`、`onAttachedToWindow` 注册。`BenchCustomGroup_`：`inflate(getContext(), R.layout.bench_row, this)`
+- [x] `BenchAndroidXHost_`：`getSupportFragmentManager().findFragmentById` / `findFragmentByTag`
+- [x] APT 抽查：注册时机与 ReceiverHandler / holder 一致；IgnoreWhen 在 UiThread/Background 任务内部；动态接收器不带 permission/exported
+
+### Blockers
+- none（assembleDebug 的 EXIT=1 是既有 fixture，见 KNOWN_DEVIATIONS #5）
+- `@MovieRes` 未做
+
+### Next
+1. P2：按目标工程用量挑选 Preference 屏、SeekBar/ViewPager/Key、WakeLock/Trace/Suppose、DataBinding，或 `@EProvider` / `@EReceiver` / `@EIntentService`
+2. 若要补 AndroidX Fragment 上的动态 `@Receiver`，生成 `onAttach(android.content.Context)` 而不是 `onAttach(Activity)`
+

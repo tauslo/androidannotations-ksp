@@ -52,6 +52,7 @@ allOpen {
 def AAVersion = "4.9.0-SNAPSHOT"
 
 dependencies {
+    implementation "androidx.fragment:fragment:1.8.5"
     implementation "org.androidannotations:androidannotations-api:$AAVersion"
     if (useKsp) {
         ksp "org.androidannotations:androidannotations-ksp:$AAVersion"
