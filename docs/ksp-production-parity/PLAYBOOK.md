@@ -188,6 +188,7 @@ cd ..\kotlin-bench
 .\gradlew.bat assembleDebug "-Paa.processor=ksp"
 .\gradlew.bat assembleDebug "-Paa.processor=kapt"
 # 门禁（KSP vs kapt golden，脚本已入库；依赖上面两个 assemble 的产物）
+# 若 `build/` 已被删（如冷测速后），先重生 GT：`.\gradlew.bat kaptDebugKotlin "-Paa.processor=kapt"`（exit=1 是预期—3 个已知 APT 验证错误针对 P1/P2 fixture，251 个文件已写完）
 python tools\gt_cmp_all.py         # 全量：期望 MISMATCHES: 0 / ALL_OK
 python tools\normdiff_all.py <File> # 单文件 region diff（可带/不带 _ 或 .java）
 ```

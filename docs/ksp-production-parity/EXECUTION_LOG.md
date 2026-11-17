@@ -1418,6 +1418,7 @@
 4. 失败点：`:kspDebugKotlin` 完整完成（生成 251 类）→ `:compileDebugKotlin FAILED`，恰好 9 个既有 fixture lateinit 错误（KNOWN_DEVIATIONS #5，保持不动）；墙钟覆盖冷 Gradle + KSP 生成 + Kotlin 全量分析/代码生成，尾部 javac/dex/package 未执行
 5. 日志留存：`C:\temp\cold17_run_{1,2,3}.log`（各 ~2506 行）、结果 `C:\temp\cold_bench_jdk17_results.txt`、驱动脚本 `C:\temp\cold_bench17.py`（可复用）；JDK 21 轮日志 `C:\temp\cold_run_{1,2,3}.log`
 6. BENCHMARK.md 末尾追加节「Cold re-measurement (2026-11-17, after P2 close-out)」；CHECKLIST_PERF 验收项打勾 + 第 12 行同步
+7. 门禁复跑：冷构建已删 `build/`、kapt GT 一并消失 → `.\gradlew.bat kaptDebugKotlin "-Paa.processor=kapt"` 重生（exit=1 是预期：P1/P2 fixture 上 3 个已知 APT 验证错误—私有 stub 元素的 `@IntArrayRes` / `@NonConfigurationInstance`、`BeforeTextChange(view)`；失败前 251 个 GT 文件已写完）→ **ALL_OK 251/251**；PLAYBOOK §5 补 GT 重生注解
 
 ### Skipped
 - 不 push；KNOWN_DEVIATIONS 无变化（本切片纯测量）
@@ -1433,6 +1434,7 @@
 - [x] 失败点 = #5 既有 9 个 fixture 错误（日志 grep lateinit count=9）
 - [x] JDK：daemon JVM metadata 确认 Corretto 17.0.21 × 3
 - [x] 共享管段中位 79.39 s ≤ 锁定基线完整构建 100.55 s，语料 +25%（200→251）→ 无显著回退
+- [x] 门禁（GT 重生后）：MISMATCHES: 0 / **ALL_OK** 251/251
 
 ### Blockers
 - none（阻塞 assembleDebug 完整成功的仅为既有 #5 fixture 错误，明确不在本切片范围）
