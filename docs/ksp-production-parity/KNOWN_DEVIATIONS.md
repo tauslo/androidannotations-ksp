@@ -45,7 +45,7 @@
 仍然不会失效、或只在更宽的一次编译里才会跟上的情况：
 
 1. **`R` 与 `AndroidManifest.xml`。** 它们由环境直接读文件，不是符号上的 `KSFile`。改资源或 manifest 不会单靠这条依赖让 `*_` 重生。
-2. **跨模块 / classpath 字节码。** `getContainingFile()` 为 null。已编译的 `@EBean` / `@EApplication` / `@SharedPref` 被别的模块注入时，注入方生成类不会因此失效。
+2. **跨模块 / classpath 字节码。** `getContainingFile()` 为 null，`Dependencies` 无法为已编译的 `@EBean` / `@EApplication` / `@SharedPref` 登记 originating files。但「注入方生成类不会因此失效」已被实验推翻：KSP 2.1.10-1.0.31 维护 classpath 快照，变更类**被模块任一源文件引用**时回退为把该模块全部源文件标脏（含无 AA 注解的普通类），AA 输出全量重生 → 生成类不会陈旧；未被引用则 0% 重处理（引用感知）。代价是粗粒度：依赖 jar 里一个 bean 变更即消费模块 AA 全量重处理（kotlin-bench 尺度 = 251 类型全部，而非仅注入方）。双模块 JVM 工程验证（`C:\temp\ksp-crossmod`，可复现）：改 `@EBean` scope 后 `kspDirtySet.log` 显示 CP changes `[BenchCrossBean, BenchCrossBean_]`、Dirty = 模块内全部 4 个源文件（100%，含无 AA 注解普通类）、注入方 `ConsumerActivity_` 重生；新增未被引用类时 Dirty ∅。
 3. **当前没有 AA 成员注解的父类。** 抽取器会走过它，但不登记。之后在这个父类上第一次加上注解，子类生成类不会失效，直到一次能重新看到该注解的编译。
 4. **同一输出的多个 originating files 会连带重处理。** 只改 `BenchBean001.kt` 时，`BenchActivity112_` 会重生；KSP 还会再处理该 Activity 登记的其他 bean 文件，于是 `BenchBean002_` / `003_` / `004_` / `101_` 以及注入 `BenchBean101` 的 `BenchProvider_` 一并重生。无关 Activity 不会。
 

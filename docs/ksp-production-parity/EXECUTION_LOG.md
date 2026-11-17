@@ -1442,3 +1442,40 @@
 ### Next
 1. 跨模块 `@Bean` 失效策略（KNOWN_DEVIATIONS 增量 #2：无 KSFile 的字节码不使注入方失效）
 2. ORMLite / REST-Spring 待业务确认（旧工程按需另开一期）；`@HierarchyViewerSupport` 明确不做
+## Session 2026-11-17 — cross-module @Bean invalidation: dual-module JVM experiment (prediction overturned)
+
+- **Agent**: Codex
+- **Goal slice**: 跨模块 `@Bean` 增量失效策略（上一 session Next #1 / KNOWN_DEVIATIONS 增量 #2）：验证依赖已编译 `*_` 字节码时注入方生成类是否会陈旧
+- **Git**: branch=`ksp/main`，local only, not push；本 commit 仅 docs（KNOWN_DEVIATIONS.md + CHECKLIST_PERF.md + EXECUTION_LOG.md），零代码改动
+- **Status**: done — 原断言「注入方生成类不会因此失效」被实验推翻：KSP 有引用感知的粗粒度回退，消费方不会静默陈旧
+
+### Done
+1. 建成纯 JVM 双模块实验工程 `C:\temp\ksp-crossmod`（可复现；重建脚本 `C:\temp\mk_ksp_crossmod.py` / `mk_stubs.py` / `mk_stubs2.py` / `mk_builds.py`）：`beanlib`（被依赖方：@EBean `BenchCrossBean` + 普通类 `PlainHelper`）+ `app`（消费方：`ConsumerActivity`（@EActivity + `@Bean` 注入）、`UnrelatedActivity`、`PlainConsumerActivity`、无 AA 注解普通类 `PlainNote`）；KSP 2.1.10-1.0.31 / Kotlin 2.1.10 / AA 4.9.0-SNAPSHOT（mavenLocal）；两模块均需 allopen 插件（Kotlin final 类须 open 才能被生成 Java extends）
+2. `-Pksp.incremental.log=true` 下跑完 5 轮实验，全部有 `build\kspCaches\main\logs\kspDirtySet.log` 佐证：
+   - R1 基线：app:classes BUILD SUCCESSFUL，`ConsumerActivity_` hash D316C25AD48C8D94
+   - R2a bean scope Singleton→Default（被消费方引用）：CP changes `[BenchCrossBean, BenchCrossBean_]`（Known 细粒度路径），Dirty = {ConsumerActivity.kt} 100%，`ConsumerActivity_` 重生（hash → 3CBC099E）→ **消费方被重生**，推翻「静默陈旧」预测
+   - R2d bean scope Default→Singleton：CP changes 同上，Dirty = 模块内全部源文件 100%，`UnrelatedActivity_` 也被重写（mtime 变、hash 不变 1732235BC56056E7）→ 回退粒度粗：**模块内全部源文件**
+   - R2e beanlib 新增普通类 `PlainHelper`（未被引用）：CP changes `[PlainHelper]`，Dirty ∅ 0% → 引用感知，零重处理
+   - R2f `PlainHelper.value()` 1→2（现被 `PlainConsumerActivity` 引用）：模块内 3 个源文件全脏 100%，行为与「被引用类变更 → 全模块脏」一致（该轮 CP changes 列为空，机制未定：或 Unknown diff 回退、或日志只列新增类）
+   - R2g app 先加 `PlainNote.kt`（无 AA 注解、无输出）建基线，再 bean scope→Default：Dirty = 模块内全部 4 个源文件 100%，**含 `PlainNote.kt`** → 「全部源文件」粒度确认包含无 AA 注解普通类
+3. 二进制扫描证据：app kspCaches 的 classLookups/symbolLookups `.tab` 里无任何 BenchCrossBean/ConsumerActivity 字符串（仅 `classpath-structure.bin` 有类名）→ Kotlin 消费方在反向 lookup 缓存里没有字符串可见登记，但 dirty 标记仍发生 → 回退机制走另一路径（classpath snapshot diff），与字节码分析一致
+4. KNOWN_DEVIATIONS 增量 #2 改写为已验证行为 + 实验证据；CHECKLIST_PERF「Incremental KSP」跨模块 `@Bean` 项打勾并按实际措辞改写
+
+### Skipped
+- 不 push；零代码改动 → 不需要 mvnw install / kotlin-bench 门禁（门禁仅在改代码时跑）
+- 未在 kotlin-bench 251 类型全量语料上重跑跨模块增量场景：双模块实验已证明机制，bench 尺度只会量化「全模块重处理」代价（与 R2d/R2g 的全模块 dirty 定性一致）
+
+### Changed paths
+- docs：`KNOWN_DEVIATIONS.md`（改写增量 #2）、`CHECKLIST_PERF.md`（打勾 + 改写跨模块 @Bean 项）、`EXECUTION_LOG.md`（追加本条目）
+
+### Verify
+- [x] R2a：被引用类变更 → 注入方生成类重生（hash 变化），无陈旧
+- [x] R2d/R2g：回退粒度 = 模块内全部源文件（含无 AA 注解普通类，100%）
+- [x] R2e：未被引用类变更 → Dirty ∅ 0%
+- [x] 各轮 dirty 集均有 `kspDirtySet.log` 佐证（日志持久化于 `C:\temp\ksp-crossmod\*\build\kspCaches\main\logs\`）
+
+### Blockers
+- none
+
+### Next
+1. ORMLite / REST-Spring 待业务确认（旧工程按需另开一期）；`@HierarchyViewerSupport` 明确不做（KSP parity 主线全部关闭，仅剩外部业务决策）

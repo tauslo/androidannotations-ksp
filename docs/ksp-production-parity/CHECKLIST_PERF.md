@@ -28,7 +28,7 @@
 ## Incremental KSP
 
 - [x] `Dependencies` 声明本轮能廉价拿到的 originating files。非聚合。包含：注解类自己的源文件；当前带有 AndroidAnnotations 成员/参数注解的父类源文件（有 `KSFile` 时）；本编译里已经解析到的 `@Bean` / `@App` / `@Pref` 目标源文件；写进外层生成类的嵌套 `@EBean` / `@SharedPref` 源文件（同文件会去重）。仍不包含：`R` / `AndroidManifest.xml`、没有 `KSFile` 的跨模块字节码、当前没有 AA 成员注解的父类。见 `KNOWN_DEVIATIONS.md` 与 `BENCHMARK.md`
-- [ ] 跨模块 `@Bean`：依赖已编译的 `*_` 字节码时的增量失效策略。classpath 类型 `getContainingFile()` 为 null，本轮故意不登记
+- [x] 跨模块 `@Bean`：依赖已编译的 `*_` 字节码时的增量失效策略。classpath 类型 `getContainingFile()` 为 null，不登记 originating files；但 KSP classpath 快照 + 引用感知回退保证消费方必然重生：变更类被模块任一源文件引用 → 模块全部源文件 dirty（含无 AA 注解普通类）、AA 输出全量重生、无陈旧；未被引用 → 0% 重处理。代价 = 粗粒度全模块重处理。2026-11-17 双模块 JVM 工程验证（`kspDirtySet.log` 数据，细节见 `EXECUTION_LOG.md`）
 - [x] 改 1 个 Activity：只重生相关 `*_`，不触碰无关类。3 次改 `BenchActivity001.kt` 都是 `generated 1`，`BenchActivity001_` 更新，`BenchActivity002_` 不变
 - [x] 负例：改父类注解成员 → 子类生成类失效并重生。临时两个文件（未入库）：`BenchInheritBase` 的 `@Extra` 被子类 `BenchInheritChild` 收进 `IntentBuilder_`；只改父类后 `generated 1`，只重写 `BenchInheritChild_`
 - [x] 负例：改 `@EBean` → 注入方 Activity 生成类失效。只改 `BenchBean001.kt` 后 `BenchActivity112_` 重写（`generated 7`）。同一次还重写了该 Activity 的其他 `@Bean` 目标（002/003/004/101）以及注入 `BenchBean101` 的 `BenchProvider_`。KSP 会把失效输出的全部 originating files 再处理一遍，所以会连带这些类；无关 Activity 不在变更列表里
