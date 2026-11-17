@@ -1479,3 +1479,33 @@
 
 ### Next
 1. ORMLite / REST-Spring 待业务确认（旧工程按需另开一期）；`@HierarchyViewerSupport` 明确不做（KSP parity 主线全部关闭，仅剩外部业务决策）
+## Session 2026-11-17 — closing audit: checklist reconciliation + final gate ALL_OK at HEAD
+
+- **Agent**: Codex
+- **Goal slice**: 主线切片清空后的收尾审计（无新代码切片；Next 仅剩外部业务决策）
+- **Git**: branch=`ksp/main`，local only, not push；本 commit 仅 docs（CHECKLIST_PERF.md + EXECUTION_LOG.md），零代码改动
+- **Status**: done — KSP parity 工作流关闭：Acceptance 全部打勾，最终门禁 ALL_OK 251/251（HEAD fd114022）
+
+### Done
+1. CHECKLIST_PERF 剩余未勾项核对：
+   - 「场景至少三条」打勾：冷全量（assemble ×3 中位 79.39 s + :kspDebugKotlin ×1 110.9 s）、热全量（--rerun-tasks ×1 20.48 s）、改 1 文件增量（×3 中位 8.14 s）三场景数据齐备，见 `BENCHMARK.md`
+   - 「每场景 ≥3 次」与「分别记录（含 kapt 对照）」保持未勾：标准未完全满足（冷 :kspDebugKotlin / 热全量各仅 1 次；无新 assemble 拆分与 kapt 对照），Acceptance 已按现有数据关闭，两项为可选测量卫生，不再追
+   - 「可选：生成脚本入库」保持未勾（非阻塞）
+2. HEAD fd114022 最终门禁：`python tools\gt_cmp_all.py` → GT 251 / missing [] / KSP-only [] / **MISMATCHES: 0 / ALL_OK**（两侧生成物 251/251 在位）
+
+### Skipped
+- 不 push；零代码改动 → 不需要 mvnw install
+- 未补测量轮次（Acceptance 已绿，边际收益低）
+
+### Changed paths
+- docs：`CHECKLIST_PERF.md`（打勾「场景至少三条」）、`EXECUTION_LOG.md`（追加本条目）
+
+### Verify
+- [x] 最终门禁 ALL_OK 251/251（HEAD fd114022）
+- [x] Acceptance 节全部打勾；剩余未勾项 = 3 个可选/测量卫生项，原因已注明
+
+### Blockers
+- none
+
+### Next
+- **KSP parity 工作流关闭**。剩余外部决策：ORMLite / REST-Spring 待业务确认（旧工程按需另开一期）；`@HierarchyViewerSupport` 明确不做。无待执行切片；新需求按 PLAYBOOK §6 开新 session

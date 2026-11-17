@@ -9,7 +9,7 @@
 ## Measurement hygiene
 
 - [x] 固定工具链：Kotlin 2.1.10 / KSP 2.1.10-1.0.31 / AGP 8.7.3 / Gradle 8.11.1 / JDK 17（本轮 `java -version` 为 Corretto 17.0.21，未改版本）
-- [ ] 场景至少三条：冷全量、热全量、`改 1 个源文件` 增量。冷全量 assemble 于 2026-11-17 重跑 3 次（中位 79.39 s；EXIT=1 @ `:compileDebugKotlin`，原因为既有 9 个 fixture 错误），见 `BENCHMARK.md` 新节。另有 1 次冷 `:kspDebugKotlin`（墙钟 110.9 s）和 1 次热全量 `--rerun-tasks`（墙钟 20.48 s）。改 1 个 Activity 已有 3 次中位数（墙钟 8.14 s），见 `BENCHMARK.md`
+- [x] 场景至少三条：冷全量、热全量、`改 1 个源文件` 增量。冷全量 assemble 于 2026-11-17 重跑 3 次（中位 79.39 s；EXIT=1 @ `:compileDebugKotlin`，原因为既有 9 个 fixture 错误），见 `BENCHMARK.md` 新节。另有 1 次冷 `:kspDebugKotlin`（墙钟 110.9 s）和 1 次热全量 `--rerun-tasks`（墙钟 20.48 s）。改 1 个 Activity 已有 3 次中位数（墙钟 8.14 s），见 `BENCHMARK.md`
 - [ ] 每场景 ≥3 次取中位数；`--no-build-cache`；daemon stop + 删 `build/`（冷）。冷 assemble 仍满足。本轮增量 3 次用了 `--no-build-cache`，但 daemon 保持运行（增量需要它）。冷 `:kspDebugKotlin` 与热全量都只跑了 1 次
 - [ ] 分别记录：总 `assembleDebug`、`:kspDebugKotlin` / `:kaptDebugKotlin`、处理器自打日志耗时。冷 assemble 有总数。本轮记下了冷/热/增量的 `:kspDebugKotlin` 墙钟和 `generated N` 日志。没有新的 assemble 拆分，也没有 kapt 对照
 - [x] 更新 `BENCHMARK.md`（冷全量结论保留，并写入 2026-11-16 的 3 次增量中位数、1 次热全量和 1 次冷 `:kspDebugKotlin`）
