@@ -187,6 +187,9 @@ cd ..\examples\kotlin
 cd ..\kotlin-bench
 .\gradlew.bat assembleDebug "-Paa.processor=ksp"
 .\gradlew.bat assembleDebug "-Paa.processor=kapt"
+# 门禁（KSP vs kapt golden，脚本已入库；依赖上面两个 assemble 的产物）
+python tools\gt_cmp_all.py         # 全量：期望 MISMATCHES: 0 / ALL_OK
+python tools\normdiff_all.py <File> # 单文件 region diff（可带/不带 _ 或 .java）
 ```
 
 推远程（用户曾要求写 main；注意 protected main 可能需审批）：

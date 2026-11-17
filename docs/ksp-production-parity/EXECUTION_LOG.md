@@ -1372,3 +1372,35 @@
 ### Next
 1. 上一 session 遗留可选项：冷 assemble 中位数；跨模块 `@Bean` 失效策略；golden/门禁脚本入库（目前 gt_cmp_all.py / normdiff_all.py 在 C:\temp）
 2. ORMLite / REST-Spring 待业务确认依赖后另开插件期；`@HierarchyViewerSupport` 保持明确不做
+
+## Session 2026-11-17 — gate scripts into repo (tools/gt_cmp_all.py + normdiff_all.py)
+
+- **Agent**: Codex
+- **Goal slice**: 把仅在 C:\temp 的 KSP-vs-kapt 门禁脚本入库、可跨机器迁移；比较语义完全不变
+- **Git**: branch=`ksp/main`，local only, not push；本 commit 仅工具 + docs，不涉及生成代码
+- **Status**: done — 入库脚本全量门禁复跑 ALL_OK 251/251
+
+### Done
+1. 新增 `examples/kotlin-bench/tools/gt_cmp_all.py` / `normdiff_all.py`：base 路径由绝对改为相对脚本自身位置解析（`__file__` 上溯一级 = kotlin-bench）；归一化/比较逻辑逐字保留（逐行 diff 断言：仅 base 两行变化）
+2. `normdiff_all.py` 混合 EOL（76 LF + 2 CRLF）统一为纯 CRLF、去掉文件尾多余空行；两脚本均通过 `py_compile`
+3. PLAYBOOK §5 日常命令：测速块后补门禁两条命令（入库相对路径），后续 agent 可直接发现
+
+### Skipped
+- 不 push；KNOWN_DEVIATIONS 无变化（本切片未引入行为偏差）
+
+### Changed paths
+- `examples/kotlin-bench/tools/gt_cmp_all.py`（新增）
+- `examples/kotlin-bench/tools/normdiff_all.py`（新增）
+- docs：`PLAYBOOK.md` §5、`EXECUTION_LOG.md`
+
+### Verify
+- [x] 入库脚本全量门禁：GT files 251，missing/KSP-only 空，**MISMATCHES: 0 / ALL_OK**
+- [x] 入库脚本单文件 `normdiff_all.py BenchActivity102`（带/不带 `.java`）→ MATCH
+- [x] 新旧脚本逐行 diff：仅 base 路径行变化，归一化语义零改动
+
+### Blockers
+- none
+
+### Next
+1. 可选：冷 assemble 中位数（3 次冷构建各 ~110s，证明冷全量无回退）；跨模块 `@Bean` 失效策略（KNOWN_DEVIATIONS 增量 #2：无 KSFile 的字节码不使注入方失效）
+2. ORMLite / REST-Spring 待业务确认（旧工程按需另开一期）；`@HierarchyViewerSupport` 明确不做
