@@ -1404,3 +1404,39 @@
 ### Next
 1. 可选：冷 assemble 中位数（3 次冷构建各 ~110s，证明冷全量无回退）；跨模块 `@Bean` 失效策略（KNOWN_DEVIATIONS 增量 #2：无 KSFile 的字节码不使注入方失效）
 2. ORMLite / REST-Spring 待业务确认（旧工程按需另开一期）；`@HierarchyViewerSupport` 明确不做
+## Session 2026-11-17 — cold assemble median after P2 close-out (no regression)
+
+- **Agent**: Codex
+- **Goal slice**: 重跑 3 次冷 `assembleDebug` 中位数，关闭 CHECKLIST_PERF 验收项「冷全量不显著回退」
+- **Git**: branch=`ksp/main`，local only, not push；本 commit 仅 docs（BENCHMARK.md + CHECKLIST_PERF.md + EXECUTION_LOG.md），无代码变更
+- **Status**: done — 中位 79.39 s ≤ 锁定基线完整构建 100.55 s（语料 200→251）
+
+### Done
+1. 第一轮：shell 默认 JDK 21（Corretto 21.0.13）冷 assembleDebug × 3：78.89 / 70.99 / 72.58 s，中位 72.58 s，全 EXIT=1 — 判为 JDK 混杂因素（基线为 JDK 17），作为主数据弃用（仅保留为侧注）
+2. 正式轮：`JAVA_HOME` 钉 sdkman candidate `17.0.21.0+10-amzn`（=基线同款 Corretto 17.0.21），加 `--info`：**78.89 / 79.39 / 80.45 s，中位 79.39 s**，全 EXIT=1
+3. JDK 有效性：每份日志头部 `Received JVM installation metadata from '...17.0.21.0+10-amzn': {JAVA_VERSION=17.0.21` → daemon 确实跑在 17.0.21（驱动脚本里 `java -version` 仍报 21，是 PATH 解析假象，以日志 metadata 为准）
+4. 失败点：`:kspDebugKotlin` 完整完成（生成 251 类）→ `:compileDebugKotlin FAILED`，恰好 9 个既有 fixture lateinit 错误（KNOWN_DEVIATIONS #5，保持不动）；墙钟覆盖冷 Gradle + KSP 生成 + Kotlin 全量分析/代码生成，尾部 javac/dex/package 未执行
+5. 日志留存：`C:\temp\cold17_run_{1,2,3}.log`（各 ~2506 行）、结果 `C:\temp\cold_bench_jdk17_results.txt`、驱动脚本 `C:\temp\cold_bench17.py`（可复用）；JDK 21 轮日志 `C:\temp\cold_run_{1,2,3}.log`
+6. BENCHMARK.md 末尾追加节「Cold re-measurement (2026-11-17, after P2 close-out)」；CHECKLIST_PERF 验收项打勾 + 第 12 行同步
+
+### Skipped
+- 不 push；KNOWN_DEVIATIONS 无变化（本切片纯测量）
+- 未追「完整 vs 完整」对比：既有 fixture 错误阻塞 assembleDebug 完整成功（#5 保持不动），文档如实注明
+
+### Changed paths
+- `BENCHMARK.md`（末尾追加新节）
+- docs：`CHECKLIST_PERF.md`、`EXECUTION_LOG.md`
+
+### Verify
+- [x] 3 次冷跑中位 **79.39 s**（78.89 / 79.39 / 80.45），全 EXIT=1 @ `:compileDebugKotlin`
+- [x] 每次 `:kspDebugKotlin` 完成生成 251 类；processor 自报 10839 / 12757 / 10535 ms
+- [x] 失败点 = #5 既有 9 个 fixture 错误（日志 grep lateinit count=9）
+- [x] JDK：daemon JVM metadata 确认 Corretto 17.0.21 × 3
+- [x] 共享管段中位 79.39 s ≤ 锁定基线完整构建 100.55 s，语料 +25%（200→251）→ 无显著回退
+
+### Blockers
+- none（阻塞 assembleDebug 完整成功的仅为既有 #5 fixture 错误，明确不在本切片范围）
+
+### Next
+1. 跨模块 `@Bean` 失效策略（KNOWN_DEVIATIONS 增量 #2：无 KSFile 的字节码不使注入方失效）
+2. ORMLite / REST-Spring 待业务确认（旧工程按需另开一期）；`@HierarchyViewerSupport` 明确不做

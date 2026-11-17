@@ -106,3 +106,19 @@ Superclass check used two temporary files, not committed, so the bench corpus st
 - `BenchInheritChild.kt`: `@EActivity` subclass
 
 The child output contained `inheritedExtra` on `IntentBuilder_`. Touching only the base then logged `generated 1` in 417 ms (wall 6.67 s) and rewrote only `BenchInheritChild_.java`.
+
+## Cold re-measurement (2026-11-17, after P2 close-out)
+
+Same method as the locked baseline: cold `assembleDebug` with `--no-build-cache`, daemon stopped and `build/` deleted before each run. `JAVA_HOME` was pinned to Corretto 17.0.21 (sdkman candidate `17.0.21.0+10-amzn`) for all three runs; the daemon JVM metadata in each log confirms it.
+
+| Run | Wall (seconds) | Exit | Processor log |
+|-----|----------------|------|---------------|
+| 1 | 78.89 | 1 at `:compileDebugKotlin` | 251 classes in 10839 ms |
+| 2 | 79.39 | 1 at `:compileDebugKotlin` | 251 classes in 12757 ms |
+| 3 | 80.45 | 1 at `:compileDebugKotlin` | 251 classes in 10535 ms |
+
+Median **79.39 s**. All three runs failed at `:compileDebugKotlin` on the 9 pre-existing fixture `lateinit` errors (KNOWN_DEVIATIONS #5, left untouched), so the wall clock covers cold Gradle startup + KSP generation of 251 classes + full Kotlin analysis/codegen; the trailing javac/dex/package never ran. The locked baseline's 100.55 s was a fully successful build including that tail.
+
+The corpus grew from 200 to 251 annotated types since the locked baseline. On the shared pipeline (cold start + KSP generation + full Kotlin compilation up to the failure point) the median is 79.39 s vs the locked 100.55 s, so the processor path shows no significant regression. A "full vs full" comparison remains blocked by those pre-existing fixture errors.
+
+Side data (not primary): with the shell-default JDK 21 (Corretto 21.0.13) the same method gave 78.89 / 70.99 / 72.58 s, median 72.58 s; recorded for reference only because the JDK differs from the baseline.
