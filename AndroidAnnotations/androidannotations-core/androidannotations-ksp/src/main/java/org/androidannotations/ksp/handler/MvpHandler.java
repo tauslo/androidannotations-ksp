@@ -18,6 +18,7 @@ package org.androidannotations.ksp.handler;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -28,6 +29,8 @@ import com.google.devtools.ksp.processing.Resolver;
 import com.google.devtools.ksp.symbol.ClassKind;
 import com.google.devtools.ksp.symbol.KSAnnotated;
 import com.google.devtools.ksp.symbol.KSAnnotation;
+import com.google.devtools.ksp.symbol.KSName;
+import com.google.devtools.ksp.symbol.KSValueArgument;
 import com.google.devtools.ksp.symbol.KSClassDeclaration;
 import com.google.devtools.ksp.symbol.KSDeclaration;
 import com.google.devtools.ksp.symbol.KSFile;
@@ -134,6 +137,7 @@ public final class MvpHandler {
 
 		MvpModel model = new MvpModel(kind, packageName, simpleName, qualifiedName, classSuffix, layoutId, layoutResName, nested, scope);
 		model.forceLayoutInjection = forceLayoutInjection;
+		collectClassAnnotations(classDeclaration, model);
 		if (kind == MvpModel.Kind.ACTIVITY) {
 			model.appCompatWindow = extendsQualified(classDeclaration, "androidx.appcompat.app.AppCompatActivity")
 					|| extendsQualified(classDeclaration, "android.support.v7.app.AppCompatActivity")
@@ -194,6 +198,8 @@ public final class MvpHandler {
 		if ((kind == MvpModel.Kind.VIEW || kind == MvpModel.Kind.VIEW_GROUP) && model.viewConstructors.isEmpty()) {
 			model.errors.add(model.simpleName + " must declare at least one non-private constructor so the generated subclass can call super");
 		}
+		// APT parity: res handlers run in AndroidRes.values() order (type-major, source order within a type).
+		model.resFields.sort(Comparator.comparingInt(f -> f.androidResIndex));
 		return model;
 	}
 
@@ -264,6 +270,10 @@ public final class MvpHandler {
 		// Kotlin exposes a directly accessible backing field only for lateinit or @JvmField properties;
 		// initialized non-lateinit vars get a private backing field, so generated code must call the setter.
 		boolean jvmField = KspAnnotationUtils.hasJvmField(property) || property.getModifiers().contains(Modifier.LATEINIT);
+		boolean kotlinSource = KspAnnotationUtils.isKotlinSource(property);
+		// APT+kapt parity: the backing field of a Kotlin var with an initializer (or any private property) is not
+		// directly reachable, so AbstractResHandler.validate skips such elements silently.
+		boolean resFieldSkipped = kotlinSource && (!jvmField || property.getModifiers().contains(Modifier.PRIVATE));
 
 		KSAnnotation viewById = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.VIEW_BY_ID);
 		if (viewById != null) {
@@ -273,7 +283,7 @@ public final class MvpHandler {
 		}
 
 		KSAnnotation stringRes = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.STRING_RES);
-		if (stringRes != null) {
+		if (stringRes != null && !resFieldSkipped) {
 			model.stringRes.add(new MvpModel.FieldInjection(name, typeName, jvmField,
 					KspAnnotationUtils.intArg(stringRes, "value", AnnotationNames.RES_DEFAULT),
 					KspAnnotationUtils.stringArg(stringRes, "resName", "")));
@@ -294,6 +304,9 @@ public final class MvpHandler {
 				model.errors.add(type.annotationName + " can only be used on a field which is a " + type.allowedTypes + ", not " + javaType);
 				continue;
 			}
+			if (resFieldSkipped) {
+				continue;
+			}
 			if (property.getModifiers().contains(Modifier.PRIVATE)) {
 				model.errors.add(type.annotationName + " cannot be used on a private element");
 				continue;
@@ -301,7 +314,7 @@ public final class MvpHandler {
 			model.resFields.add(new MvpModel.ResField(name, typeName, jvmField,
 				KspAnnotationUtils.intArg(res, "value", AnnotationNames.RES_DEFAULT),
 				KspAnnotationUtils.stringArg(res, "resName", ""),
-				type.rInnerClass, type.method, type.invocation));
+				type.rInnerClass, type.method, type.invocation, type.androidResIndex));
 		}
 
 		KSAnnotation extra = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.EXTRA);
@@ -367,7 +380,11 @@ public final class MvpHandler {
 
 		KSAnnotation nonConfig = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.NON_CONFIGURATION_INSTANCE);
 		if (nonConfig != null) {
-			collectNonConfiguration(resolver, property, name, jvmField, model);
+			// kapt stub parity: a Kotlin property without @JvmField/lateinit gets a private backing field in the stub,
+			// which APT's NonConfigurationInstanceHandler silently ignores (isNotPrivate check).
+			if (!(kotlinSource && !jvmField)) {
+				collectNonConfiguration(resolver, property, name, jvmField, model);
+			}
 		}
 
 		KSAnnotation bean = KspAnnotationUtils.findAnnotation(property.getAnnotations(), AnnotationNames.BEAN);
@@ -440,6 +457,8 @@ public final class MvpHandler {
 			return;
 		}
 
+		int sourceOrder = model.sourceOrderCounter++;
+
 		KSAnnotation afterInject = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.AFTER_INJECT);
 		if (afterInject != null) {
 			if (model.kind == MvpModel.Kind.BEAN) {
@@ -469,13 +488,14 @@ public final class MvpHandler {
 					KspAnnotationUtils.stringArg(background, "id", ""),
 					KspAnnotationUtils.longArg(background, "delay", 0L),
 					KspAnnotationUtils.stringArg(background, "serial", ""),
-					false, methodVisibility(function)));
+					false, methodVisibility(function), sourceOrder));
 		}
 
 		KSAnnotation uiThread = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.UI_THREAD);
 		if (uiThread != null) {
 			Object propagation = KspAnnotationUtils.argValue(uiThread, "propagation");
-			boolean reuse = true;
+			// APT parity: the annotation default is ENQUEUE, so the fast path needs an explicit REUSE.
+			boolean reuse = false;
 			if (propagation != null) {
 				reuse = propagation.toString().endsWith("REUSE");
 			}
@@ -483,7 +503,7 @@ public final class MvpHandler {
 					KspAnnotationUtils.stringArg(uiThread, "id", ""),
 					KspAnnotationUtils.longArg(uiThread, "delay", 0L),
 					"",
-					reuse, methodVisibility(function)));
+					reuse, methodVisibility(function), sourceOrder));
 		}
 
 		KSAnnotation ignoreWhen = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.IGNORE_WHEN);
@@ -623,22 +643,22 @@ public final class MvpHandler {
 		}
 		KSAnnotation wakeLock = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.WAKE_LOCK);
 		if (wakeLock != null) {
-			collectWakeLock(function, name, wakeLock, model);
+			collectWakeLock(function, name, sourceOrder, wakeLock, model);
 		}
 		if (traceEnabled) {
 			KSAnnotation trace = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.TRACE);
 			if (trace != null) {
-				collectTrace(function, name, trace, model);
+				collectTrace(function, name, sourceOrder, trace, model);
 			}
 		}
 		if (threadControl) {
 			KSAnnotation supposeUi = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.SUPPOSE_UI_THREAD);
 			if (supposeUi != null) {
-				attachSuppose(function, name, new MvpModel.SupposeSpec(true, java.util.Collections.<String>emptyList()), model);
+				attachSuppose(function, name, sourceOrder, new MvpModel.SupposeSpec(true, java.util.Collections.<String>emptyList()), model);
 			}
 			KSAnnotation supposeBg = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.SUPPOSE_BACKGROUND);
 			if (supposeBg != null) {
-				attachSuppose(function, name, new MvpModel.SupposeSpec(false, KspAnnotationUtils.stringArrayArg(supposeBg, "serial")), model);
+				attachSuppose(function, name, sourceOrder, new MvpModel.SupposeSpec(false, KspAnnotationUtils.stringArrayArg(supposeBg, "serial")), model);
 			}
 		}
 		KSAnnotation rootContextMethod = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.ROOT_CONTEXT);
@@ -690,7 +710,7 @@ public final class MvpHandler {
 
 		KSAnnotation transactional = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.TRANSACTIONAL);
 		if (transactional != null) {
-			collectTransactional(function, name, model);
+			collectTransactional(function, name, sourceOrder, model);
 		}
 
 		KSAnnotation viewByIdMethod = KspAnnotationUtils.findAnnotation(function.getAnnotations(), AnnotationNames.VIEW_BY_ID);
@@ -1007,13 +1027,16 @@ public final class MvpHandler {
 					return false;
 				}
 				roles.add(role);
-			} else if (isTextViewSubtype(resolver, type)) {
+			} else if ("android.widget.TextView".equals(type)) {
 				if (seenView) {
 					model.errors.add(label + " method '" + name + "' can declare only one TextView parameter");
 					return false;
 				}
 				seenView = true;
 				roles.add(MvpModel.ParamRole.TEXT_VIEW);
+			} else if (isTextViewSubtype(resolver, type)) {
+				model.warnings.add(label + " method '" + name + "' has an unrecognized parameter '" + param.name + "'. Text watcher view parameter must be exactly android.widget.TextView (APT parity: method skipped)");
+				return false;
 			} else {
 				model.errors.add(label + " method '" + name + "' has an unrecognized parameter '" + param.name + "'");
 				return false;
@@ -2768,7 +2791,10 @@ public final class MvpHandler {
 				} else {
 					unchecked |= typeName.contains("<");
 				}
-				args.add(new MvpModel.ReceiverArg(MvpModel.ReceiverArg.Role.EXTRA, paramName, typeName, read));
+				MvpModel.ReceiverArg extraArg = new MvpModel.ReceiverArg(MvpModel.ReceiverArg.Role.EXTRA, paramName, typeName, read);
+				extraArg.extraConstant = constant;
+				extraArg.extraKey = key;
+				args.add(extraArg);
 			} else if ("android.content.Context".equals(typeName)) {
 				args.add(new MvpModel.ReceiverArg(MvpModel.ReceiverArg.Role.CONTEXT, paramName, typeName, null));
 			} else if ("android.content.Intent".equals(typeName)) {
@@ -2830,6 +2856,16 @@ public final class MvpHandler {
 			}
 		}
 		model.receiverExtraConstants.add(new MvpModel.ExtraConstant(constantName, key));
+	}
+
+	/** APT parity: @ReceiverAction extras keep their own class-level constants (first wins). */
+	private void addReceiverActionExtraConstant(MvpModel model, String constantName, String key) {
+		for (MvpModel.ExtraConstant existing : model.receiverActionExtraConstants) {
+			if (existing.constantName.equals(constantName)) {
+				return;
+			}
+		}
+		model.receiverActionExtraConstants.add(new MvpModel.ExtraConstant(constantName, key));
 	}
 
 	private static KSAnnotation findParamAnnotation(KSValueParameter param, String qualifiedName) {
@@ -3194,7 +3230,7 @@ public final class MvpHandler {
 					key = paramName;
 				}
 				String constant = KspAnnotationUtils.extraKeyConstant(key);
-				addReceiverExtraConstant(model, constant, key);
+				addReceiverActionExtraConstant(model, constant, key);
 				boolean previous = model.activityResultUnchecked;
 				String read = bundleReadExpr(resolver, model, typeName, constant);
 				if (!previous) {
@@ -3203,7 +3239,10 @@ public final class MvpHandler {
 				} else {
 					unchecked |= typeName.contains("<");
 				}
-				args.add(new MvpModel.ReceiverArg(MvpModel.ReceiverArg.Role.EXTRA, paramName, typeName, read));
+				MvpModel.ReceiverArg extraArg = new MvpModel.ReceiverArg(MvpModel.ReceiverArg.Role.EXTRA, paramName, typeName, read);
+				extraArg.extraConstant = constant;
+				extraArg.extraKey = key;
+				args.add(extraArg);
 			} else if ("android.content.Context".equals(typeName)) {
 				args.add(new MvpModel.ReceiverArg(MvpModel.ReceiverArg.Role.CONTEXT, paramName, typeName, null));
 			} else if ("android.content.Intent".equals(typeName)) {
@@ -3256,7 +3295,7 @@ public final class MvpHandler {
 		model.serviceActions.add(new MvpModel.ServiceActionBinding(name, actionValue, KspAnnotationUtils.upperSnake("action", name, null), params, unchecked));
 	}
 
-	private void collectWakeLock(KSFunctionDeclaration function, String name, KSAnnotation annotation, MvpModel model) {
+	private void collectWakeLock(KSFunctionDeclaration function, String name, int sourceOrder, KSAnnotation annotation, MvpModel model) {
 		if (!enhancedComponent(model.kind)) {
 			model.errors.add("@WakeLock can only be used in an AndroidAnnotations enhanced component: method '" + name + "'");
 			return;
@@ -3280,10 +3319,10 @@ public final class MvpHandler {
 			threaded.wakeLock = spec;
 			return;
 		}
-		wrapped(function, name, model).wakeLock = spec;
+		wrapped(function, name, sourceOrder, model).wakeLock = spec;
 	}
 
-	private void collectTrace(KSFunctionDeclaration function, String name, KSAnnotation annotation, MvpModel model) {
+	private void collectTrace(KSFunctionDeclaration function, String name, int sourceOrder, KSAnnotation annotation, MvpModel model) {
 		if (!enhancedComponent(model.kind)) {
 			model.errors.add("@Trace can only be used in an AndroidAnnotations enhanced component: method '" + name + "'");
 			return;
@@ -3325,7 +3364,7 @@ public final class MvpHandler {
 			threaded.trace = spec;
 			return;
 		}
-		wrapped(function, name, model).trace = spec;
+		wrapped(function, name, sourceOrder, model).trace = spec;
 	}
 
 	private static String[] traceLog(int level) {
@@ -3345,7 +3384,7 @@ public final class MvpHandler {
 		}
 	}
 
-	private void attachSuppose(KSFunctionDeclaration function, String name, MvpModel.SupposeSpec spec, MvpModel model) {
+	private void attachSuppose(KSFunctionDeclaration function, String name, int sourceOrder, MvpModel.SupposeSpec spec, MvpModel model) {
 		String label = spec.uiThread ? "@SupposeUiThread" : "@SupposeBackground";
 		if (!enhancedComponent(model.kind)) {
 			model.errors.add(label + " can only be used in an AndroidAnnotations enhanced component: method '" + name + "'");
@@ -3360,7 +3399,7 @@ public final class MvpHandler {
 			threaded.suppose = spec;
 			return;
 		}
-		wrapped(function, name, model).suppose = spec;
+		wrapped(function, name, sourceOrder, model).suppose = spec;
 	}
 
 	private void collectRoot(String name, boolean fieldForm, boolean jvmField, String typeName, boolean fragment, MvpModel model) {
@@ -3421,7 +3460,7 @@ public final class MvpHandler {
 		return null;
 	}
 
-	private MvpModel.WrappedMethod wrapped(KSFunctionDeclaration function, String name, MvpModel model) {
+	private MvpModel.WrappedMethod wrapped(KSFunctionDeclaration function, String name, int sourceOrder, MvpModel model) {
 		int count = function.getParameters().size();
 		MvpModel.WrappedMethod existing = existingWrapped(model, name, count);
 		if (existing != null) {
@@ -3431,7 +3470,7 @@ public final class MvpHandler {
 		if ("kotlin.Unit".equals(returnType)) {
 			returnType = "void";
 		}
-		MvpModel.WrappedMethod created = new MvpModel.WrappedMethod(name, KspAnnotationUtils.methodParams(function), methodVisibility(function), returnType);
+		MvpModel.WrappedMethod created = new MvpModel.WrappedMethod(name, KspAnnotationUtils.methodParams(function), methodVisibility(function), returnType, sourceOrder);
 		model.wrappedMethods.add(created);
 		return created;
 	}
@@ -3624,7 +3663,7 @@ public final class MvpHandler {
 				KspAnnotationUtils.booleanArg(annotation, "allowAllHostnames", true));
 	}
 
-	private void collectTransactional(KSFunctionDeclaration function, String name, MvpModel model) {
+	private void collectTransactional(KSFunctionDeclaration function, String name, int sourceOrder, MvpModel model) {
 		if (!enhancedComponent(model.kind)) {
 			model.errors.add("@Transactional can only be used in an AndroidAnnotations enhanced component: method '" + name + "'");
 			return;
@@ -3654,7 +3693,7 @@ public final class MvpHandler {
 				return;
 			}
 		}
-		wrapped(function, name, model).transactional = true;
+		wrapped(function, name, sourceOrder, model).transactional = true;
 	}
 
 	private static boolean hasParamAnnotation(KSFunctionDeclaration function, String qualifiedName) {
@@ -3983,6 +4022,113 @@ public final class MvpHandler {
 			}
 		}
 		return null;
+	}
+
+
+	/** APT APTCodeModelHelper.copyNonAAAnnotations parity: skip @Inherited-meta, org.androidannotations.*, kotlin.Metadata; keep source order. */
+	private void collectClassAnnotations(KSClassDeclaration declaration, MvpModel model) {
+		for (KSAnnotation annotation : SequencesKt.toList(declaration.getAnnotations())) {
+			String fqn = null;
+			boolean skipInherited = false;
+			try {
+				KSType type = annotation.getAnnotationType().resolve();
+				if (!type.isError()) {
+					KSDeclaration decl = type.getDeclaration();
+					KSName qn = decl.getQualifiedName();
+					fqn = qn != null ? qn.asString() : null;
+					if (decl instanceof KSClassDeclaration && hasInheritedMeta((KSClassDeclaration) decl)) {
+						skipInherited = true;
+					}
+				}
+			} catch (Exception ignored) {
+				// unresolvable annotation type: fall back to the short name below
+			}
+			if (skipInherited) {
+				continue;
+			}
+			if (fqn == null) {
+				fqn = annotation.getShortName().asString();
+			}
+			if (fqn == null || fqn.startsWith("org.androidannotations.") || "kotlin.Metadata".equals(fqn)) {
+				continue;
+			}
+			model.classAnnotations.add(renderAnnotation(annotation, simpleName(fqn)));
+		}
+	}
+
+	private String simpleName(String fqn) {
+		int last = fqn.lastIndexOf(".");
+		return last >= 0 ? fqn.substring(last + 1) : fqn;
+	}
+
+	private boolean hasInheritedMeta(KSClassDeclaration annotationDecl) {
+		for (KSAnnotation meta : SequencesKt.toList(annotationDecl.getAnnotations())) {
+			if ("java.lang.Inherited".equals(meta.getShortName().asString())) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private String renderAnnotation(KSAnnotation annotation, String fqn) {
+		List<KSValueArgument> args = annotation.getArguments();
+		if (args.isEmpty()) {
+			return "@" + fqn;
+		}
+		StringBuilder sb = new StringBuilder("@").append(fqn).append('(');
+		boolean first = true;
+		for (KSValueArgument arg : args) {
+			Object value = arg.getValue();
+			if (value == null) {
+				continue;
+			}
+			String name = arg.getName() != null ? arg.getName().asString() : null;
+			if (!first) {
+				sb.append(", ");
+			}
+			first = false;
+			if (name != null && !name.isEmpty()) {
+				sb.append(name).append(" = ");
+			}
+			sb.append(renderAnnotationValue(value));
+		}
+		return sb.append(')').toString();
+	}
+
+	private String renderAnnotationValue(Object value) {
+		if (value instanceof String) {
+			StringBuilder sb = new StringBuilder("\"");
+			String str = (String) value;
+			for (int i = 0; i < str.length(); i++) {
+				char c = str.charAt(i);
+				if (c == '"' || c == '\\') {
+					sb.append('\\');
+				}
+				sb.append(c);
+			}
+			return sb.append('"').toString();
+		}
+		if (value instanceof java.util.List) {
+			StringBuilder sb = new StringBuilder("{ ");
+			boolean first = true;
+			for (Object element : (java.util.List<?>) value) {
+				if (!first) {
+					sb.append(", ");
+				}
+				first = false;
+				sb.append(renderAnnotationValue(element));
+			}
+			return sb.append(" }").toString();
+		}
+		if (value instanceof KSClassDeclaration) {
+			KSClassDeclaration cls = (KSClassDeclaration) value;
+			String qn = cls.getQualifiedName() != null ? cls.getQualifiedName().asString() : "";
+			if (qn.isEmpty()) {
+				qn = cls.getSimpleName().asString();
+			}
+			return cls.getClassKind() == ClassKind.ENUM_ENTRY ? qn : qn + ".class";
+		}
+		return String.valueOf(value);
 	}
 
 }

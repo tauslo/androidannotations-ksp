@@ -23,7 +23,9 @@ import java.util.List;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.TypeElement;
+import javax.lang.model.type.ArrayType;
 import javax.lang.model.type.DeclaredType;
+import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
 
 import org.androidannotations.AndroidAnnotationsEnvironment;
@@ -43,6 +45,7 @@ import com.helger.jcodemodel.IJAssignmentTarget;
 import com.helger.jcodemodel.IJExpression;
 import com.helger.jcodemodel.JBlock;
 import com.helger.jcodemodel.JFieldRef;
+import com.helger.jcodemodel.JFormatter;
 
 public class ViewsByIdHandler extends BaseAnnotationHandler<EComponentWithViewSupportHolder> implements MethodInjectionHandler<EComponentWithViewSupportHolder> {
 
@@ -61,7 +64,9 @@ public class ViewsByIdHandler extends BaseAnnotationHandler<EComponentWithViewSu
 		}
 
 		Element param = injectHelper.getParam(element);
-		validatorHelper.isDeclaredType(param, validation);
+		if (param.asType().getKind() != TypeKind.ARRAY) {
+			validatorHelper.isDeclaredType(param, validation);
+		}
 
 		validatorHelper.extendsListOfView(param, validation);
 
@@ -93,7 +98,14 @@ public class ViewsByIdHandler extends BaseAnnotationHandler<EComponentWithViewSu
 			addViewToListIfNotNull(arrayList, viewClass, idRef, holder);
 		}
 
-		targetBlock.add(fieldRef.assign(arrayList));
+		IJExpression value;
+		if (param.asType().getKind() == TypeKind.ARRAY) {
+			value = arrayList.invoke("toArray").arg(new ArrayNewExpression(viewClass, arrayList.invoke("size")));
+		} else {
+			value = arrayList;
+		}
+
+		targetBlock.add(fieldRef.assign(value));
 	}
 
 	@Override
@@ -120,7 +132,11 @@ public class ViewsByIdHandler extends BaseAnnotationHandler<EComponentWithViewSu
 	}
 
 	private TypeMirror extractViewClass(Element element) {
-		DeclaredType elementType = (DeclaredType) element.asType();
+		TypeMirror typeMirror = element.asType();
+		if (typeMirror.getKind() == TypeKind.ARRAY) {
+			return ((ArrayType) typeMirror).getComponentType();
+		}
+		DeclaredType elementType = (DeclaredType) typeMirror;
 		List<? extends TypeMirror> elementTypeArguments = elementType.getTypeArguments();
 
 		TypeMirror viewType = annotationHelper.typeElementFromQualifiedName(CanonicalNameConstants.VIEW).asType();
@@ -133,6 +149,25 @@ public class ViewsByIdHandler extends BaseAnnotationHandler<EComponentWithViewSu
 	private void addViewToListIfNotNull(IJExpression elementRef, AbstractJClass viewClass, JFieldRef idRef, EComponentWithViewSupportHolder holder) {
 		FoundViewHolder foundViewHolder = holder.getFoundViewHolder(idRef, viewClass);
 		foundViewHolder.getIfNotNullBlock().invoke(elementRef, "add").arg(foundViewHolder.getOrCastRef(viewClass));
+	}
+
+	private static final class ArrayNewExpression implements IJExpression {
+		private final AbstractJClass componentType;
+		private final IJExpression size;
+
+		ArrayNewExpression(AbstractJClass componentType, IJExpression size) {
+			this.componentType = componentType;
+			this.size = size;
+		}
+
+		@Override
+		public void generate(JFormatter out) {
+			out.print("new ");
+			out.generable(componentType);
+			out.print("[");
+			out.generable(size);
+			out.print("]");
+		}
 	}
 
 }

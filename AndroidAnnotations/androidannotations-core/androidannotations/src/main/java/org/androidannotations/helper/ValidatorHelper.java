@@ -486,10 +486,20 @@ public class ValidatorHelper {
 	}
 
 	public void extendsListOfView(Element element, ElementValidation valid) {
-		DeclaredType elementType = (DeclaredType) element.asType();
-		List<? extends TypeMirror> elementTypeArguments = elementType.getTypeArguments();
+		TypeMirror typeMirror = element.asType();
 
 		TypeMirror viewType = annotationHelper.typeElementFromQualifiedName(CanonicalNameConstants.VIEW).asType();
+
+		if (typeMirror.getKind() == TypeKind.ARRAY) {
+			if (!annotationHelper.isSubtype(((ArrayType) typeMirror).getComponentType(), viewType)) {
+				valid.invalidate();
+				valid.addError("%s can only be used on a " + CanonicalNameConstants.LIST + " of elements extending " + CanonicalNameConstants.VIEW);
+			}
+			return;
+		}
+
+		DeclaredType elementType = (DeclaredType) typeMirror;
+		List<? extends TypeMirror> elementTypeArguments = elementType.getTypeArguments();
 
 		if (!elementType.toString().equals(CanonicalNameConstants.LIST) && elementTypeArguments.size() == 1 && !annotationHelper.isSubtype(elementTypeArguments.get(0), viewType)) {
 			valid.invalidate();

@@ -1330,3 +1330,45 @@
 1. 业务若确认 ORMLite / REST-Spring 依赖，另开插件期
 2. 可选：冷 assemble 3 次中位数重跑；跨模块 `@Bean` 失效策略；golden 脚本
 
+## Session 2026-11-17 — P2 parity close-out: full gate green (251/251)
+
+- **Agent**: Codex
+- **Goal slice**: 清零 `8c197086` 之后全量门禁的全部剩余 mismatch 并提交本批改动（local only，不 push）。本条合并 11-16 晚至 11-17 的多个工作 session。
+- **Git**: branch=`ksp/main`，local only, not push；本次已本地 commit
+- **Status**: done — 门禁 ALL_OK 251/251，批次已提交
+
+### Done
+1. **res 字段顺序 + kapt stub parity**（`ResCompat` / `MvpModel.ResField.androidResIndex` / `MvpHandler`）：res 字段按 APT `AndroidRes.values()` ordinal 排序输出（type-major）；Kotlin 非 @JvmField 属性（backing field 不可达）或 private 属性 → 跳过 res 字段生成（对齐 APT `AbstractResHandler.validate` 静默跳过）；`@NonConfigurationInstance` 收集对非 @JvmField Kotlin 属性同样跳过
+2. **类注解复制 parity**（`MvpHandler.collectClassAnnotations`）：对齐 APT `copyNonAAAnnotations` — 按源序复制非 AA 类注解，跳过 @Inherited-meta / `org.androidannotations.*` / `kotlin.Metadata`；FQN 走 `getAnnotationType().resolve()…getQualifiedName()`（KSP `getShortName()` 是简单名），参数从 `KSValueArgument` 渲染
+3. **线程方法 + @Transactional**（`MvpJavaGenerator` / `MvpHandler` / `MvpModel`）：`appendBackgroundMethods` / `appendUiThreadMethods` 合并为按 claim-index + source-order 排序的统一输出（`ThreadMethodEntry`）；`MethodInfo` / `WrappedMethod` 增加访问序 `sourceOrder`，用于 APT handler-claim 方法排序；`@Bean` reuse 默认 false（注解默认 ENQUEUE，fast path 需显式 REUSE）；拆出 `collectTransactional` / `collectWakeLock` / `collectTrace` / `attachSuppose`
+4. **@ReceiverAction extra 常量**（`MvpHandler` / `MvpModel`）：extras 保留类级常量（first wins，`receiverActionExtraConstants`）；`ReceiverArg` 增加 `extraConstant` / `extraKey`
+5. **嵌套 @SharedPref 渲染**（`SharedPrefGenerator`）：对齐 APT `SharedPrefHolder` 形态 — `public final static class`、`Editor_` 泛型引用用去包名前缀的外层类名（`Outer_.Nested_`）、javadoc `<p><b>Defaults to</b>: …</p>`（String 值加引号、无转义）+ 独立 `@return` 行；`getLocalClassName` 用 jcodemodel 原始条件/双括号形态；嵌套缩进参数化
+6. **@ViewById 数组参数**（APT core `ViewsByIdHandler` + `ValidatorHelper`）：View 数组参数生成 `field = list.toArray(new View[n])`；validator 接受数组并校验 component type 是 View 子类型
+7. **IntentWork / options 探测**（`IntentBuilderCompat`）：compat 判断改为类存在性（ANDROIDX_ACTIVITY_COMPAT / ACTIVITY_COMPAT）
+8. **参数 nullability parity**（`KspAnnotationUtils`）：@NotNull/@Nullable 只对引用类型参数发出、primitive 不发（kapt stub 行为）；`isKotlinSource` 泛化为 public `(KSNode)`
+9. **SharedPrefHandler**：`HashSet<String>` 渲染改简单名（4 处）
+10. **DataBound / AndroidX host / preference 渲染**（`MvpJavaGenerator`）：@EActivity data-bound unbind-early 分支；fragment 宿主类型选择 `nativeFragment ? android.app.* : androidx.fragment.app.*`；preference 屏用 `this.findPreference(this.getString(…))` + `preference_<key>` 局部变量；RootBean fragment/context 分支 `Log.w` 括号形态对齐 GT
+11. **SeekBar / ViewPager 分组回调 + key 方法**（`MvpJavaGenerator`，本 session）：seekBar 组用 APT `createFoundViewAndIfNotNullBlock` 形态（无外层块、`view_<key>` 无 final/cast、1-tab 声明）；`appendSeekCallback` 增加 `baseIndent`；key 回调顺序 DOWN → LONG_PRESS → MULTIPLE → UP；case 体包 `{}`
+12. **fixture**：`BenchActivity102.kt` 瘦身（移除 res 注解字段），新增 Java fixture `BenchActivity113.java` 承载同一组 res 字段 — 解决 GT 陈旧产物 mismatch（见 KNOWN_DEVIATIONS #1）；GT 已重生成
+
+### Skipped
+- 不 push；门禁脚本本身未改（仍在 C:\temp，未入库）
+
+### Changed paths
+- `androidannotations-ksp`：`MvpJavaGenerator`、`SharedPrefGenerator`、`handler/MvpHandler`、`handler/SharedPrefHandler`、`MvpModel`、`ResCompat`、`KspAnnotationUtils`、`IntentBuilderCompat`
+- APT core：`helper/ValidatorHelper`、`internal/core/handler/ViewsByIdHandler`
+- fixture：`examples/kotlin-bench` `BenchActivity102.kt`（瘦身）、新增 `BenchActivity113.java`
+- docs：`EXECUTION_LOG`、`KNOWN_DEVIATIONS`
+
+### Verify
+- [x] `mvnw … androidannotations-ksp … install` BUILD SUCCESS
+- [x] `examples/kotlin-bench kspDebugKotlin -Paa.processor=ksp` BUILD SUCCESSFUL，生成 251；warnings 均为既有
+- [x] 全量门禁 `gt_cmp_all.py`：GT files 251，missing/KSP-only 均空，**MISMATCHES: 0（ALL_OK）** — BenchSeekKeyActivity_ 为最后一个清零文件
+- [x] patch 后 EOL/BOM 断言通过（`MvpJavaGenerator` 纯 LF 无 BOM；`MvpHandler` / `MvpModel` CRLF 未变）
+
+### Blockers
+- none（`compileDebugKotlin` EXIT=1 为既有 9 个 fixture Kotlin 错误，见 KNOWN_DEVIATIONS #5）
+
+### Next
+1. 上一 session 遗留可选项：冷 assemble 中位数；跨模块 `@Bean` 失效策略；golden/门禁脚本入库（目前 gt_cmp_all.py / normdiff_all.py 在 C:\temp）
+2. ORMLite / REST-Spring 待业务确认依赖后另开插件期；`@HierarchyViewerSupport` 保持明确不做

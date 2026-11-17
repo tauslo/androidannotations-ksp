@@ -18,7 +18,7 @@
 
 ## 已知偏差与例外
 
-1. **`BenchActivity102_` 门禁唯一 MISMATCH（GT 侧陈旧产物，非 KSP 偏差）**：当前提交的 fixture（无 `@JvmField` 的已初始化属性）使 kapt stub 编译按设计失败（kapt stub 将 Kotlin `var` backing field 暴露为 private，APT 拒绝在 private 元素上使用 res 注解），live GT 目录中残留的文件是更早 `@JvmField` 临时变体生成的陈旧产物。KSP 输出对应当前 fixture（setter 形态 + API-level IF_GUARD）且 javac 编译通过。**勿以修改 KSP 行为的方式「修掉」该 mismatch。**
+1. **`BenchActivity102_` 门禁 MISMATCH — 已解决（2026-11-17）**：原 fixture 无 `@JvmField` 的已初始化属性使 kapt stub 编译按设计失败（kapt stub 将 Kotlin `var` backing field 暴露为 private，APT 拒绝在 private 元素上使用 res 注解），GT 目录残留陈旧产物。解决：res 注解字段移入新增 Java fixture `BenchActivity113.java`（无 stub 问题）、`BenchActivity102.kt` 瘦身、GT 重生成 — 两文件与 KSP 输出逐字一致，全量门禁转绿。
 2. **Kotlin property → field/setter 映射**：kapt 经 stub、KSP 直读符号。KSP 遵循 `@JvmField || lateinit` → 直接 `this.x = …`，否则发 setter 调用（与 APT stub 可见性语义一致）。门禁比较器吸收「直接字段写 vs setter 调用」形态差与 init_ 语句顺序；bench 无 API 级可观察偏差。
 3. **FIELD 先行注入顺序**：kapt 将 Kotlin 属性 backing field 全部置于 stub 类体顶部，APT 按 stub 成员序迭代 ⇒ FIELD form 先于 METHOD/PARAM form。KSP 以「按 form 稳定分区」复现（FIELD 全部先行，组内保持声明序）。
 4. **cast 渲染**：jcodemodel cast 为双括号 `((T) x)`；KSP 与 GT 逐字符一致（门禁不忽略括号数量）。

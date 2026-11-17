@@ -64,7 +64,7 @@ public final class SharedPrefHandler {
 		TYPES.put("long", new TypeInfo("long", "LongPrefField", "LongPrefEditorField", "longField", DEFAULT_LONG, "integer", "0L", "0", "long"));
 		TYPES.put("java.lang.String", new TypeInfo("string", "StringPrefField", "StringPrefEditorField", "stringField", DEFAULT_STRING, "string", "\"\"", "", "String"));
 		TYPES.put("java.util.Set<java.lang.String>", new TypeInfo("stringSet", "StringSetPrefField", "StringSetPrefEditorField", "stringSetField", DEFAULT_STRING_SET, "array",
-				"new java.util.HashSet<java.lang.String>(0)", null, "Set<String>"));
+				"new java.util.HashSet<String>(0)", null, "Set<String>"));
 	}
 
 	public SharedPrefModel build(KSClassDeclaration declaration, String classSuffix, String resourcePackage, String rClassName, RClassIndex index) {
@@ -301,7 +301,7 @@ public final class SharedPrefHandler {
 		}
 		String call = "context_.getResources()." + getter + "(" + idExpr + ")";
 		if ("array".equals(info.resType)) {
-			return "new java.util.HashSet<java.lang.String>(java.util.Arrays.asList(" + call + "))";
+			return "new java.util.HashSet<String>(java.util.Arrays.asList(" + call + "))";
 		}
 		return call;
 	}
@@ -381,9 +381,9 @@ public final class SharedPrefHandler {
 
 	private static String stringSetExpr(List<String> values) {
 		if (values.isEmpty()) {
-			return "new java.util.HashSet<java.lang.String>(0)";
+			return "new java.util.HashSet<String>(0)";
 		}
-		StringBuilder sb = new StringBuilder("new java.util.HashSet<java.lang.String>(java.util.Arrays.asList(");
+		StringBuilder sb = new StringBuilder("new java.util.HashSet<String>(java.util.Arrays.asList(");
 		for (int i = 0; i < values.size(); i++) {
 			if (i > 0) {
 				sb.append(", ");
@@ -492,3 +492,4 @@ public final class SharedPrefHandler {
 		}
 	}
 }
+

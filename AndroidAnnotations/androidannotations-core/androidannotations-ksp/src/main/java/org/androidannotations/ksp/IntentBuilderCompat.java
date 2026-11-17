@@ -74,9 +74,9 @@ public final class IntentBuilderCompat {
 		boolean supportFragment = classExists(resolver, SUPPORT_V4_FRAGMENT);
 		boolean activityOptionsInFragment = fragment && hasActivityOptions(resolver, FRAGMENT, 1);
 		String activityCompat = null;
-		if (hasActivityOptions(resolver, ANDROIDX_ACTIVITY_COMPAT, 2)) {
+		if (classExists(resolver, ANDROIDX_ACTIVITY_COMPAT)) {
 			activityCompat = ANDROIDX_ACTIVITY_COMPAT;
-		} else if (hasActivityOptions(resolver, ACTIVITY_COMPAT, 2)) {
+		} else if (classExists(resolver, ACTIVITY_COMPAT)) {
 			activityCompat = ACTIVITY_COMPAT;
 		}
 		return new IntentBuilderCompat(fragment, androidxFragment, supportFragment, activityOptionsInFragment,

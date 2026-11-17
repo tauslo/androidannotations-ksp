@@ -111,8 +111,10 @@ public final class MvpModel {
 		public final String method;
 		/** Invocation style from ResCompat.Type: RESOURCES / ANIMATION_UTILS / HTML_FROM_HTML. */
 		public final String invocation;
+		/** Ordinal of the mirrored AndroidRes enum entry (APT handler order). */
+		public final int androidResIndex;
 
-		public ResField(String propertyName, String typeName, boolean jvmField, int resId, String resName, String rInnerClass, String method, String invocation) {
+		public ResField(String propertyName, String typeName, boolean jvmField, int resId, String resName, String rInnerClass, String method, String invocation, int androidResIndex) {
 			this.propertyName = propertyName;
 			this.typeName = typeName;
 			this.jvmField = jvmField;
@@ -121,6 +123,7 @@ public final class MvpModel {
 			this.rInnerClass = rInnerClass;
 			this.method = method;
 			this.invocation = invocation;
+			this.androidResIndex = androidResIndex;
 		}
 	}
 
@@ -133,8 +136,10 @@ public final class MvpModel {
 		public final boolean reusePropagation;
 		/** Java visibility modifier emitted for the generated override: "public" / "protected" / "private" / "" (package-private). */
 		public final String visibility;
+		/** Visit-order index assigned at collection time; used for APT handler-claim method sorting. */
+		public final int sourceOrder;
 
-		public MethodInfo(String name, List<Param> params, String id, long delay, String serial, boolean reusePropagation, String visibility) {
+		public MethodInfo(String name, List<Param> params, String id, long delay, String serial, boolean reusePropagation, String visibility, int sourceOrder) {
 			this.name = name;
 			this.params = params;
 			this.id = id;
@@ -142,6 +147,7 @@ public final class MvpModel {
 			this.serial = serial;
 			this.reusePropagation = reusePropagation;
 			this.visibility = visibility;
+			this.sourceOrder = sourceOrder;
 		}
 
 		/**
@@ -562,6 +568,10 @@ public final class MvpModel {
 		public final String typeName;
 		/** EXTRA only: expression that reads the value from {@code extras_}. */
 		public final String readExpr;
+		/** EXTRA only: generated extra-key constant name (null for non-EXTRA args). */
+		public String extraConstant;
+		/** EXTRA only: raw key the constant is initialized from (null for non-EXTRA args). */
+		public String extraKey;
 
 		public ReceiverArg(Role role, String name, String typeName, String readExpr) {
 			this.role = role;
@@ -726,12 +736,15 @@ public final class MvpModel {
 		public SupposeSpec suppose;
 		/** Standalone {@code @Transactional}. Not combined with the other wrappers. */
 		public boolean transactional;
+		/** Visit-order index assigned at collection time; used for APT handler-claim method sorting. */
+		public final int sourceOrder;
 
-		public WrappedMethod(String name, List<Param> params, String visibility, String returnType) {
+		public WrappedMethod(String name, List<Param> params, String visibility, String returnType, int sourceOrder) {
 			this.name = name;
 			this.params = params;
 			this.visibility = visibility;
 			this.returnType = returnType;
+			this.sourceOrder = sourceOrder;
 		}
 	}
 
@@ -984,6 +997,8 @@ public final class MvpModel {
 	public final List<String> errors = new ArrayList<>();
 	public final List<MethodInfo> backgrounds = new ArrayList<>();
 	public final List<MethodInfo> uiThreads = new ArrayList<>();
+	/** Monotonic visit-order counter feeding MethodInfo / WrappedMethod sourceOrder. */
+	public int sourceOrderCounter = 0;
 	/** True when the generated class is a static nested class inside its enclosing annotated class's generated class. */
 	public final boolean nested;
 	/** Directly nested annotated models, inlined into this model's generated source (set by the processor). */
@@ -1010,6 +1025,7 @@ public final class MvpModel {
 	public final List<ViewCtor> viewConstructors = new ArrayList<>();
 	public final List<ReceiverBinding> receivers = new ArrayList<>();
 	public final List<ExtraConstant> receiverExtraConstants = new ArrayList<>();
+	public final List<ExtraConstant> receiverActionExtraConstants = new ArrayList<>();
 	public final List<IgnoreWhenMethod> ignoreWhens = new ArrayList<>();
 	/** Any {@code @IgnoreWhen(VIEW_DESTROYED)} needs the volatile {@code viewDestroyed_} flag. */
 	public boolean needsViewDestroyed;
@@ -1034,6 +1050,9 @@ public final class MvpModel {
 	public boolean hasPreferenceHeaders;
 	public int preferenceHeadersResId = AnnotationNames.RES_DEFAULT;
 	public String preferenceHeadersResName = "";
+	/** APT copyNonAAAnnotations parity: non-AndroidAnnotations class annotations in source order. */
+	public final List<String> classAnnotations = new ArrayList<>();
+
 	public final List<PreferenceField> preferenceFields = new ArrayList<>();
 	public final List<PreferenceMethod> preferenceMethods = new ArrayList<>();
 	public final List<PreferenceListener> preferenceChanges = new ArrayList<>();

@@ -497,18 +497,20 @@ public final class KspAnnotationUtils {
 		boolean kotlinSource = isKotlinSource(function);
 		List<MvpModel.Param> params = new ArrayList<>();
 		for (KSValueParameter parameter : function.getParameters()) {
+			String javaType = typeName(parameter.getType());
 			String nullAnnotation = null;
-			if (kotlinSource) {
+			if (kotlinSource && !isPrimitiveJavaName(javaType)) {
+				// kapt stubs expose @NotNull/@Nullable on reference-type parameters only, never on primitives.
 				nullAnnotation = parameter.getType().resolve().isMarkedNullable() ? "Nullable" : "NotNull";
 			}
-			params.add(new MvpModel.Param(parameter.getName().asString(), typeName(parameter.getType()), nullAnnotation));
+			params.add(new MvpModel.Param(parameter.getName().asString(), javaType, nullAnnotation));
 		}
 		return params;
 	}
 
 	/** APT kapt-stub parity: Kotlin nullability is exposed as @NotNull/@Nullable on Java stub parameters. */
-	private static boolean isKotlinSource(KSFunctionDeclaration function) {
-		KSNode parent = function.getParent();
+	public static boolean isKotlinSource(KSNode node) {
+		KSNode parent = node.getParent();
 		while (parent != null && !(parent instanceof KSFile)) {
 			parent = parent.getParent();
 		}

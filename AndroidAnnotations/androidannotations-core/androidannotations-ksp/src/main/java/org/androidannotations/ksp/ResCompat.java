@@ -46,9 +46,11 @@ public final class ResCompat {
 		public final String minSdkPlatformName;
 		/** Invocation style: RESOURCES / ANIMATION_UTILS / HTML_FROM_HTML (APT handler parity). */
 		public final String invocation;
+		/** Ordinal of the mirrored AndroidRes enum entry; drives APT handler (output) order. */
+		public final int androidResIndex;
 
 		Type(String annotationName, String simpleName, String rInnerClass, String method, List<String> allowedTypes,
-			boolean contextCompatAware, int minSdkWithMethod, String minSdkPlatformName, String invocation) {
+			boolean contextCompatAware, int minSdkWithMethod, String minSdkPlatformName, String invocation, int androidResIndex) {
 			this.annotationName = annotationName;
 			this.simpleName = simpleName;
 			this.rInnerClass = rInnerClass;
@@ -58,24 +60,25 @@ public final class ResCompat {
 			this.minSdkWithMethod = minSdkWithMethod;
 			this.minSdkPlatformName = minSdkPlatformName;
 			this.invocation = invocation;
+			this.androidResIndex = androidResIndex;
 		}
 
-		static Type of(String annotationName, String rInnerClass, String method, List<String> allowedTypes) {
-			return new Type(annotationName, simpleOf(annotationName), rInnerClass, method, allowedTypes, false, -1, "", "RESOURCES");
+		static Type of(String annotationName, String rInnerClass, String method, List<String> allowedTypes, int androidResIndex) {
+			return new Type(annotationName, simpleOf(annotationName), rInnerClass, method, allowedTypes, false, -1, "", "RESOURCES", androidResIndex);
 		}
 
-		static Type compatOf(String annotationName, String rInnerClass, String method, List<String> allowedTypes, int minSdkWithMethod, String minSdkPlatformName) {
-			return new Type(annotationName, simpleOf(annotationName), rInnerClass, method, allowedTypes, true, minSdkWithMethod, minSdkPlatformName, "RESOURCES");
+		static Type compatOf(String annotationName, String rInnerClass, String method, List<String> allowedTypes, int minSdkWithMethod, String minSdkPlatformName, int androidResIndex) {
+			return new Type(annotationName, simpleOf(annotationName), rInnerClass, method, allowedTypes, true, minSdkWithMethod, minSdkPlatformName, "RESOURCES", androidResIndex);
 		}
 
 		/** APT AnimationResHandler parity: {@code AnimationUtils.loadAnimation(context, R.anim.x)}. */
-		static Type animationOf(String annotationName, List<String> allowedTypes) {
-			return new Type(annotationName, simpleOf(annotationName), "anim", "getAnimation", allowedTypes, false, -1, "", "ANIMATION_UTILS");
+		static Type animationOf(String annotationName, List<String> allowedTypes, int androidResIndex) {
+			return new Type(annotationName, simpleOf(annotationName), "anim", "getAnimation", allowedTypes, false, -1, "", "ANIMATION_UTILS", androidResIndex);
 		}
 
 		/** APT HtmlResHandler parity: {@code Html.fromHtml(resources_.getString(R.string.x))}. */
-		static Type htmlOf(String annotationName, List<String> allowedTypes) {
-			return new Type(annotationName, simpleOf(annotationName), "string", "getString", allowedTypes, false, -1, "", "HTML_FROM_HTML");
+		static Type htmlOf(String annotationName, List<String> allowedTypes, int androidResIndex) {
+			return new Type(annotationName, simpleOf(annotationName), "string", "getString", allowedTypes, false, -1, "", "HTML_FROM_HTML", androidResIndex);
 		}
 
 		private static String simpleOf(String annotationName) {
@@ -90,22 +93,22 @@ public final class ResCompat {
 	public static final List<Type> ALL;
 	static {
 		List<Type> list = new ArrayList<Type>();
-		list.add(Type.compatOf(RES_PKG + "ColorRes", "color", "getColor", Arrays.asList("int", "java.lang.Integer"), 23, "M"));
-		list.add(Type.of(RES_PKG + "BooleanRes", "bool", "getBoolean", Arrays.asList("java.lang.Boolean", "boolean")));
-		list.add(Type.compatOf(RES_PKG + "ColorStateListRes", "color", "getColorStateList", Arrays.asList("android.content.res.ColorStateList"), 23, "M"));
-		list.add(Type.of(RES_PKG + "DimensionRes", "dimen", "getDimension", Arrays.asList("java.lang.Float", "float")));
-		list.add(Type.of(RES_PKG + "DimensionPixelOffsetRes", "dimen", "getDimensionPixelOffset", Arrays.asList("java.lang.Integer", "int")));
-		list.add(Type.of(RES_PKG + "DimensionPixelSizeRes", "dimen", "getDimensionPixelSize", Arrays.asList("java.lang.Integer", "int")));
-		list.add(Type.compatOf(RES_PKG + "DrawableRes", "drawable", "getDrawable", Arrays.asList("android.graphics.drawable.Drawable"), 21, "LOLLIPOP"));
-		list.add(Type.of(RES_PKG + "IntegerRes", "integer", "getInteger", Arrays.asList("java.lang.Integer", "int")));
-		list.add(Type.of(RES_PKG + "IntArrayRes", "array", "getIntArray", Arrays.asList("int[]")));
-		list.add(Type.of(RES_PKG + "StringArrayRes", "array", "getStringArray", Arrays.asList("java.lang.String[]")));
-		list.add(Type.of(RES_PKG + "TextRes", "string", "getText", Arrays.asList("java.lang.CharSequence")));
-		list.add(Type.of(RES_PKG + "TextArrayRes", "array", "getTextArray", Arrays.asList("java.lang.CharSequence")));
-		list.add(Type.animationOf(RES_PKG + "AnimationRes", Arrays.asList("android.content.res.XmlResourceParser", "android.view.animation.Animation")));
-		list.add(Type.htmlOf(RES_PKG + "HtmlRes", Arrays.asList("java.lang.CharSequence", "android.text.Spanned")));
-		list.add(Type.of(RES_PKG + "LayoutRes", "layout", "getLayout", Arrays.asList("android.content.res.XmlResourceParser")));
-		list.add(Type.of(RES_PKG + "MovieRes", "movie", "getMovie", Arrays.asList("android.graphics.Movie")));
+		list.add(Type.compatOf(RES_PKG + "ColorRes", "color", "getColor", Arrays.asList("int", "java.lang.Integer"), 23, "M", 16));
+		list.add(Type.of(RES_PKG + "BooleanRes", "bool", "getBoolean", Arrays.asList("java.lang.Boolean", "boolean"), 4));
+		list.add(Type.compatOf(RES_PKG + "ColorStateListRes", "color", "getColorStateList", Arrays.asList("android.content.res.ColorStateList"), 23, "M", 5));
+		list.add(Type.of(RES_PKG + "DimensionRes", "dimen", "getDimension", Arrays.asList("java.lang.Float", "float"), 6));
+		list.add(Type.of(RES_PKG + "DimensionPixelOffsetRes", "dimen", "getDimensionPixelOffset", Arrays.asList("java.lang.Integer", "int"), 7));
+		list.add(Type.of(RES_PKG + "DimensionPixelSizeRes", "dimen", "getDimensionPixelSize", Arrays.asList("java.lang.Integer", "int"), 8));
+		list.add(Type.compatOf(RES_PKG + "DrawableRes", "drawable", "getDrawable", Arrays.asList("android.graphics.drawable.Drawable"), 21, "LOLLIPOP", 9));
+		list.add(Type.of(RES_PKG + "IntegerRes", "integer", "getInteger", Arrays.asList("java.lang.Integer", "int"), 11));
+		list.add(Type.of(RES_PKG + "IntArrayRes", "array", "getIntArray", Arrays.asList("int[]"), 10));
+		list.add(Type.of(RES_PKG + "StringArrayRes", "array", "getStringArray", Arrays.asList("java.lang.String[]"), 1));
+		list.add(Type.of(RES_PKG + "TextRes", "string", "getText", Arrays.asList("java.lang.CharSequence"), 14));
+		list.add(Type.of(RES_PKG + "TextArrayRes", "array", "getTextArray", Arrays.asList("java.lang.CharSequence"), 15));
+		list.add(Type.animationOf(RES_PKG + "AnimationRes", Arrays.asList("android.content.res.XmlResourceParser", "android.view.animation.Animation"), 2));
+		list.add(Type.htmlOf(RES_PKG + "HtmlRes", Arrays.asList("java.lang.CharSequence", "android.text.Spanned"), 3));
+		list.add(Type.of(RES_PKG + "LayoutRes", "layout", "getLayout", Arrays.asList("android.content.res.XmlResourceParser"), 12));
+		list.add(Type.of(RES_PKG + "MovieRes", "movie", "getMovie", Arrays.asList("android.graphics.Movie"), 13));
 		ALL = Collections.unmodifiableList(list);
 	}
 
