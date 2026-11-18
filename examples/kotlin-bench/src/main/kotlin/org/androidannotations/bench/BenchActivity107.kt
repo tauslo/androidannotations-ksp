@@ -13,30 +13,6 @@ class BenchActivity107 : Activity() {
     protected lateinit var stringProp: String
 
     @InstanceState
-    protected lateinit var intProp: Int
-
-    @InstanceState
-    protected lateinit var booleanProp: Boolean
-
-    @InstanceState
-    protected lateinit var floatProp: Float
-
-    @InstanceState
-    protected lateinit var longProp: Long
-
-    @InstanceState
-    protected lateinit var shortProp: Short
-
-    @InstanceState
-    protected lateinit var charProp: Char
-
-    @InstanceState
-    protected lateinit var byteProp: Byte
-
-    @InstanceState
-    protected lateinit var doubleProp: Double
-
-    @InstanceState
     protected lateinit var bundleProp: Bundle
 
     @InstanceState

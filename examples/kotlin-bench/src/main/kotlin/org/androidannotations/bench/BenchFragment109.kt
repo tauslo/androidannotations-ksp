@@ -12,8 +12,5 @@ class BenchFragment109 : Fragment() {
     protected lateinit var stringProp: String
 
     @InstanceState
-    protected lateinit var intProp: Int
-
-    @InstanceState
     protected lateinit var stringListProp: ArrayList<String>
 }

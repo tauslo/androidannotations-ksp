@@ -28,7 +28,7 @@ class BenchActivity111 : Activity() {
     protected lateinit var audioManager: AudioManager
 
     @SystemService
-    protected lateinit var windowManager: WindowManager
+    protected lateinit var windowMgr: WindowManager
 
     @SystemService
     protected lateinit var powerManager: PowerManager

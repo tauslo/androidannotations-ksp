@@ -35,6 +35,28 @@ def apply_map(t, fqs):
         t = re.sub(r"\b" + re.escape(fqn) + r"(?![A-Za-z0-9_])", simple, t)
     return t
 
+# KNOWN_DEVIATIONS #10: APT declares superNonConfigurationInstance lazily (first access during
+# member processing), so its position among holder fields differs from KSP. Purely cosmetic;
+# sort the field order of the holder body so both sides compare equal.
+def sort_nc_holder_fields(t):
+    m = re.search(r"privatestaticclassNonConfigurationInstancesHolder\{", t)
+    if not m:
+        return t
+    start = m.end()
+    depth, i = 1, start
+    while i < len(t) and depth:
+        if t[i] == "{":
+            depth += 1
+        elif t[i] == "}":
+            depth -= 1
+        i += 1
+    body = t[start:i - 1]
+    if not body:
+        return t
+    fields = sorted(fld for fld in body.split(";") if fld)
+    return t[:start] + ";".join(fields) + ";" + t[i - 1:]
+
+
 def normalize(text, cls, fqs):
     t = strip_prepackage(text)
     lines = [ln for ln in t.splitlines() if not ln.strip().startswith("import ")]
@@ -47,7 +69,8 @@ def normalize(text, cls, fqs):
     t = re.sub(r"OnViewChangedNotifier\.(replaceNotifier|registerOnViewChangedListener)", r"\1", t)
     t = t.replace(cls + "_.FragmentBuilder_", "FragmentBuilder_")
     t = t.replace(cls + "_.IntentBuilder_", "IntentBuilder_")
-    return re.sub(r"\s+", "", t)
+    t = re.sub(r"\s+", "", t)
+    return sort_nc_holder_fields(t)
 
 def regions(a, b):
     sm = difflib.SequenceMatcher(None, a, b, autojunk=False)

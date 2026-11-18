@@ -11,7 +11,6 @@ import org.androidannotations.annotations.PreferenceChange
 import org.androidannotations.annotations.PreferenceClick
 import org.androidannotations.annotations.PreferenceScreen
 
-@Suppress("DEPRECATION")
 @PreferenceScreen(resName = "bench_prefs")
 @EActivity
 class BenchPreferenceActivity : PreferenceActivity() {
@@ -21,6 +20,9 @@ class BenchPreferenceActivity : PreferenceActivity() {
 
     @PreferenceByKey
     lateinit var benchCheckKey: CheckBoxPreference
+
+    @PreferenceByKey(resName = "benchEditKey")
+    lateinit var benchEditPref: EditTextPreference
 
     @PreferenceChange(resName = ["benchListKey"])
     fun listChanged(preference: Preference, value: Int) {

@@ -1509,3 +1509,41 @@
 
 ### Next
 - **KSP parity 工作流关闭**。剩余外部决策：ORMLite / REST-Spring 待业务确认（旧工程按需另开一期）；`@HierarchyViewerSupport` 明确不做。无待执行切片；新需求按 PLAYBOOK §6 开新 session
+
+## Session 2026-11-18 — fixture fixes + full cold re-measurement (kapt vs KSP, 251 types)
+
+- **Agent**: Codex
+- **Goal slice**: 批准计划三步：① 修全部 fixture 错误使 kapt/KSP 完整冷 assembleDebug 都成功 → ② 真实完整数字（run-benchmark.ps1 -Runs 3）→ ③ 只提出 KSP 侧优化优先级（不实现）
+- **Git**: branch=`ksp/main`，local only, not push；本 commit = fixtures（10 文件）+ `tools/gt_cmp_all.py` + docs
+- **Status**: done — 两侧完整冷 assembleDebug 全绿：kapt 中位 94.74 s vs KSP 79.72 s（KSP 快 15.85%）；门禁 ALL_OK 251/251
+
+### Done
+1. fixture 修复收尾：`BenchPreferenceHeadersActivity.kt` 移除最后一个 `@Suppress("DEPRECATION")`（bench src/ 全树 grep = 0）；全部 10 个 fixture 改动 + 3 个 processor bug 源码证据见 KNOWN_DEVIATIONS #5（已改写为「已解决」）
+2. warm sanity：KSP 23 s / kapt 27 s，均 BUILD SUCCESSFUL（日志 `C:\temp\sanity_ksp_warm_v5.log` / `C:\temp\sanity_kapt_warm_v5.log`；"not registered in AndroidManifest" 为两侧已知非致命警告）
+3. 冷测（`run-benchmark.ps1 -Runs 3`，日志 `C:\temp\bench_cold_v5.log`）：kapt 100.87 / 75.76 / 94.74 s；KSP 79.27 / 79.72 / 80.06 s；两侧均为完整 assembleDebug（javac/dex/package 全跑）→ `benchmark-results.json`（gitignored）
+4. 门禁：保留最后一轮 KSP 输出 + 新重生成 kapt GT（`kaptDebugKotlin --no-build-cache -Paa.processor=kapt` EXIT=0，两目录共存）→ 首跑 MISMATCHES: 1（BenchP1Activity_ = NonConfigurationInstancesHolder 字段顺序，纯装饰性，机制见 KNOWN_DEVIATIONS #10）
+5. `gt_cmp_all.py` 加 `sort_nc_holder_fields()`：对 `NonConfigurationInstancesHolder` 类体字段排序后比较（先例 #2「比较器吸收形态差」；processor 不改）→ 重跑门禁 **GT 251 / missing [] / KSP-only [] / MISMATCHES: 0 / ALL_OK**
+6. docs：KNOWN_DEVIATIONS #5 改写为已解决 + 新增 #10；BENCHMARK.md 追加「Cold re-measurement (2026-11-18, after fixture fixes)」节（94.74 s vs 79.72 s，15.85%，与旧基线/上次失败冷测的关系说明）
+
+### Skipped
+- KSP 侧优化**只提议不实现**（批准计划第③步）：① 「空第二轮」generated 0 class(es) 已知开销；② 符号解析 / 251 文件启动阶段；③ holder 字段顺序 parity bug（processor 修复候选，需重建 jar + 重测）。Gradle 侧（daemon 复用 / --configuration-on-demand）收益最大但超出 KSP 范围，未动
+- processor 代码零改动 → 无需 mvnw install / 重建 jar
+
+### Changed paths
+- fixtures：`examples/kotlin-bench/src/main/{java,kotlin}/org/androidannotations/bench/`（10 文件，清单见 KNOWN_DEVIATIONS #5）
+- 工具：`examples/kotlin-bench/tools/gt_cmp_all.py`（sort_nc_holder_fields）
+- docs：`KNOWN_DEVIATIONS.md`、根 `BENCHMARK.md`、`EXECUTION_LOG.md`
+
+### Verify
+- [x] warm 双绿（KSP 23 s / kapt 27 s，BUILD SUCCESSFUL）
+- [x] 冷测 6/6 完整 assembleDebug 成功；数字入 benchmark-results.json
+- [x] bench src/ 全树 grep @Suppress = 0
+- [x] 门禁 ALL_OK 251/251（比较器归一化后）
+
+### Blockers
+- none
+
+### Next
+1. KSP 侧优化优先级（待用户决策，未实现）：① 空第二轮开销；② 符号解析 / 251 文件启动阶段；③ holder 字段顺序 parity bug（processor 修复候选）
+2. Gradle 侧（超出 KSP 范围）：daemon 复用 / --configuration-on-demand / 预编译脚本插件，启动+配置 ~20 s 可挖
+3. ORMLite / REST-Spring 待业务确认（旧工程按需另开一期）；@HierarchyViewerSupport 明确不做

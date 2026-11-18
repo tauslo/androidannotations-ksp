@@ -122,3 +122,17 @@ Median **79.39 s**. All three runs failed at `:compileDebugKotlin` on the 9 pre-
 The corpus grew from 200 to 251 annotated types since the locked baseline. On the shared pipeline (cold start + KSP generation + full Kotlin compilation up to the failure point) the median is 79.39 s vs the locked 100.55 s, so the processor path shows no significant regression. A "full vs full" comparison remains blocked by those pre-existing fixture errors.
 
 Side data (not primary): with the shell-default JDK 21 (Corretto 21.0.13) the same method gave 78.89 / 70.99 / 72.58 s, median 72.58 s; recorded for reference only because the JDK differs from the baseline.
+
+## Cold re-measurement (2026-11-18, after fixture fixes)
+
+All pre-existing fixture errors (KNOWN_DEVIATIONS #5) are fixed. Both processors now complete a full cold `assembleDebug` — javac/dex/package all run, BUILD SUCCESSFUL on both sides. Same method as the locked baseline: `--no-build-cache`, daemon stopped and `build/` deleted between runs, `JAVA_HOME` pinned to Corretto 17.0.21 (sdkman candidate `17.0.21.0+10-amzn`). Corpus is now 251 annotated types (was 200 at the locked baseline).
+
+| Processor | Runs (seconds) | Median |
+|-----------|----------------|--------|
+| kapt (APT) | 100.87, 75.76, 94.74 | **94.74 s** |
+| KSP MVP | 79.27, 79.72, 80.06 | **79.72 s** |
+
+KSP is **15.85%** faster than kapt on the full build (`(94.74 - 79.72) / 94.74`). This is the first "full vs full" cold comparison at the current corpus size. Context:
+
+- Locked baseline (200 types): kapt 129.88 s vs KSP 100.55 s, 22.6% — different corpus size, not directly comparable.
+- 2026-11-17 KSP-only cold median 79.39 s stopped at `:compileDebugKotlin` (pre-existing fixture errors); its wall clock excludes javac/dex/package, so it is not comparable to either full number here.

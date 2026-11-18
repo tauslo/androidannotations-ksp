@@ -22,7 +22,18 @@
 2. **Kotlin property → field/setter 映射**：kapt 经 stub、KSP 直读符号。KSP 遵循 `@JvmField || lateinit` → 直接 `this.x = …`，否则发 setter 调用（与 APT stub 可见性语义一致）。门禁比较器吸收「直接字段写 vs setter 调用」形态差与 init_ 语句顺序；bench 无 API 级可观察偏差。
 3. **FIELD 先行注入顺序**：kapt 将 Kotlin 属性 backing field 全部置于 stub 类体顶部，APT 按 stub 成员序迭代 ⇒ FIELD form 先于 METHOD/PARAM form。KSP 以「按 form 稳定分区」复现（FIELD 全部先行，组内保持声明序）。
 4. **cast 渲染**：jcodemodel cast 为双括号 `((T) x)`；KSP 与 GT 逐字符一致（门禁不忽略括号数量）。
-5. **既有 fixture 编译错误**：kotlin-bench 存在 9 个既有 Kotlin 错误（BenchActivity107×8、BenchFragment109×1）；kapt/KSP 构建均 EXIT=1 但代码生成完整、门禁不受影响——fixture 问题，非 processor 偏差。
+5. **既有 fixture 编译错误 — 已解决（2026-11-18）**：原 9 个既有 Kotlin 错误（BenchActivity107×8、BenchFragment109×1）及后续暴露的同类问题已全部修复；kapt/KSP 完整冷 `assembleDebug` 均 BUILD SUCCESSFUL（javac/dex/package 全跑），真实完整数字见根目录 `BENCHMARK.md`「Cold re-measurement (2026-11-18, after fixture fixes)」。fixture 改动清单（共 10 文件）：
+   - `BenchActivity107.kt` / `BenchFragment109.kt`：移除无法过 kapt stub 的 `@InstanceState` 原始类型属性（kapt stub 将 Kotlin `var` backing field 暴露为 private，APT 拒绝在 private 元素上使用注解）；8 个移入 Java fixture `BenchActivity113.java`（无 stub 问题），`BenchFragment109` 的 intProp 直接删除。
+   - `BenchActivity103.kt`：`@IntArrayRes` 字段由已初始化 `var` 改 `lateinit var`（stub 中 lateinit 暴露为 public field，两侧 processor 均可见）。
+   - `BenchP1Activity.kt`：`@NonConfigurationInstance keptLabel` 同理由已初始化 nullable 改 `lateinit`。
+   - `BenchActivity111.kt`：`windowManager` 改名 `windowMgr`（与 `Activity.getWindowManager()` 平台声明冲突）。
+   - `BenchListenersActivity.kt`：`@BeforeTextChange` method form 参数类型 `EditText` → `TextView`。
+   - `BenchHttpsBean.kt`：`@HttpsClient` bean 自声明 `getResources()`（委托注入的 `@RootContext`）— workaround，见下 b。
+   - `BenchPreferenceActivity.kt` / `BenchPreferenceHeadersActivity.kt`：移除 `@Suppress("DEPRECATION")` — KSP-only workaround，见下 a；`BenchPreferenceActivity` 另加同 key 字段 `benchEditPref` — workaround，见下 c。
+   修复中暴露的 3 个 processor bug（本 session 未改 processor，仅 fixture 侧 workaround；processor 修复需重建 jar + 重测，留待后续决策）：
+   - **a. KSP-only `kotlin.Suppress`**：KSP `MvpHandler.java:4029-4057 collectClassAnnotations`（androidannotations-ksp/.../handler/MvpHandler.java）只跳过 `org.androidannotations.*` 与 `kotlin.Metadata`，不跳 `kotlin.Suppress`；`renderAnnotation:4073` 渲染短名且不加 import → javac cannot-find-symbol。APT 侧 `APTCodeModelHelper.java:319-328 copyNonAAAnnotations` 走 jcodemodel `annotate()` 自动补 import（其 `IGNORED_ANNOTATIONS:81` 也仅 kotlin.Metadata）⇒ kapt GT 有 `import kotlin.Suppress;`，KSP 没有。
+   - **b. `@HttpsClient(trustStoreResName)` on plain `@EBean`**：`HttpsClientHandler.java:127`（androidannotations/...）无条件发裸 `invoke("getResources")`，只有宿主基类自带该方法才解析（上游测试 SSLConnection 用 Activity 宿主）。
+   - **c. APT+KSP `@PreferenceByKey` method form 顺序 bug**：`InjectHelper.java:152-162 processMethod` — L157 `createBlock(holder,true)` 先把嵌套 `{}` 追加进 invocation block；之后 `PreferencesDelegate.createFoundPreferenceAndIfNotNullBlock:137-154` 在 key 无字段 backing（`fieldRef==null`）时 L149 把局部声明加到外层 block ⇒ use-before-declaration。两侧 processor 共享 InjectHelper，同 bug。
 6. **AndroidX Fragment 查找**：Activity / View 宿主上，字段类型是 `android.app.Fragment`（或其子类）时走 `getFragmentManager()`；否则走 `getSupportFragmentManager()`（View 宿主先把 `getContext()` cast 成 `androidx.fragment.app.FragmentActivity`）。Fragment 宿主仍用 `getFragmentManager()` / `getChildFragmentManager()`。kotlin-bench 为这条路径打开了 `android.useAndroidX=true` 并依赖 `androidx.fragment:fragment`。
 7. **core 里仍未实现的只有过时的 `@HierarchyViewerSupport`**。使用它默认得到 KSP warning；把 KSP 参数 `unimplementedIsError` 设为 `true` 时改为 error。Preference 六注解、`@IntArrayRes`、`@MovieRes` 已实现（边界见第 9 条）。`@DataBound` / `@BindingObject` / `@CustomTitle` / `@HttpsClient` / `@Transactional` 已实现。`@Transactional` 不与 `@UiThread` / `@Background` / `@WakeLock` / `@Trace` / `@Suppose*` / `@IgnoreWhen` 组合（组合会报错）。`@HttpsClient` 的 keystore 路径用外层组件的 context（bean 上是 `context_`）取 raw 资源。`@Trace` 已实现，但与 APT 一样默认关闭（KSP 参数 `trace=false`）。`@Suppose*` 默认开启（`threadControl=true`）。插件 REST / ORMLite / RoboGuice / Otto 不在 core 处理器里。
 8. **动态 `@Receiver` 与 APT 一样不写 permission / `RECEIVER_EXPORTED`**：生成的是两参数 `registerReceiver(receiver, filter)`。`targetSdk` 33+ 时平台要求导出标志，这是 APT 与 KSP 共同的限制。`androidx.fragment.app.Fragment` 上的 `@Receiver(registerAt = OnAttachOnDetach)` 仍生成 `onAttach(android.app.Activity)`，不会覆盖 AndroidX 的 `onAttach(Context)`；bench 这条路径用的是 framework `android.app.Fragment`。
@@ -32,6 +43,8 @@
    - ByKey、Click、Change、AfterPreferences 写在重写的 `addPreferencesFromResource` 里。只调用 `setPreferencesFromResource` 的 `PreferenceFragmentCompat` 不会触发这些注入。`@PreferenceScreen` 生成的调用是 `addPreferencesFromResource`；Compat 实现了这个方法，所以这条路径在 androidx.preference 在类路径上时可用。kotlin-bench 用的是 framework `PreferenceActivity`，没有加 preference 依赖。
    - 无 res 值时，Click / Change 的 R.string 名会去掉后缀 `PreferenceClicked` / `PreferenceChanged`（与 APT `extractElementName` 相同）。
    - `@IntArrayRes` 生成 `resources_.getIntArray`。`@MovieRes` 生成 `resources_.getMovie(R.movie.*)`。当前 AGP / aapt2 没有 `res/movie`，编不出 `R.movie`，所以 `@MovieRes` 没有可编译的 bench fixture。
+
+10. **`NonConfigurationInstancesHolder` 字段声明顺序偏差（装饰性，门禁比较器已吸收）**：APT 的 `superNonConfigurationInstance` 是懒声明（`NonConfigurationHolder.java:43-51`，首次 `getSuperNonConfigurationInstanceField()` 访问才建字段；首次访问发生在 `EActivityHolder.setGetLastNonConfigurationInstance():606` / `setOnRetainNonConfigurationInstance():648`），成员字段按 `NonConfigurationInstanceHandler.process()` → `ncHolder.createField(...)` 的调用时机插入 ⇒ super 字段落在 `keptLabel` 与 `keptBean` 之间；KSP 侧（ksp/generate/MvpJavaGenerator.java）成员字段全先、super 最后。两侧 `onRetainNonConfigurationInstance` / `onResume` 赋值语句顺序完全一致，private static 内部类无 API/运行时可观察差异。门禁比较器 `gt_cmp_all.py sort_nc_holder_fields()` 对该类体字段排序后比较（先例：#2「比较器吸收形态差」）。processor 侧统一为同一顺序可作为后续 parity 修复候选（需重建 jar + 重测）。
 
 ## 增量 originating files
 

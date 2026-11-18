@@ -23,5 +23,5 @@ class BenchActivity103 : Activity() {
     protected lateinit var benchLayout: XmlResourceParser
 
     @IntArrayRes(R.array.benchInts)
-    var benchInts: IntArray = IntArray(0)
+    lateinit var benchInts: IntArray
 }

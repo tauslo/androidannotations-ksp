@@ -6,7 +6,6 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.widget.CheckBox
-import android.widget.EditText
 import android.widget.TextView
 import org.androidannotations.annotations.AfterTextChange
 import org.androidannotations.annotations.BeforeTextChange
@@ -55,7 +54,7 @@ class BenchListenersActivity : Activity() {
     }
 
     @BeforeTextChange
-    protected fun textTarget(view: EditText, s: CharSequence, start: Int, after: Int) {
+    protected fun textTarget(view: TextView, s: CharSequence, start: Int, after: Int) {
     }
 
     @TextChange(R.id.textTarget)

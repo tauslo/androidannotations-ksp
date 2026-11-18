@@ -38,7 +38,7 @@ class BenchP1Activity : Activity() {
     protected lateinit var nativeChild: Fragment
 
     @NonConfigurationInstance
-    protected var keptLabel: String? = null
+    protected lateinit var keptLabel: String
 
     @NonConfigurationInstance
     @Bean
