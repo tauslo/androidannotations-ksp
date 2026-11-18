@@ -1547,3 +1547,46 @@
 1. KSP 侧优化优先级（待用户决策，未实现）：① 空第二轮开销；② 符号解析 / 251 文件启动阶段；③ holder 字段顺序 parity bug（processor 修复候选）
 2. Gradle 侧（超出 KSP 范围）：daemon 复用 / --configuration-on-demand / 预编译脚本插件，启动+配置 ~20 s 可挖
 3. ORMLite / REST-Spring 待业务确认（旧工程按需另开一期）；@HierarchyViewerSupport 明确不做
+
+
+## Session 2026-11-18 (续) — KSP 侧优化落地（空第二轮跳过 + holder parity）+ kapt daemon 陈旧状态根因定位
+
+- **Agent**: Codex
+- **Goal slice**: 执行上 session 提议的 ①「空第二轮」开销与 ③ holder 字段顺序 parity bug（用户批准「按你的建议来」：先修 kapt 侧故障拿真实完整数字，再做 KSP 侧优化）；Gradle 侧不动
+- **Git**: branch=`ksp/main`，local only, not push；本 commit = KSP processor（2 文件）+ `tools/gt_cmp_all.py` + docs（3 文件）
+- **Status**: done — 门禁无归一化 ALL_OK 251/0；完整冷测 kapt 中位 89.16 s vs KSP 74.76 s（KSP 快 16.15%）
+
+### Done
+1. ① 空第二轮跳过（`AndroidAnnotationsSymbolProcessor`，+42 行）：新增 `selfGeneratedKeys`（key = `pkg/Name.java`）记录本次 run 写出的全部文件；`process()` 开头若 `written` 非空且本轮 new files 全为自有产物 → 跳过全部 `getSymbolsWithAnnotation` 查找并返回 emptyList（AA 从不注解自己的输出，故不可能有新注解符号）；catch RuntimeException 时防御性回退完整路径。实证日志行：`i: [ksp] AndroidAnnotations KSP skipped follow-up round (251 self-generated file(s), no symbol lookup)`（`C:\temp\verify_skip_v6.log`）
+2. ③ holder 字段顺序 parity（`MvpJavaGenerator`，±10 行）：改为在第一个成员字段之后立即输出 `superNonConfigurationInstance`（复现 APT 懒声明时机：首次访问发生在处理第一个成员期间）→ GT 与 KSP `BenchP1Activity_` holder 块 strip 后逐行一致（`keptLabel; superNonConfigurationInstance; keptBean;`）
+3. 门禁比较器 `gt_cmp_all.py`（−22 行）：移除上 session 引入的 `sort_nc_holder_fields()` 归一化 → 全量门禁**无归一化** GT 251 / missing [] / KSP-only [] / MISMATCHES: 0 / ALL_OK
+4. kapt 侧故障根因定位（本 session 主阻塞，全部实证）：
+   - 现象：mvn install 于 16:37 替换 mavenLocal api+ksp jar 后，旧 daemon 里每次 kapt「成功」但 0 产物 → `compileDebugKotlin` 报 Unresolved reference。AA 日志（GBK）栈：`AndroidAnnotationsPlugin.loadVersion:58` 第二次读 `androidannotations-api.properties` 失败（`getResource` → null → NPE 被 `init` catch 吞掉 → FileNotFoundException，"Can't load plugins"，插件列表空）
+   - 排除假设：新 api jar 完好（properties 在位、testzip 干净）；APT pom 传递声明 api 依赖；`printKaptFiles` init script 实测所有 kapt* 配置解析出恰好 6 个 jar（含 api jar）；v6c 日志 transform 行仅 AGP Identity/Snapshot transform（不改内容）；ClSim URLClassLoader 模拟两 properties 均 FOUND + ServiceLoader 发现 processor（此前 CNFE 是包名笔误 — CorePlugin 实际在 `org.androidannotations.internal.core`）
+   - **决定性实验**：`gradlew --stop` + 重跑 → kapt 251 文件、BUILD SUCCESSFUL、AA 日志无新增 ERROR ⇒ 根因 = **Gradle daemon 陈旧状态**（daemon JVM 对被替换 SNAPSHOT jar 的缓存句柄/元数据失效）。教训：mvnw 重建 AA jar 后必须重启 Gradle daemon 再跑 kapt
+   - GT 目录重生成 + 门禁转绿（见第 3 条）
+5. 完整冷测（`run-benchmark.ps1 -Runs 3`，日志 `C:\temp\bench_v8.log`；6/6 BUILD SUCCESSFUL）：kapt 89.16 / 88.47 / 91.44 s（中位 **89.16**）；KSP 74.82 / 74.76 / 74.10 s（中位 **74.76**）→ KSP 快 16.15%（`benchmark-results.json`，gitignored）。两侧均较上次完整冷测（94.74 / 79.72）降约 5-6 s；APT 侧未动，其中部分为机器/daemon 方差
+6. docs：KNOWN_DEVIATIONS #10 → 已解决；BENCHMARK.md 追加「Cold re-measurement (2026-11-18, after empty-round skip + holder parity)」节（含 daemon 教训）；本条目
+
+### Skipped
+- KSP 侧 ② 符号解析 / 251 文件启动阶段优化未实现（需更深 profiling，优先级低）
+- Gradle 侧（daemon 复用 / --configuration-on-demand，启动+配置 ~20 s）超出范围，未动
+
+### Changed paths
+- KSP processor：`AndroidAnnotations/androidannotations-core/androidannotations-ksp/src/main/java/org/androidannotations/ksp/AndroidAnnotationsSymbolProcessor.java`（+42）、`.../ksp/generate/MvpJavaGenerator.java`（±10）
+- 工具：`examples/kotlin-bench/tools/gt_cmp_all.py`（−22，移除归一化）
+- docs：`docs/ksp-production-parity/KNOWN_DEVIATIONS.md`、根 `BENCHMARK.md`、`docs/ksp-production-parity/EXECUTION_LOG.md`
+
+### Verify
+- [x] 空第二轮跳过日志行在位（verify_skip_v6.log；251 self-generated files, no symbol lookup）
+- [x] GT vs KSP holder 块 strip 后逐行一致
+- [x] 门禁无归一化 ALL_OK 251/0（MISMATCHES: 0）
+- [x] kapt 完整冷 assembleDebug 绿（251 文件，BUILD SUCCESSFUL）— daemon 重启为前提
+- [x] 冷测 6/6 完整 assembleDebug 成功；数字入 benchmark-results.json
+
+### Blockers
+- none
+
+### Next
+- KSP 侧剩余：符号解析 / 251 文件启动阶段（需 profiling 决策）；Gradle 侧（daemon 复用 / COD）超出范围
+- ORMLite / REST-Spring 待业务确认（旧工程按需另开一期）；@HierarchyViewerSupport 明确不做

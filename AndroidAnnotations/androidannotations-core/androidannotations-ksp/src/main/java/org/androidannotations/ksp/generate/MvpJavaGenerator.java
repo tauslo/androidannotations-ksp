@@ -1729,11 +1729,17 @@ public final class MvpJavaGenerator {
 		if (model.nonConfigFields.isEmpty()) {
 			return;
 		}
+		List<MvpModel.NonConfigField> fields = model.nonConfigFields;
 		out.append("\tprivate static class NonConfigurationInstancesHolder {\n");
-		for (MvpModel.NonConfigField field : model.nonConfigFields) {
+		for (int i = 0; i < fields.size(); i++) {
+			MvpModel.NonConfigField field = fields.get(i);
 			out.append("\t\tpublic ").append(toSimpleName(field.typeName)).append(" ").append(field.propertyName).append(";\n");
+			if (i == 0) {
+				// APT parity (NonConfigurationHolder): superNonConfigurationInstance is declared lazily on first
+				// access, which happens while the first member is processed - so it lands right after that field.
+				out.append("\t\tpublic Object superNonConfigurationInstance;\n");
+			}
 		}
-		out.append("\t\tpublic Object superNonConfigurationInstance;\n");
 		out.append("\t}\n");
 	}
 

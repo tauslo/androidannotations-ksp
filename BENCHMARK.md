@@ -136,3 +136,21 @@ KSP is **15.85%** faster than kapt on the full build (`(94.74 - 79.72) / 94.74`)
 
 - Locked baseline (200 types): kapt 129.88 s vs KSP 100.55 s, 22.6% — different corpus size, not directly comparable.
 - 2026-11-17 KSP-only cold median 79.39 s stopped at `:compileDebugKotlin` (pre-existing fixture errors); its wall clock excludes javac/dex/package, so it is not comparable to either full number here.
+
+## Cold re-measurement (2026-11-18, after empty-round skip + holder parity)
+
+KSP-side optimizations implemented since the previous full cold run:
+
+- **Empty follow-up round skip**: `AndroidAnnotationsSymbolProcessor` tracks every file it wrote (`pkg/Name.java`). If all new files in a follow-up round are its own output, no AA-annotated symbol can be new (AA never annotates its own output), so the processor skips every `getSymbolsWithAnnotation` lookup and returns without generating. Verified log line: `i: [ksp] AndroidAnnotations KSP skipped follow-up round (251 self-generated file(s), no symbol lookup)`.
+- **Holder field-order parity**: `MvpJavaGenerator` now emits `superNonConfigurationInstance` right after the first member field, reproducing APT lazy-declaration order; GT and KSP holder blocks are line-for-line identical and the gate comparator `sort_nc_holder_fields()` normalization was removed (KNOWN_DEVIATIONS #10 resolved).
+
+Same method as the locked baseline: cold `assembleDebug` with `--no-build-cache`, daemon stopped and `build/` deleted before each run, `JAVA_HOME` pinned to Corretto 17.0.21 (sdkman candidate `17.0.21.0+10-amzn`). Corpus is 251 annotated types. All six runs BUILD SUCCESSFUL (full javac/dex/package). Log: `C:\temp\bench_v8.log`.
+
+| Processor | Runs (seconds) | Median |
+|-----------|----------------|--------|
+| kapt (APT) | 89.16, 88.47, 91.44 | **89.16 s** |
+| KSP MVP | 74.82, 74.76, 74.10 | **74.76 s** |
+
+KSP is **16.15%** faster than kapt on the full build (`(89.16 - 74.76) / 89.16`). Both medians dropped about 5-6 s versus the previous full cold run (kapt 94.74 to 89.16, KSP 79.72 to 74.76); since the APT side was untouched, part of that delta is machine/daemon variance rather than processor improvement. The KSP-side gain beyond that variance comes from the empty-round skip (round 2 no longer pays symbol-lookup cost over 251 self-generated files).
+
+Operational note discovered while re-measuring: after rebuilding the AA jars into mavenLocal with `mvnw install` **while a Gradle daemon was running**, kapt in that stale daemon silently failed - its processor classloader could not find `androidannotations-api.properties`, `AndroidAnnotationProcessor.init` swallowed the exception (logged as Can't load plugins), and kapt produced 0 files while reporting success. Restarting the daemon (`gradlew --stop`) fixed it. Always stop the Gradle daemon after replacing mavenLocal SNAPSHOT jars before running kapt.

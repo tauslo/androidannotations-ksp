@@ -44,7 +44,7 @@
    - 无 res 值时，Click / Change 的 R.string 名会去掉后缀 `PreferenceClicked` / `PreferenceChanged`（与 APT `extractElementName` 相同）。
    - `@IntArrayRes` 生成 `resources_.getIntArray`。`@MovieRes` 生成 `resources_.getMovie(R.movie.*)`。当前 AGP / aapt2 没有 `res/movie`，编不出 `R.movie`，所以 `@MovieRes` 没有可编译的 bench fixture。
 
-10. **`NonConfigurationInstancesHolder` 字段声明顺序偏差（装饰性，门禁比较器已吸收）**：APT 的 `superNonConfigurationInstance` 是懒声明（`NonConfigurationHolder.java:43-51`，首次 `getSuperNonConfigurationInstanceField()` 访问才建字段；首次访问发生在 `EActivityHolder.setGetLastNonConfigurationInstance():606` / `setOnRetainNonConfigurationInstance():648`），成员字段按 `NonConfigurationInstanceHandler.process()` → `ncHolder.createField(...)` 的调用时机插入 ⇒ super 字段落在 `keptLabel` 与 `keptBean` 之间；KSP 侧（ksp/generate/MvpJavaGenerator.java）成员字段全先、super 最后。两侧 `onRetainNonConfigurationInstance` / `onResume` 赋值语句顺序完全一致，private static 内部类无 API/运行时可观察差异。门禁比较器 `gt_cmp_all.py sort_nc_holder_fields()` 对该类体字段排序后比较（先例：#2「比较器吸收形态差」）。processor 侧统一为同一顺序可作为后续 parity 修复候选（需重建 jar + 重测）。
+10. **`NonConfigurationInstancesHolder` 字段声明顺序偏差 — 已解决（2026-11-18）**：APT 的 `superNonConfigurationInstance` 是懒声明（`NonConfigurationHolder.java:43-51`，首次 `getSuperNonConfigurationInstanceField()` 访问才建字段；首次访问发生在 `EActivityHolder.setGetLastNonConfigurationInstance():606` / `setOnRetainNonConfigurationInstance():648`），成员字段按 `NonConfigurationInstanceHandler.process()` → `ncHolder.createField(...)` 的调用时机插入 ⇒ super 字段落在第 1、2 个成员字段之间。修复：KSP 侧 `MvpJavaGenerator` 现于第一个成员字段之后立即输出 `superNonConfigurationInstance`（复现 APT 懒声明时机），两侧 holder 块逐行一致（`keptLabel; superNonConfigurationInstance; keptBean;`）。门禁比较器已移除 `sort_nc_holder_fields()` 归一化，全量门禁无归一化 ALL_OK 251/0（MISMATCHES: 0）。
 
 ## 增量 originating files
 
