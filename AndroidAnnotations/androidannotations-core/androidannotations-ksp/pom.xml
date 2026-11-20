@@ -21,14 +21,14 @@
 	<modelVersion>4.0.0</modelVersion>
 
 	<parent>
-		<groupId>org.androidannotations</groupId>
+		<groupId>io.github.tauslo</groupId>
 		<artifactId>androidannotations-core</artifactId>
-		<version>4.9.0-SNAPSHOT</version>
+		<version>4.9.0</version>
 	</parent>
 
 	<artifactId>androidannotations-ksp</artifactId>
 	<name>AndroidAnnotations KSP Processor</name>
-	<description>KSP Symbol Processor MVP that generates AndroidAnnotations subclasses</description>
+	<description>KSP symbol processor for AndroidAnnotations, based on the open-source AndroidAnnotations project (https://github.com/androidannotations/androidannotations, Apache License 2.0), porting its kapt code generator to Kotlin Symbol Processing</description>
 
 	<properties>
 		<main.basedir>${project.parent.parent.basedir}</main.basedir>
@@ -39,7 +39,7 @@
 
 	<dependencies>
 		<dependency>
-			<groupId>org.androidannotations</groupId>
+			<groupId>io.github.tauslo</groupId>
 			<artifactId>androidannotations-api</artifactId>
 		</dependency>
 		<dependency>
@@ -66,6 +66,17 @@
 				<configuration>
 					<skip>true</skip>
 				</configuration>
+			</plugin>
+			<plugin>
+				<artifactId>maven-javadoc-plugin</artifactId>
+				<executions>
+					<execution>
+						<id>attach-javadocs</id>
+						<goals>
+							<goal>jar</goal>
+						</goals>
+					</execution>
+				</executions>
 			</plugin>
 			<plugin>
 				<artifactId>maven-source-plugin</artifactId>

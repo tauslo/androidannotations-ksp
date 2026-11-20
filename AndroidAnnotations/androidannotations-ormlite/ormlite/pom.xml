@@ -21,9 +21,9 @@
 	<modelVersion>4.0.0</modelVersion>
 
 	<parent>
-		<groupId>org.androidannotations</groupId>
+		<groupId>io.github.tauslo</groupId>
 		<artifactId>androidannotations-ormlite</artifactId>
-		<version>4.9.0-SNAPSHOT</version>
+		<version>4.9.0</version>
 	</parent>
 
 	<artifactId>ormlite</artifactId>
@@ -36,11 +36,11 @@
 
 	<dependencies>
 		<dependency>
-			<groupId>org.androidannotations</groupId>
+			<groupId>io.github.tauslo</groupId>
 			<artifactId>androidannotations</artifactId>
 		</dependency>
 		<dependency>
-			<groupId>org.androidannotations</groupId>
+			<groupId>io.github.tauslo</groupId>
 			<artifactId>ormlite-api</artifactId>
 		</dependency>
 		<dependency>

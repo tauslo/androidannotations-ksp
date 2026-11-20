@@ -21,9 +21,9 @@
 	<modelVersion>4.0.0</modelVersion>
 
 	<parent>
-		<groupId>org.androidannotations</groupId>
+		<groupId>io.github.tauslo</groupId>
 		<artifactId>androidannotations-parent</artifactId>
-		<version>4.9.0-SNAPSHOT</version>
+		<version>4.9.0</version>
 	</parent>
 
 	<artifactId>androidannotations-rest-spring</artifactId>
@@ -45,12 +45,12 @@
 	<dependencyManagement>
 		<dependencies>
 			<dependency>
-				<groupId>org.androidannotations</groupId>
+				<groupId>io.github.tauslo</groupId>
 				<artifactId>rest-spring</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 			<dependency>
-				<groupId>org.androidannotations</groupId>
+				<groupId>io.github.tauslo</groupId>
 				<artifactId>rest-spring-api</artifactId>
 				<version>${project.version}</version>
 			</dependency>

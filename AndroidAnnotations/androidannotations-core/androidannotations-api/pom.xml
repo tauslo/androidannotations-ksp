@@ -21,13 +21,13 @@
 	<modelVersion>4.0.0</modelVersion>
 
 	<parent>
-		<groupId>org.androidannotations</groupId>
+		<groupId>io.github.tauslo</groupId>
 		<artifactId>androidannotations-core</artifactId>
-		<version>4.9.0-SNAPSHOT</version>
+		<version>4.9.0</version>
 	</parent>
 
 	<artifactId>androidannotations-api</artifactId>
-	<description>The API jar containing the annotations and the runtime helpers</description>
+	<description>The API jar containing the annotations and the runtime helpers. Based on the open-source AndroidAnnotations project (https://github.com/androidannotations/androidannotations), licensed under Apache License 2.0.</description>
 	<name>AndroidAnnotations API</name>
 
 	<properties>

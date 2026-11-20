@@ -26,14 +26,14 @@
 		<version>6.0.0</version>
 	</parent>
 
-	<groupId>org.androidannotations</groupId>
+	<groupId>io.github.tauslo</groupId>
 	<artifactId>androidannotations-parent</artifactId>
-	<version>4.9.0-SNAPSHOT</version>
+	<version>4.9.0</version>
 	<packaging>pom</packaging>
 
 	<name>AndroidAnnotations Parent</name>
-	<description>Simplifying Android using annotations and annotation processing tools</description>
-	<url>http://androidannotations.org</url>
+	<description>KSP-based fork of the open-source AndroidAnnotations project (https://github.com/androidannotations/androidannotations), licensed under Apache License 2.0. Adds a Kotlin Symbol Processing (KSP) processor and republishes it under io.github.tauslo.</description>
+	<url>https://github.com/tauslo/androidannotations-ksp</url>
 
 	<inceptionYear>2010</inceptionYear>
 
@@ -140,7 +140,8 @@
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<main.basedir>${project.basedir}</main.basedir>
 		<robolectric.version>3.8</robolectric.version>
-	</properties>
+	    <maven.deploy.skip>true</maven.deploy.skip>
+</properties>
 
 	<modules>
 		<module>androidannotations-core</module>
@@ -153,23 +154,23 @@
 	<dependencyManagement>
 		<dependencies>
 			<dependency>
-				<groupId>org.androidannotations</groupId>
+				<groupId>io.github.tauslo</groupId>
 				<artifactId>androidannotations-api</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 			<dependency>
-				<groupId>org.androidannotations</groupId>
+				<groupId>io.github.tauslo</groupId>
 				<artifactId>androidannotations</artifactId>
 				<version>${project.version}</version>
 				<scope>compile</scope>
 			</dependency>
 			<dependency>
-				<groupId>org.androidannotations</groupId>
+				<groupId>io.github.tauslo</groupId>
 				<artifactId>androidannotations-ksp</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 			<dependency>
-				<groupId>org.androidannotations</groupId>
+				<groupId>io.github.tauslo</groupId>
 				<artifactId>androidannotations-testutils</artifactId>
 				<version>${project.version}</version>
 				<scope>test</scope>
@@ -264,7 +265,8 @@
 					<configuration>
 						<locale>en_US</locale>
 						<quiet>true</quiet>
-					</configuration>
+						<doclint>none</doclint>
+						<failOnError>false</failOnError>					</configuration>
 					<executions>
 						<execution>
 							<id>attach-javadocs</id>
@@ -416,10 +418,17 @@
 		</resources>
 	</build>
 
+	<distributionManagement>
+		<repository>
+			<id>central-portal</id>
+			<name>Sonatype Central Portal</name>
+			<url>https://central.sonatype.com/api/v1/publisher</url>
+		</repository>
+	</distributionManagement>
 	<scm>
-		<connection>scm:git:git@github.com:androidannotations/androidannotations.git</connection>
-		<developerConnection>scm:git:git@github.com:androidannotations/androidannotations.git</developerConnection>
-		<url>https://github.com/androidannotations/androidannotations</url>
+		<connection>scm:git:git@github.com:tauslo/androidannotations-ksp.git</connection>
+		<developerConnection>scm:git:git@github.com:tauslo/androidannotations-ksp.git</developerConnection>
+		<url>https://github.com/tauslo/androidannotations-ksp</url>
 		<tag>HEAD</tag>
 	</scm>
 
@@ -470,5 +479,16 @@
 				</plugins>
 			</build>
 		</profile>
-	</profiles>
+	    <profile>
+      <id>central-publish</id>
+      <activation>
+        <file>
+          <exists>${user.home}/.m2/central-portal-settings.xml</exists>
+        </file>
+      </activation>
+      <properties>
+        <maven.deploy.skip>false</maven.deploy.skip>
+      </properties>
+    </profile>
+</profiles>
 </project>

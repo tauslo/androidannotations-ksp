@@ -22,8 +22,8 @@
 
 	<parent>
 		<artifactId>androidannotations-otto</artifactId>
-		<groupId>org.androidannotations</groupId>
-		<version>4.9.0-SNAPSHOT</version>
+		<groupId>io.github.tauslo</groupId>
+		<version>4.9.0</version>
 	</parent>
 
 	<artifactId>otto-test</artifactId>
@@ -37,17 +37,17 @@
 
 	<dependencies>
 		<dependency>
-			<groupId>org.androidannotations</groupId>
+			<groupId>io.github.tauslo</groupId>
 			<artifactId>androidannotations</artifactId>
 			<scope>provided</scope>
 		</dependency>
 		<dependency>
-			<groupId>org.androidannotations</groupId>
+			<groupId>io.github.tauslo</groupId>
 			<artifactId>otto</artifactId>
 			<scope>provided</scope>
 		</dependency>
 		<dependency>
-			<groupId>org.androidannotations</groupId>
+			<groupId>io.github.tauslo</groupId>
 			<artifactId>androidannotations-api</artifactId>
 		</dependency>
 		<dependency>
